@@ -153,6 +153,7 @@ impl ToTokens for ComponentStructOrImpl {
                 tokens.append_all(quote! {
                     #x
                     impl Component for #name {
+                        fn new() -> Self { Self::new() }
                         #created
                         #attached
                         #ready
@@ -197,15 +198,16 @@ impl ToTokens for TemplateDefinition {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let Self { name, root } = self;
         tokens.append_all(quote! {
-            impl<B: Backend> ComponentTemplate<B> for #name<B> {
-                fn template(&self, __owner: &mut ComponentNodeRefMut<B>, __is_update: bool) -> Option<Vec<NodeRc<B>>> {
-                    let (__init_fn, __update_fn) = #root;
-                    if __is_update {
-                        __update_fn(__owner, &__owner.shadow_root_rc().clone());
-                        None
-                    } else {
-                        Some(__init_fn(__owner))
-                    }
+            impl ComponentTemplate for #name {
+                fn template<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __is_update: bool) -> Option<Vec<NodeRc<B>>> where Self: Sized {
+                    // let (init_fn, update_fn) = #root;
+                    // if __is_update {
+                    //     update_fn(__owner, &__owner.shadow_root_rc().clone());
+                    //     None
+                    // } else {
+                    //     Some(init_fn(__owner))
+                    // }
+                    __template_sample(__owner, __is_update)
                 }
             }
         });

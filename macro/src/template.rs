@@ -269,17 +269,17 @@ impl ToTokens for TemplateShadowRoot {
         tokens.append_all(quote! {
             {
                 let children = [#(#children),*];
-                (|owner: ComponentRefMut<B>| {
+                (Box::new(|owner: ComponentRefMut<B>| {
                     let children: Vec<NodeRc<B>> = children.iter().map(|(init_fn, _)| {
                         init_fn(owner)
                     }).collect();
                     children
-                }, |owner: ComponentRefMut<B>, parent_rc: &VirtualNodeRc<B>| {
+                }), Box::new(|owner: ComponentRefMut<B>, parent_rc: &VirtualNodeRc<B>| {
                     let children_nodes: &Vec<NodeRc<B>> = unsafe { parent_rc.borrow_mut_unsafe_with(owner).children() };
                     for (index, (_, update_fn)) in children.iter().enumerate() {
                         update_fn(owner, children_nodes[index])
                     }
-                })
+                }))
             }
         });
     }

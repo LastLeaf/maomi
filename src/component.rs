@@ -1,27 +1,27 @@
 use super::backend::Backend;
 use super::node::*;
 
-pub trait Component<B: Backend>: ComponentTemplate {
+pub trait Component: ComponentTemplate {
     fn new() -> Self where Self: Sized;
-    fn update(c: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn update<B: Backend>(c: &mut ComponentNodeRefMut<B>) where Self: Sized {
         <Self as ComponentTemplate>::template(c, true);
     }
-    fn update_now(c: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn update_now<B: Backend>(c: &mut ComponentNodeRefMut<B>) where Self: Sized {
         <Self as ComponentTemplate>::template(c, true);
     }
-    fn created(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn created<B: Backend>(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
 
     }
-    fn attached(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn attached<B: Backend>(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
 
     }
-    fn ready(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn ready<B: Backend>(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
 
     }
-    fn moved(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn moved<B: Backend>(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
 
     }
-    fn detached(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
+    fn detached<B: Backend>(_: &mut ComponentNodeRefMut<B>) where Self: Sized {
 
     }
 }
@@ -31,8 +31,22 @@ pub trait ComponentTemplate {
             return None
         }
         let mut f = || {
-            vec![component.new_virtual_node("slot", None, vec![]).into()]
+            vec![component.new_virtual_node("slot", VirtualNodeProperty::Slot(""), vec![]).into()]
         };
         Some(f())
     }
+}
+
+pub struct DefaultComponent {
+    // empty
+}
+impl Component for DefaultComponent {
+    fn new() -> Self {
+        Self {
+
+        }
+    }
+}
+impl ComponentTemplate for DefaultComponent {
+    // empty
 }
