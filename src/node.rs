@@ -5,34 +5,27 @@ use std::any::Any;
 use std::ops::Range;
 use me_cell::*;
 
-use super::{Component, ComponentTemplate, backend::Backend};
+use super::{Component, ComponentTemplate};
+use super::backend::*;
 
 const COMPONENT_TAG_NAME: &'static str = "maomi-component"; // FIXME use a friendly name
 
 pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'static + Component>(n: &mut T, component: Box<C>, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
     let backend = n.backend().clone();
     let shadow_root = VirtualNodeRc {
-        c: Rc::new(n.as_me_ref_mut_handle().entrance(VirtualNode { backend, tag_name: "shadow-root", property: VirtualNodeProperty::None, children: vec![] }))
+        c: Rc::new(n.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, "shadow-root", VirtualNodeProperty::None, vec![] )))
     };
     let backend = n.backend().clone();
-    let backend_element = backend.create_element(COMPONENT_TAG_NAME);
     let ret = ComponentNodeRc {
-        c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode { backend, backend_element, component, shadow_root: shadow_root.clone(), children }))
+        c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode::new_with_children(backend, component, shadow_root.clone(), children)))
     };
-    {
-        let mut component_node = unsafe { ret.borrow_mut_unsafe_with(n) };
-        let shadow_root_content = <C as ComponentTemplate>::template(&mut component_node, false);
-        let mut shadow_root = shadow_root.borrow_mut_with(n);
-        if let Some(mut shadow_root_content) = shadow_root_content {
-            std::mem::swap(&mut shadow_root.children, &mut shadow_root_content);
-        }
-    }
+    ret.borrow_mut_with(n).initialize::<C>();
     ret
 }
 
 pub struct NativeNode<B: Backend> {
     pub(crate) backend: Rc<B>,
-    pub(crate) backend_element: B::BackendElement,
+    pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendElement,
     pub(crate) tag_name: &'static str,
     pub(crate) attributes: Vec<(&'static str, String)>,
     pub(crate) children: Vec<NodeRc<B>>,
@@ -40,6 +33,10 @@ pub struct NativeNode<B: Backend> {
     // pub(crate) parent: Option<ComponentNodeWeak<B>>,
 }
 impl<B: Backend> NativeNode<B> {
+    pub(crate) fn new_with_children(backend: Rc<B>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>) -> Self {
+        let backend_element = backend.create_element(tag_name);
+        NativeNode { backend, backend_element, tag_name, attributes, children }
+    }
     pub fn tag_name(&self) -> &str {
         &self.tag_name
     }
@@ -58,7 +55,10 @@ impl<B: Backend> NativeNode<B> {
     }
 }
 impl<'a, B: Backend> NativeNodeRef<'a, B> {
-    pub fn backend_element(&self) -> &B::BackendElement {
+    fn collect_backend_node_refs<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
+        v.push(self.backend_element.ref_clone().into_node());
+    }
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         &self.backend_element
     }
     pub fn children(&self) -> &Vec<NodeRc<B>> {
@@ -77,7 +77,7 @@ impl<'a, B: Backend> NativeNodeRef<'a, B> {
     }
 }
 impl<'a, B: Backend> NativeNodeRefMut<'a, B> {
-    pub fn backend_element(&self) -> &B::BackendElement {
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         &self.backend_element
     }
     pub fn children(&self) -> &Vec<NodeRc<B>> {
@@ -104,11 +104,19 @@ pub enum VirtualNodeProperty {
 
 pub struct VirtualNode<B: Backend> {
     pub(crate) backend: Rc<B>,
+    pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendComment,
     pub(crate) tag_name: &'static str,
     pub(crate) property: VirtualNodeProperty,
     pub(crate) children: Vec<NodeRc<B>>,
 }
 impl<B: Backend> VirtualNode<B> {
+    pub(crate) fn new_empty(backend: Rc<B>) -> Self {
+        Self::new_with_children(backend, "", VirtualNodeProperty::None, vec![])
+    }
+    fn new_with_children(backend: Rc<B>, tag_name: &'static str, property: VirtualNodeProperty, children: Vec<NodeRc<B>>) -> Self {
+        let backend_element = backend.create_comment();
+        VirtualNode { backend, backend_element, tag_name, property, children }
+    }
     pub fn tag_name(&self) -> &str {
         &self.tag_name
     }
@@ -120,6 +128,12 @@ impl<B: Backend> VirtualNode<B> {
     }
 }
 impl<'a, B: Backend> VirtualNodeRef<'a, B> {
+    fn collect_backend_node_refs<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
+        for child in self.children.iter() {
+            child.borrow_with(self).collect_backend_node_refs(v);
+        }
+        v.push(self.backend_element.ref_clone().into_node());
+    }
     pub fn children(&self) -> &Vec<NodeRc<B>> {
         &self.children
     }
@@ -160,12 +174,19 @@ impl<B: Backend> fmt::Debug for VirtualNode<B> {
 
 pub struct ComponentNode<B: Backend> {
     pub(crate) backend: Rc<B>,
-    pub(crate) backend_element: B::BackendElement,
+    pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendElement,
     pub(crate) component: Box<dyn Component>,
     pub(crate) shadow_root: VirtualNodeRc<B>,
     pub(crate) children: Vec<NodeRc<B>>,
 }
 impl<'a, B: 'static + Backend> ComponentNode<B> {
+    fn collect_backend_node_refs<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
+        v.push(self.backend_element.ref_clone().into_node());
+    }
+    fn new_with_children(backend: Rc<B>, component: Box<dyn Component>, shadow_root: VirtualNodeRc<B>, children: Vec<NodeRc<B>>) -> Self {
+        let backend_element = backend.create_element(COMPONENT_TAG_NAME);
+        ComponentNode { backend, backend_element, component, shadow_root, children }
+    }
     pub fn shadow_root_rc(&self) -> &VirtualNodeRc<B> {
         &self.shadow_root
     }
@@ -187,7 +208,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     }
 }
 impl<'a, B: Backend> ComponentNodeRef<'a, B> {
-    pub fn backend_element(&self) -> &B::BackendElement {
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         &self.backend_element
     }
     pub fn shadow_root(&self) -> VirtualNodeRef<B> {
@@ -210,7 +231,7 @@ impl<'a, B: Backend> ComponentNodeRef<'a, B> {
     }
 }
 impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
-    pub fn backend_element(&self) -> &B::BackendElement {
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         &self.backend_element
     }
     pub fn children(&self) -> &Vec<NodeRc<B>> {
@@ -218,15 +239,14 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     }
     pub fn new_native_node(&mut self, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>) -> NativeNodeRc<B> {
         let backend = self.backend().clone();
-        let backend_element = backend.create_element(tag_name);
         NativeNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(NativeNode { backend, backend_element, tag_name, attributes, children }))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(NativeNode::new_with_children(backend, tag_name, attributes, children)))
         }
     }
     pub fn new_virtual_node(&mut self, tag_name: &'static str, property: VirtualNodeProperty, children: Vec<NodeRc<B>>) -> VirtualNodeRc<B> {
         let backend = self.backend().clone();
         VirtualNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(VirtualNode { backend, tag_name, property, children }))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, tag_name, property, children)))
         }
     }
     pub fn new_component_node<C: 'static + Component>(&mut self, component: Box<C>, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
@@ -234,10 +254,20 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     }
     pub fn new_text_node(&mut self, text_content: String) -> TextNodeRc<B> {
         let backend = self.backend().clone();
-        let backend_element = backend.create_text_node(text_content.as_str());
         TextNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(TextNode { backend, backend_element, text_content }))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(TextNode::new_with_content(backend, text_content)))
         }
+    }
+    fn initialize<C: 'static + Component>(&mut self) {
+        let shadow_root_content = <C as ComponentTemplate>::template(self, false);
+        let shadow_root = self.shadow_root.clone();
+        let mut shadow_root = unsafe { shadow_root.borrow_mut_unsafe_with(self) };
+        if let Some(shadow_root_content) = shadow_root_content {
+            shadow_root.replace_children_list(shadow_root_content);
+        }
+        let mut backend_children = vec![];
+        shadow_root.to_ref().collect_backend_node_refs(&mut backend_children);
+        self.backend_element.append_list(backend_children);
     }
 }
 impl<B: Backend> fmt::Debug for ComponentNode<B> {
@@ -259,10 +289,17 @@ impl<B: Backend> DerefMut for ComponentNode<B> {
 
 pub struct TextNode<B: Backend> {
     pub(crate) backend: Rc<B>,
-    pub(crate) backend_element: B::BackendTextNode,
+    pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendTextNode,
     pub(crate) text_content: String,
 }
 impl<B: Backend> TextNode<B> {
+    fn collect_backend_node_refs<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
+        v.push(self.backend_element.ref_clone().into_node());
+    }
+    pub fn new_with_content(backend: Rc<B>, text_content: String) -> Self {
+        let backend_element = backend.create_text_node(text_content.as_ref());
+        TextNode { backend, backend_element, text_content }
+    }
     pub fn text_content(&self) -> &str {
         &self.text_content
     }
@@ -271,7 +308,7 @@ impl<B: Backend> TextNode<B> {
     }
 }
 impl<'a, B: Backend> TextNodeRef<'a, B> {
-    pub fn backend_element(&self) -> &B::BackendTextNode {
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendTextNode {
         &self.backend_element
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
@@ -284,7 +321,7 @@ impl<'a, B: Backend> TextNodeRef<'a, B> {
     }
 }
 impl<'a, B: Backend> TextNodeRefMut<'a, B> {
-    pub fn backend_element(&self) -> &B::BackendTextNode {
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendTextNode {
         &self.backend_element
     }
 }
@@ -384,6 +421,14 @@ pub enum NodeRefMut<'a, B: Backend> {
     TextNode(TextNodeRefMut<'a, B>),
 }
 impl<'a, B: Backend> NodeRef<'a, B> {
+    fn collect_backend_node_refs<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
+        match self {
+            Self::NativeNode(x) => x.collect_backend_node_refs(v),
+            Self::VirtualNode(x) => x.collect_backend_node_refs(v),
+            Self::ComponentNode(x) => x.collect_backend_node_refs(v),
+            Self::TextNode(x) => x.collect_backend_node_refs(v),
+        }
+    }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         match self {
             Self::NativeNode(x) => x.debug_fmt(f, level),

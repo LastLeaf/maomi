@@ -16,7 +16,7 @@ js-sys = "0.3"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Document", "HtmlElement", "Element", "Text", "Node", "NodeList"]
+features = ["Window", "Document", "HtmlElement", "Element", "Text", "Node", "NodeList", "Comment"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2"

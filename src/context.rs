@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use super::Component;
-use super::backend::Backend;
+use super::backend::*;
 use super::node::*;
 
 pub struct Context<B: Backend> {
@@ -15,12 +15,7 @@ impl<B: Backend> Context<B> {
         let backend = Rc::new(backend);
         let ret = Self {
             group_holder: VirtualNodeRc::new_with_me_cell_group(
-                VirtualNode {
-                    backend: backend.clone(),
-                    tag_name: "body".into(),
-                    property: VirtualNodeProperty::None,
-                    children: vec![],
-                }
+                VirtualNode::new_empty(backend.clone())
             ),
             root: None,
             backend,
