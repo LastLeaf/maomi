@@ -26,7 +26,7 @@ impl<B: Backend> Context<B> {
         &self.root
     }
     pub fn set_root_component<C: 'static + Component>(&mut self, component: Box<C>) {
-        let component_node = create_component(&mut self.group_holder.borrow_mut(), component, vec![]);
+        let component_node = create_component(&mut self.group_holder.borrow_mut(), "maomi", component, "".into(), vec![], None);
         self.root = Some(component_node);
         self.backend.set_root_node(&self.root.as_ref().unwrap().borrow_mut().backend_element);
     }

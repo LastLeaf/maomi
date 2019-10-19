@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 #[derive(Clone)]
 pub enum EmptyBackendNode {
     Element(EmptyBackendElement),
@@ -70,10 +68,10 @@ impl super::BackendElement for EmptyBackendElement {
     fn append_list(&self, _children: Vec<Self::BackendNode>) {
         // empty
     }
-    fn insert_list(&self, _pos: usize, _children: Vec<Self::BackendNode>) {
+    fn insert_list_before(&self, _children: Vec<Self::BackendNode>, _before: Option<Self::BackendNode>) {
         // empty
     }
-    fn remove_range(&self, _range: Range<usize>) {
+    fn remove_list(&self, _children: Vec<Self::BackendNode>) {
         // empty
     }
 }

@@ -9,14 +9,17 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 me-cell = { path = "./me-cell" }
+lazy-observer = { path = "./lazy-observer" }
 maomi-macro = { path = "./macro" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
 js-sys = "0.3"
+log = "0.4"
+console_log = "0.1"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Document", "HtmlElement", "Element", "Text", "Node", "NodeList", "Comment"]
+features = ["Window", "Document", "HtmlElement", "Node", "NodeList", "Element", "Text", "Comment", "DocumentFragment"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2"

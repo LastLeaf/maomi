@@ -3,11 +3,11 @@ use std::ops::Range;
 use super::node::*;
 use super::backend::Backend;
 
-pub struct VirtualKeys<T: PartialEq> {
+pub struct VirtualKeyList<T: PartialEq> {
     keys: Vec<Option<T>>,
 }
 
-impl<T: PartialEq> VirtualKeys<T> {
+impl<T: PartialEq> VirtualKeyList<T> {
     pub fn new(keys: Vec<Option<T>>) -> Self {
         Self {
             keys: keys

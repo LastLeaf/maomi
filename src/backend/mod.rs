@@ -29,9 +29,9 @@ pub trait BackendElement {
     type BackendNode: BackendNode;
     fn into_node(self) -> Self::BackendNode;
     fn ref_clone(&self) -> Self;
-    fn append_list(&self, child: Vec<Self::BackendNode>);
-    fn insert_list(&self, pos: usize, child: Vec<Self::BackendNode>);
-    fn remove_range(&self, range: Range<usize>);
+    fn append_list(&self, children: Vec<Self::BackendNode>);
+    fn insert_list_before(&self, children: Vec<Self::BackendNode>, before: Option<Self::BackendNode>);
+    fn remove_list(&self, children: Vec<Self::BackendNode>);
 }
 
 pub trait BackendComment {

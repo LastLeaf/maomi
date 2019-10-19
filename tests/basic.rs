@@ -2,28 +2,44 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use wasm_bindgen::prelude::*;
+#[macro_use] extern crate log;
+
+use std::sync::Once;
 use wasm_bindgen_test::*;
 use web_sys;
 use maomi::prelude::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-fn append_placeholder() {
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
-    let placeholder = document.create_element("div").unwrap();
-    placeholder.set_id("placeholder");
-    document.body().unwrap().append_child(&placeholder).unwrap();
+thread_local! {
+    static DOCUMENT: web_sys::Document = {
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        document
+    };
+    static WRAPPER: web_sys::Element = {
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let wrapper = document.create_element("div").unwrap();
+        wrapper.set_attribute("style", "height: 0; overflow: hidden").unwrap();
+        document.body().unwrap().append_child(&wrapper).unwrap();
+        wrapper
+    };
 }
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+fn create_dom_context() -> maomi::Context<maomi::backend::Dom> {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        console_log::init_with_level(log::Level::Debug).unwrap();
+    });
+    DOCUMENT.with(|document| {
+        WRAPPER.with(|wrapper| {
+            let placeholder = document.create_element("div").unwrap();
+            placeholder.set_id("placeholder");
+            wrapper.append_child(&placeholder).unwrap();
+            maomi::Context::new(maomi::backend::Dom::new("placeholder"))
+        })
+    })
 }
 
 template!(tmpl HelloWorld {
@@ -32,26 +48,24 @@ template!(tmpl HelloWorld {
         (&self.a);
     }
 });
-#[component]
 struct HelloWorld {
-    #[property]
-    a: String,
+    pub a: Prop<String>,
 }
-#[component]
-impl HelloWorld {
+impl Component for HelloWorld {
     fn new() -> Self {
         Self {
-            a: "Hello world!".into()
+            a: Prop::new("Hello world!".into())
         }
     }
 }
 #[wasm_bindgen_test]
 fn create_new_component() {
-    append_placeholder();
-    let mut context = maomi::Context::new(maomi::backend::Dom::new("placeholder"));
+    let mut context = create_dom_context();
     context.set_root_component(Box::new(HelloWorld::new()));
-    let root_component = context.root_component().as_ref().unwrap().borrow();
-    console_log!("{:?}", root_component.backend_element().outer_html());
+    let mut root_component = context.root_component().as_ref().unwrap().borrow_mut();
+    info!("{:?}", root_component);
+    info!("{:?}", root_component.backend_element().outer_html());
+    <HelloWorld as Component>::update(&mut root_component);
 }
 //
 // template!(tmpl TemplateIf {

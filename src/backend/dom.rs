@@ -1,6 +1,10 @@
-use std::ops::{Deref, Range};
+use std::ops::Deref;
 use std::cell::RefCell;
 use web_sys::*;
+
+thread_local! {
+    static DOCUMENT: Document = window().unwrap().document().unwrap();
+}
 
 #[derive(Clone)]
 pub enum DomNode {
@@ -98,26 +102,26 @@ impl super::BackendElement for DomElement {
         self.clone()
     }
     fn append_list(&self, children: Vec<Self::BackendNode>) {
-        for child in children {
-            self.node.append_child(child.dom_node()).unwrap();
-        }
-    }
-    fn insert_list(&self, pos: usize, children: Vec<Self::BackendNode>) {
-        let before = self.node.child_nodes().get(pos as u32);
-        for child in children {
-            self.node.insert_before(child.dom_node(), before.as_ref()).unwrap();
-        }
-    }
-    fn remove_range(&self, range: Range<usize>) {
-        let child_nodes = self.node.child_nodes();
-        let children: Vec<Option<Node>> = range.into_iter().map(|x| child_nodes.get(x as u32)).collect();
-        for child in children {
-            match child {
-                None => { },
-                Some(node) => {
-                    self.node.remove_child(&node).unwrap();
-                }
+        DOCUMENT.with(|document| {
+            let frag = document.create_document_fragment();
+            for child in children {
+                frag.append_child(child.dom_node()).unwrap();
             }
+            self.node.append_child(&frag).unwrap();
+        })
+    }
+    fn insert_list_before(&self, children: Vec<Self::BackendNode>, before: Option<Self::BackendNode>) {
+        DOCUMENT.with(|document| {
+            let frag = document.create_document_fragment();
+            for child in children {
+                frag.append_child(child.dom_node()).unwrap();
+            }
+            self.node.insert_before(&frag, before.as_ref().map(|x| {x.dom_node()})).unwrap();
+        })
+    }
+    fn remove_list(&self, children: Vec<Self::BackendNode>) {
+        for child in children {
+            self.node.remove_child(&child).unwrap();
         }
     }
 }
@@ -177,15 +181,13 @@ impl super::BackendComment for DomComment {
 
 pub struct Dom {
     root: RefCell<Element>,
-    document: Document,
 }
 impl Dom {
     pub fn new(placeholder_id: &str) -> Self {
-        let window = window().unwrap();
-        let document = window.document().unwrap();
         Self {
-            root: RefCell::new(document.get_element_by_id(placeholder_id).unwrap().into()),
-            document,
+            root: RefCell::new(DOCUMENT.with(|document| {
+                document.get_element_by_id(placeholder_id).unwrap().into()
+            })),
         }
     }
 }
@@ -199,17 +201,23 @@ impl super::Backend for Dom {
     }
     fn create_element(&self, tag_name: &'static str) -> DomElement {
         DomElement {
-            node: self.document.create_element(tag_name).unwrap().into()
+            node: DOCUMENT.with(|document| {
+                document.create_element(tag_name).unwrap().into()
+            })
         }
     }
     fn create_text_node(&self, text_content: &str) -> DomTextNode {
         DomTextNode {
-            node: self.document.create_text_node(text_content).into()
+            node: DOCUMENT.with(|document| {
+                document.create_text_node(text_content).into()
+            })
         }
     }
     fn create_comment(&self) -> DomComment {
         DomComment {
-            node: self.document.create_comment("").into()
+            node: DOCUMENT.with(|document| {
+                document.create_comment("").into()
+            })
         }
     }
 }
