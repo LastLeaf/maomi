@@ -62,10 +62,16 @@ impl Component for HelloWorld {
 fn create_new_component() {
     let mut context = create_dom_context();
     context.set_root_component(Box::new(HelloWorld::new()));
-    let mut root_component = context.root_component().as_ref().unwrap().borrow_mut();
-    info!("{:?}", root_component);
-    info!("{:?}", root_component.backend_element().outer_html());
-    <HelloWorld as Component>::update(&mut root_component);
+    let root_component = context.root_component::<HelloWorld>().unwrap();
+    let mut root_component = root_component.borrow_mut();
+    assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world!</div>"#);
+    root_component.update(|comp| {
+        *comp.a = "Hello world again!".into();
+    });
+    assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world again!</div>"#);
+    *root_component.a = "Hello world again and again!".into();
+    root_component.apply_updates();
+    assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world again and again!</div>"#);
 }
 //
 // template!(tmpl TemplateIf {

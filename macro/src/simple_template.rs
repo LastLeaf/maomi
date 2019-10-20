@@ -14,6 +14,17 @@ fn ident_to_dashed_str(s: Ident) -> LitStr {
     LitStr::new(s.as_str(), Span::call_site())
 }
 
+fn ty_to_string(s: &Ident) -> String {
+    let s: String = s.to_string().chars().map(|c| {
+        if c >= 'A' && c <= 'Z' {
+            format!("-{}", c.to_lowercase())
+        } else {
+            c.to_string()
+        }
+    }).collect();
+    s
+}
+
 fn parse_children(input: ParseStream) -> Result<(Vec<TemplateNode>, Vec<(Ident, TemplateValue)>)> {
     let content;
     braced!(content in input);
@@ -128,11 +139,21 @@ fn parse_template_for(input: ParseStream) -> Result<TemplateNode> {
 fn parse_template_element(name: Ident, input: ParseStream) -> Result<TemplateNode> {
     let name_s = name.to_string();
     let is_component = name_s.chars().next().unwrap().is_uppercase();
+    let lookahead = input.lookahead1();
+    let slot: LitStr = if lookahead.peek(Token![in]) {
+        input.parse()?
+    } else if lookahead.peek(token::Brace) {
+        LitStr::new("", Span::call_site())
+    } else {
+        return Err(lookahead.error());
+    };
     let (children, props) = parse_children(input)?;
     if is_component {
         Ok(TemplateNode::Component(TemplateComponent {
-            tag_name: name,
+            tag_name: LitStr::new(format!("maomi{}", ty_to_string(&name)).as_str(), Span::call_site()),
+            component: name,
             property_values: props,
+            slot,
             children,
         }))
     } else {
@@ -141,6 +162,7 @@ fn parse_template_element(name: Ident, input: ParseStream) -> Result<TemplateNod
             attributes: props.into_iter().map(|(name, value)| {
                 (ident_to_dashed_str(name), value)
             }).collect(),
+            slot,
             children,
         }))
     }
@@ -149,6 +171,7 @@ fn parse_template_element(name: Ident, input: ParseStream) -> Result<TemplateNod
 fn parse_template_text_node(input: ParseStream) -> Result<TemplateNode> {
     let expr: Expr = input.parse()?;
     input.parse::<Token![;]>()?;
+    let expr: Expr = if let Expr::Paren(x) = expr { *x.expr } else { expr };
     Ok(TemplateNode::TextNode(TemplateValue::from(expr)))
 }
 

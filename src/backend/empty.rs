@@ -74,6 +74,9 @@ impl super::BackendElement for EmptyBackendElement {
     fn remove_list(&self, _children: Vec<Self::BackendNode>) {
         // empty
     }
+    fn set_attribute(&self, name: &'static str, value: &str) {
+        // empty
+    }
 }
 
 #[derive(Clone)]

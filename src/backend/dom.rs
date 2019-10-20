@@ -124,6 +124,9 @@ impl super::BackendElement for DomElement {
             self.node.remove_child(&child).unwrap();
         }
     }
+    fn set_attribute(&self, name: &'static str, value: &str) {
+        self.node.set_attribute(name, value).unwrap();
+    }
 }
 
 #[derive(Clone)]

@@ -1,5 +1,5 @@
 pub use maomi_macro::*;
-pub use super::{Component, ComponentTemplate, Property, Prop, backend::Backend, node::*, virtual_key::*};
+pub use super::{Component, ComponentTemplate, EmptyComponent, Property, Prop, backend::Backend, node::*, virtual_key::*};
 
 fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
     struct SampleData {
@@ -82,8 +82,8 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                         Some(node_rc) => node_rc.clone(),
                     };
                     {
-                        let mut node = node_rc.borrow_mut_with(__owner);
-                        node.set_attribute("data-xxx", "xxx");
+                        // let mut node = node_rc.borrow_mut_with(__owner);
+                        // node.set_attribute("data-xxx", "xxx");
                     }
                     node_rc.into()
                 };
@@ -92,16 +92,14 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                 let component_node_sample = |__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&NodeRc<B>>| -> NodeRc<B> {
 
                     // text node logic
-                    let text_node_sample = |__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&NodeRc<B>>| -> NodeRc<B> {
+                    let slot_node_sample = |__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&NodeRc<B>>| -> NodeRc<B> {
 
                         match __update_to {
                             None => {
-                                __owner.new_text_node("-").into()
+                                __owner.new_virtual_node("slot", VirtualNodeProperty::Slot("", vec![]), vec![]).into()
                             },
                             Some(node_rc) => {
-                                let node_rc = if let NodeRc::TextNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                node_rc.borrow_mut_with(__owner).set_text_content("-".to_string());
-                                node_rc.clone().into()
+                                node_rc.clone()
                             },
                         }
                     };
@@ -109,19 +107,19 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     let node_rc = __update_to.map(|node_rc| if let NodeRc::ComponentNode(node_rc) = node_rc { node_rc } else { unreachable!() });
                     let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                     let children = node.as_ref().map(|node| { node.children() });
-                    let ret_children: Vec<NodeRc<B>> = vec![text_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
+                    let ret_children: Vec<NodeRc<B>> = vec![slot_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
-                        None => __owner.new_component_node("maomi-default-component", Box::new(<super::component::DefaultComponent as Component>::new()), "".into(), ret_children),
+                        None => __owner.new_component_node("maomi-default-component", Box::new(<EmptyComponent as Component>::new()), "".into(), ret_children),
                         Some(node_rc) => node_rc.clone(),
                     };
                     {
-                        let mut changed = false;
-                        let mut node = node_rc.borrow_mut_with(__owner);
-                        {
-                            let node = node.as_component_mut::<super::component::DefaultComponent>();
-                            if Property::update_from(&mut node.todo, "xxx") { changed = true };
-                        }
-                        if changed { <super::component::DefaultComponent as Component>::update_now(&mut node) };
+                        // let mut changed = false;
+                        // let mut node = node_rc.borrow_mut_with(__owner);
+                        // {
+                        //     let node = node.as_component_mut::<EmptyComponent>();
+                        //     if Property::update_from(&mut node.todo, "xxx") { changed = true };
+                        // }
+                        // if changed { <EmptyComponent as Component>::apply_updates(&mut node) };
                     }
                     node_rc.into()
                 };

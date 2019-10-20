@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 mod empty;
 pub use empty::Empty;
 mod dom;
@@ -32,6 +30,7 @@ pub trait BackendElement {
     fn append_list(&self, children: Vec<Self::BackendNode>);
     fn insert_list_before(&self, children: Vec<Self::BackendNode>, before: Option<Self::BackendNode>);
     fn remove_list(&self, children: Vec<Self::BackendNode>);
+    fn set_attribute(&self, name: &'static str, value: &str);
 }
 
 pub trait BackendComment {

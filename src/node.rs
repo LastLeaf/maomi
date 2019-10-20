@@ -6,7 +6,7 @@ use std::any::Any;
 use std::ops::Range;
 use me_cell::*;
 
-use super::{Component, ComponentTemplate};
+use super::{Component, ComponentTemplate, ComponentRef, ComponentRefMut, ComponentRc, ComponentWeak};
 use super::backend::*;
 
 fn dfs_shadow_tree<'a, B: Backend, T: ElementRef<'a, B>, F: FnMut(&NodeRc<B>)>(n: &T, children: &Vec<NodeRc<B>>, f: &mut F) {
@@ -134,14 +134,16 @@ impl<B: Backend> NativeNode<B> {
         self.attributes.iter().find(|x| x.0 == name).map(|x| x.1.as_str())
     }
     pub fn set_attribute<T: ToString>(&mut self, name: &'static str, value: T) {
+        let value = value.to_string();
+        self.backend_element.set_attribute(name, &value);
         match self.attributes.iter_mut().find(|x| x.0 == name) {
             Some(x) => {
-                x.1 = value.to_string();
+                x.1 = value;
                 return
             },
             None => { }
         }
-        self.attributes.push((name, value.to_string()))
+        self.attributes.push((name, value))
     }
 }
 impl<'a, B: Backend> NativeNodeRef<'a, B> {
@@ -286,6 +288,7 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
         }
         let self_ref = self.to_ref();
         if let Some(b) = self_ref.find_backend_parent() {
+            // TODO handling slot inherit
             // remove old backend children
             let mut backend_children = vec![];
             for n in list {
@@ -313,6 +316,7 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
             child.set_composed_parent(None);
         }
         // remove in backend
+        // TODO handling slot inherit
         let self_ref = self.to_ref();
         if let Some(b) = self_ref.find_backend_parent() {
             let mut backend_children = vec![];
@@ -333,6 +337,7 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
         }
         {
             // insert in backend
+            // TODO handling slot inherit
             let self_ref = self.to_ref();
             if let Some(b) = self_ref.find_backend_parent() {
                 let mut backend_children = vec![];
@@ -379,6 +384,16 @@ pub struct ComponentNode<B: Backend> {
     pub(crate) parent: Option<NodeWeak<B>>,
     pub(crate) composed_parent: Option<NodeWeak<B>>,
 }
+impl<B: 'static + Backend> ComponentNodeRc<B> {
+    pub fn with_type<C: Component>(self) -> ComponentRc<B, C> {
+        ComponentRc::from(self)
+    }
+}
+impl<B: 'static + Backend> ComponentNodeWeak<B> {
+    pub fn with_type<C: Component>(self) -> ComponentWeak<B, C> {
+        ComponentWeak::from(self)
+    }
+}
 impl<'a, B: 'static + Backend> ComponentNode<B> {
     define_tree_getter!(node);
     pub fn composed_children(&self) -> Vec<NodeRc<B>> {
@@ -414,6 +429,9 @@ impl<'a, B: Backend> ComponentNodeRef<'a, B> {
     pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         &self.backend_element
     }
+    pub fn with_type<C: Component>(self) -> ComponentRef<'a, B, C> {
+        ComponentRef::from(self)
+    }
     pub fn shadow_root(&self) -> VirtualNodeRef<B> {
         self.shadow_root.borrow_with(self)
     }
@@ -434,6 +452,13 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     define_tree_getter!(ref mut);
     pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         &self.backend_element
+    }
+    pub fn with_type<C: Component>(self) -> ComponentRefMut<'a, B, C> {
+        ComponentRefMut::from(self)
+    }
+    pub fn apply_updates<C: Component>(&mut self) {
+        <C as ComponentTemplate>::template(self, true);
+        self.update_node();
     }
     pub fn new_native_node(&mut self, tag_name: &'static str, attributes: Vec<(&'static str, String)>, slot: String, children: Vec<NodeRc<B>>) -> NativeNodeRc<B> {
         let backend = self.backend().clone();
@@ -593,8 +618,9 @@ impl<B: Backend> TextNode<B> {
     pub fn text_content(&self) -> &str {
         &self.text_content
     }
-    pub fn set_text_content<T: Into<String>>(&mut self, c: T) {
-        self.text_content = c.into();
+    pub fn set_text_content<T: ToString>(&mut self, c: T) {
+        self.text_content = c.to_string();
+        self.backend_element.set_text_content(&self.text_content);
     }
 }
 impl<'a, B: Backend> TextNodeRef<'a, B> {

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::Component;
+use super::{Component, ComponentRc};
 use super::backend::*;
 use super::node::*;
 
@@ -22,8 +22,10 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn root_component(&self) -> &Option<ComponentNodeRc<B>> {
-        &self.root
+    pub fn root_component<C: 'static + Component>(&self) -> Option<ComponentRc<B, C>> {
+        self.root.clone().map(|x| {
+            x.with_type::<C>()
+        })
     }
     pub fn set_root_component<C: 'static + Component>(&mut self, component: Box<C>) {
         let component_node = create_component(&mut self.group_holder.borrow_mut(), "maomi", component, "".into(), vec![], None);
