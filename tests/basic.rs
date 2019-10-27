@@ -4,6 +4,7 @@
 
 #[macro_use] extern crate log;
 
+use std::rc::Rc;
 use std::sync::Once;
 use wasm_bindgen_test::*;
 use web_sys;
@@ -49,32 +50,31 @@ template!(tmpl HelloWorld {
     }
 });
 struct HelloWorld {
-    pub a: Prop<String>,
+    a: String,
 }
 impl Component for HelloWorld {
-    fn new() -> Self {
+    fn new(_ctx: Rc<ComponentContext>) -> Self {
         Self {
-            a: Prop::new("Hello world!".into())
+            a: "Hello world!".into()
         }
     }
 }
 #[wasm_bindgen_test]
 fn create_new_component() {
     let mut context = create_dom_context();
-    context.set_root_component(Box::new(HelloWorld::new()));
-    let root_component = context.root_component::<HelloWorld>().unwrap();
+    let root_component = context.new_root_component::<HelloWorld>();
+    context.set_root_component(&root_component);
     let mut root_component = root_component.borrow_mut();
     assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world!</div>"#);
-    root_component.update(|comp| {
-        *comp.a = "Hello world again!".into();
-    });
+    root_component.a = "Hello world again!".into();
+    root_component.force_apply_updates();
     assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world again!</div>"#);
-    *root_component.a = "Hello world again and again!".into();
-    root_component.apply_updates();
+    root_component.a = "Hello world again and again!".into();
+    root_component.force_apply_updates();
     assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world again and again!</div>"#);
 }
-//
-// template!(tmpl TemplateIf {
+
+// template!(tmpl<B: Backend> TemplateIf<B> {
 //     div {
 //         if self.a == 0 {
 //             "branch 0";
@@ -85,15 +85,15 @@ fn create_new_component() {
 //         }
 //     }
 // });
-// #[component]
 // struct TemplateIf<B: Backend> {
-//     a: u32,
+//     ctx: Rc<ComponentContext<B>>,
+//     pub a: Prop<String>,
 // }
-// #[component]
-// impl<B: Backend> TemplateIf<B> {
-//     fn new() -> Self {
+// impl<B: Backend> Component<B> for TemplateIf<B> {
+//     fn new(ctx: Rc<ComponentContext<B>>) -> Self {
 //         Self {
-//             a: 1
+//             ctx,
+//             a: "Hello world!".into()
 //         }
 //     }
 // }

@@ -1,30 +1,30 @@
 use std::rc::Rc;
+use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 use me_cell::MeRefHandle;
 
-use super::backend::{Backend, BackendNode};
+use super::context::Scheduler;
 use super::node::*;
+use super::backend::{Backend, BackendNode};
 
-pub trait Component: ComponentTemplate + 'static {
-    fn new() -> Self where Self: Sized;
-    // TODO impl lifetimes
-    fn created<B: Backend>(_: &mut ComponentRefMut<B, Self>) where Self: Sized {
-
-    }
-    fn attached<B: Backend>(_: &mut ComponentRefMut<B, Self>) where Self: Sized {
+pub trait Component: ComponentTemplate + downcast_rs::Downcast {
+    fn new(c: Rc<ComponentContext>) -> Self where Self: Sized;
+    fn created<B: Backend>(&mut self, _weak: ComponentWeak<B, Self>) where Self: Sized {
 
     }
-    fn ready<B: Backend>(_: &mut ComponentRefMut<B, Self>) where Self: Sized {
+    fn attached(&mut self) {
 
     }
-    fn moved<B: Backend>(_: &mut ComponentRefMut<B, Self>) where Self: Sized {
+    fn moved(&mut self) {
 
     }
-    fn detached<B: Backend>(_: &mut ComponentRefMut<B, Self>) where Self: Sized {
+    fn detached(&mut self) {
 
     }
 }
-pub trait ComponentTemplate {
+downcast_rs::impl_downcast!(Component);
+
+pub trait ComponentTemplate: 'static {
     fn template<B: Backend>(component: &mut ComponentNodeRefMut<B>, is_update: bool) -> Option<Vec<NodeRc<B>>> where Self: Sized {
         if is_update {
             return None
@@ -36,11 +36,48 @@ pub trait ComponentTemplate {
     }
 }
 
+pub struct ComponentContext {
+    need_update: Cell<bool>,
+    scheduler: Rc<Scheduler>,
+}
+impl ComponentContext {
+    pub(crate) fn new(scheduler: Rc<Scheduler>) -> Self {
+        Self {
+            need_update: Cell::new(false),
+            scheduler,
+        }
+    }
+    pub(crate) fn scheduler(&self) -> &Rc<Scheduler> {
+        &self.scheduler
+    }
+    fn clear_update(&self) -> bool {
+        self.need_update.replace(false)
+    }
+    pub fn update(&self) {
+        self.need_update.set(true);
+    }
+    pub fn update_then<B: Backend, C: Component, F: 'static + FnOnce(&mut ComponentRefMut<B, C>)>(&self, callback: F) {
+        self.need_update.set(true);
+        self.scheduler.add_task(|| {
+            // TODO
+        });
+    }
+    pub fn tick<B: Backend, F: 'static + FnOnce(&mut ComponentRefMut<B, Self>)>(&self, f: F) {
+        // TODO
+    }
+    pub fn next_tick<B: Backend, F: 'static + FnOnce(&mut ComponentRefMut<B, Self>)>(&self, f: F) {
+        // TODO
+    }
+}
+
 pub struct ComponentRc<B: Backend, C: Component> {
     n: ComponentNodeRc<B>,
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<B: Backend, C: Component> ComponentRc<B, C> {
+    pub fn as_node(&self) -> &ComponentNodeRc<B> {
+        &self.n
+    }
     pub fn borrow<'a>(&'a self) -> ComponentRef<'a, B, C> {
         self.n.borrow().with_type::<C>()
     }
@@ -74,6 +111,9 @@ pub struct ComponentWeak<B: Backend, C: Component> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<B: Backend, C: Component> ComponentWeak<B, C> {
+    pub fn as_node(&self) -> &ComponentNodeWeak<B> {
+        &self.n
+    }
     pub fn upgrade(&self) -> Option<ComponentRc<B, C>> {
         self.n.upgrade().map(|x| {
             x.with_type::<C>()
@@ -94,8 +134,11 @@ pub struct ComponentRef<'a, B: Backend, C: Component> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<'a, B: Backend, C: Component> ComponentRef<'a, B, C> {
+    pub fn as_node(&self) -> &ComponentNodeRef<'a, B> {
+        &self.n
+    }
     pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
-        &self.n.backend_element
+        self.n.backend_element()
     }
 }
 impl<'a, B: Backend, C: Component> Deref for ComponentRef<'a, B, C> {
@@ -129,16 +172,34 @@ pub struct ComponentRefMut<'a, B: Backend, C: Component> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<'a, B: Backend, C: Component> ComponentRefMut<'a, B, C> {
-    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
-        &self.n.backend_element
+    pub fn as_node(&mut self) -> &mut ComponentNodeRefMut<'a, B> {
+        &mut self.n
     }
-    pub fn update<F: FnOnce(&mut C)>(&mut self, f: F) {
-        let c = self.n.component.downcast_mut().unwrap();
-        f(c);
-        self.apply_updates();
+    pub fn to_ref<'b>(&'b self) -> ComponentRef<'b, B, C> where 'a: 'b {
+        self.n.to_ref().into()
+    }
+    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
+        self.n.backend_element()
     }
     pub fn apply_updates(&mut self) {
+        if self.n.ctx.clear_update() {
+            self.n.apply_updates::<C>();
+        }
+    }
+    pub fn force_apply_updates(&mut self) {
+        self.n.ctx.clear_update();
         self.n.apply_updates::<C>();
+    }
+    pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
+        self.n.owner()
+    }
+    pub fn sub_node(&self) -> Option<NodeRc<B>> {
+        unimplemented!()
+    }
+}
+impl<'a, B: Backend, C: Component> Drop for ComponentRefMut<'a, B, C> {
+    fn drop(&mut self) {
+        self.apply_updates();
     }
 }
 impl<'a, B: Backend, C: Component> Deref for ComponentRefMut<'a, B, C> {
@@ -162,12 +223,12 @@ impl<'a, B: Backend, C: Component> From<ComponentNodeRefMut<'a, B>> for Componen
 }
 
 pub struct EmptyComponent {
-    // empty
+    ctx: Rc<ComponentContext>
 }
 impl Component for EmptyComponent {
-    fn new() -> Self {
+    fn new(ctx: Rc<ComponentContext>) -> Self {
         Self {
-            // empty
+            ctx
         }
     }
 }

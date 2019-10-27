@@ -7,83 +7,85 @@ use std::borrow;
 pub trait Property<T> {
     fn update(&mut self, v: T) -> bool;
     #[inline]
-    fn update_from<I: Into<T>>(&mut self, v: I) -> bool {
+    fn update_from<I: Into<T>>(&mut self, v: I) -> bool where I: ?Sized {
         self.update(v.into())
     }
 }
 
-macro_rules! impl_property {
-    ($s: ty, $t: ty) => {
-        impl Property<$t> for $s {
-            #[inline]
-            fn update(&mut self, v: $t) -> bool {
-                if *self == v {
-                    return false
-                }
-                *self = v.into();
-                true
-            }
-        }
-        impl Property<Box<$t>> for $s {
-            #[inline]
-            fn update(&mut self, v: Box<$t>) -> bool {
-                if *self == *v {
-                    return false
-                }
-                *self = (*v).into();
-                true
-            }
-        }
-        impl Property<$t> for Box<$s> {
-            #[inline]
-            fn update(&mut self, v: $t) -> bool {
-                if **self == v {
-                    return false
-                }
-                **self = v.into();
-                true
-            }
-        }
-        impl Property<Box<$t>> for Box<$s> {
-            #[inline]
-            fn update(&mut self, v: Box<$t>) -> bool {
-                if **self == *v {
-                    return false
-                }
-                **self = (*v).into();
-                true
-            }
-        }
-    }
-}
-
-impl_property!(i8, i8);
-impl_property!(i16, i16);
-impl_property!(i32, i32);
-impl_property!(i64, i64);
-impl_property!(i128, i128);
-impl_property!(isize, isize);
-impl_property!(u8, u8);
-impl_property!(u16, u16);
-impl_property!(u32, u32);
-impl_property!(u64, u64);
-impl_property!(usize, usize);
-impl_property!(f32, f32);
-impl_property!(f64, f64);
-impl_property!(bool, bool);
-impl_property!(char, char);
-impl_property!(String, &str);
-impl_property!(String, String);
-
-impl<T: PartialEq> Property<T> for lazy_observer::Observable<T> {
-    fn update(&mut self, v: T) -> bool {
-        if **self == v {
-            return false
-        }
-        **self = v.into();
-        true
-    }
-}
+// NOTE currently we force all properties to use prop
+//
+// macro_rules! impl_property {
+//     ($s: ty, $t: ty) => {
+//         impl Property<$t> for $s {
+//             #[inline]
+//             fn update(&mut self, v: $t) -> bool {
+//                 if *self == v {
+//                     return false
+//                 }
+//                 *self = v.into();
+//                 true
+//             }
+//         }
+//         impl Property<Box<$t>> for $s {
+//             #[inline]
+//             fn update(&mut self, v: Box<$t>) -> bool {
+//                 if *self == *v {
+//                     return false
+//                 }
+//                 *self = (*v).into();
+//                 true
+//             }
+//         }
+//         impl Property<$t> for Box<$s> {
+//             #[inline]
+//             fn update(&mut self, v: $t) -> bool {
+//                 if **self == v {
+//                     return false
+//                 }
+//                 **self = v.into();
+//                 true
+//             }
+//         }
+//         impl Property<Box<$t>> for Box<$s> {
+//             #[inline]
+//             fn update(&mut self, v: Box<$t>) -> bool {
+//                 if **self == *v {
+//                     return false
+//                 }
+//                 **self = (*v).into();
+//                 true
+//             }
+//         }
+//     }
+// }
+//
+// impl_property!(i8, i8);
+// impl_property!(i16, i16);
+// impl_property!(i32, i32);
+// impl_property!(i64, i64);
+// impl_property!(i128, i128);
+// impl_property!(isize, isize);
+// impl_property!(u8, u8);
+// impl_property!(u16, u16);
+// impl_property!(u32, u32);
+// impl_property!(u64, u64);
+// impl_property!(usize, usize);
+// impl_property!(f32, f32);
+// impl_property!(f64, f64);
+// impl_property!(bool, bool);
+// impl_property!(char, char);
+// impl_property!(String, &str);
+// impl_property!(String, String);
+//
+// impl<T: PartialEq> Property<T> for lazy_observer::Observable<T> {
+//     fn update(&mut self, v: T) -> bool {
+//         if **self == v {
+//             return false
+//         }
+//         **self = v.into();
+//         true
+//     }
+// }
 
 #[derive(PartialEq)]
 pub struct Prop<T: PartialEq> {

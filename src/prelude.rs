@@ -1,5 +1,5 @@
 pub use maomi_macro::*;
-pub use super::{Component, ComponentTemplate, EmptyComponent, Property, Prop, backend::Backend, node::*, virtual_key::*};
+pub use super::{Component, ComponentTemplate, EmptyComponent, ComponentContext, Prop, Ev, backend::Backend, node::*, virtual_key::*};
 
 fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
     struct SampleData {
@@ -109,17 +109,17 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     let children = node.as_ref().map(|node| { node.children() });
                     let ret_children: Vec<NodeRc<B>> = vec![slot_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
-                        None => __owner.new_component_node("maomi-default-component", Box::new(<EmptyComponent as Component>::new()), "".into(), ret_children),
+                        None => __owner.new_component_node::<EmptyComponent>("maomi-default-component", "".into(), ret_children),
                         Some(node_rc) => node_rc.clone(),
                     };
                     {
                         // let mut changed = false;
                         // let mut node = node_rc.borrow_mut_with(__owner);
                         // {
-                        //     let node = node.as_component_mut::<EmptyComponent>();
+                        //     let node = node.as_component_mut::<EmptyComponent<B>>();
                         //     if Property::update_from(&mut node.todo, "xxx") { changed = true };
                         // }
-                        // if changed { <EmptyComponent as Component>::apply_updates(&mut node) };
+                        // if changed { <EmptyComponent<B> as Component>::apply_updates(&mut node) };
                     }
                     node_rc.into()
                 };

@@ -97,6 +97,9 @@ impl<'a> MeRefHandle<'a> {
         }
         MeRef { handle: MeRefHandle { is_source: false, ctx: self.ctx }, content: unsafe { &*another.content.get() } }
     }
+    fn duplicate<'b>(&'b self) -> MeRefHandle<'b> where 'a: 'b {
+        MeRefHandle { is_source: false, ctx: self.ctx }
+    }
 }
 impl<'a> Drop for MeRefHandle<'a> {
     fn drop(&mut self) {
@@ -131,6 +134,9 @@ impl<'a> MeRefMutHandle<'a> {
         }
         MeRefMut { handle: MeRefMutHandle { is_source: false, ctx: self.ctx }, content: unsafe { &mut *another.content.get() } }
     }
+    fn duplicate<'b>(&'b self) -> MeRefMutHandle<'b> where 'a: 'b {
+        MeRefMutHandle { is_source: false, ctx: self.ctx }
+    }
     pub unsafe fn another_mut_unsafe<'b, 'c, U>(&'b mut self, another: &'c MeCell<U>) -> MeRefMut<'c, U> where 'a: 'b {
         if !Rc::ptr_eq(&another.ctx, self.ctx) {
             panic!("A MeCell can only be borrowed with another MeCell in the same group");
@@ -158,6 +164,12 @@ impl<'a, T> MeRef<'a, T> {
     }
     pub fn another<'b, U>(&'b self, another: &'b MeCell<U>) -> MeRef<'b, U> where 'a: 'b {
         self.handle.another(another)
+    }
+    pub fn duplicate<'b>(&'b self) -> MeRef<'b, T> where 'a: 'b {
+        MeRef {
+            handle: self.handle.duplicate(),
+            content: self.content,
+        }
     }
     pub fn map<'b, U, F>(self, f: F) -> MeRef<'b, U> where 'a: 'b, F: FnOnce(&T) -> &U {
         MeRef { handle: self.handle, content: f(self.content) }
@@ -199,6 +211,12 @@ impl<'a, T> MeRefMut<'a, T> {
     }
     pub unsafe fn another_mut_unsafe<'b, 'c, U>(&'b mut self, another: &'c MeCell<U>) -> MeRefMut<'c, U> where 'a: 'b {
         self.handle.another_mut_unsafe(another)
+    }
+    pub fn duplicate<'b>(&'b mut self) -> MeRefMut<'b, T> where 'a: 'b {
+        MeRefMut {
+            handle: self.handle.duplicate(),
+            content: self.content,
+        }
     }
     pub fn to_ref<'b>(&'b self) -> MeRef<'b, T> where 'a: 'b {
         MeRef { handle: MeRefHandle { is_source: false, ctx: self.handle.ctx }, content: &*self.content }

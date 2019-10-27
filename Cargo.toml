@@ -16,6 +16,7 @@ console_error_panic_hook = "0.1"
 js-sys = "0.3"
 log = "0.4"
 console_log = "0.1"
+downcast-rs = "1.1"
 
 [dependencies.web-sys]
 version = "0.3"

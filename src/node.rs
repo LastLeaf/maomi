@@ -6,8 +6,9 @@ use std::any::Any;
 use std::ops::Range;
 use me_cell::*;
 
-use super::{Component, ComponentTemplate, ComponentRef, ComponentRefMut, ComponentRc, ComponentWeak};
+use super::{Component, ComponentTemplate, ComponentContext, ComponentRef, ComponentRefMut, ComponentRc, ComponentWeak};
 use super::backend::*;
+use super::context::Scheduler;
 
 fn dfs_shadow_tree<'a, B: Backend, T: ElementRef<'a, B>, F: FnMut(&NodeRc<B>)>(n: &T, children: &Vec<NodeRc<B>>, f: &mut F) {
     for child in children.iter() {
@@ -21,7 +22,7 @@ fn dfs_shadow_tree<'a, B: Backend, T: ElementRef<'a, B>, F: FnMut(&NodeRc<B>)>(n
     }
 }
 
-pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'static + Component>(n: &mut T, tag_name: &'static str, component: Box<C>, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> ComponentNodeRc<B> {
+pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'static + Component>(n: &mut T, scheduler: Rc<Scheduler>, tag_name: &'static str, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> ComponentNodeRc<B> {
     let backend = n.backend().clone();
     let shadow_root = VirtualNodeRc {
         c: Rc::new(n.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, "shadow-root", VirtualNodeProperty::ShadowRoot, vec![], owner.clone())))
@@ -29,7 +30,7 @@ pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'stat
     shadow_root.borrow_mut_with(n).initialize(shadow_root.downgrade());
     let backend = n.backend().clone();
     let ret = ComponentNodeRc {
-        c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode::new_with_children(backend, tag_name, component, shadow_root.clone(), slot, children, owner)))
+        c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode::new_with_children::<C>(backend, scheduler, tag_name, shadow_root.clone(), slot, children, owner)))
     };
     ret.borrow_mut_with(n).initialize::<C>(ret.downgrade());
     ret
@@ -60,6 +61,9 @@ macro_rules! define_tree_getter {
         }
         fn set_composed_parent(&mut self, p: Option<NodeWeak<B>>) {
             self.composed_parent = p;
+        }
+        pub fn is_attached(&self) -> bool {
+            self.attached
         }
     };
     (node) => {
@@ -109,6 +113,7 @@ macro_rules! define_tree_getter {
 pub struct NativeNode<B: Backend> {
     pub(crate) backend: Rc<B>,
     pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendElement,
+    pub(crate) attached: bool,
     pub(crate) self_weak: Option<NativeNodeWeak<B>>,
     pub(crate) tag_name: &'static str,
     pub(crate) attributes: Vec<(&'static str, String)>,
@@ -125,7 +130,7 @@ impl<B: Backend> NativeNode<B> {
     }
     pub(crate) fn new_with_children(backend: Rc<B>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
-        NativeNode { backend, backend_element, self_weak: None, tag_name, attributes, slot, children, owner, parent: None, composed_parent: None }
+        NativeNode { backend, backend_element, attached: false, self_weak: None, tag_name, attributes, slot, children, owner, parent: None, composed_parent: None }
     }
     pub fn tag_name(&self) -> &str {
         &self.tag_name
@@ -188,6 +193,20 @@ impl<'a, B: Backend> NativeNodeRefMut<'a, B> {
         }
         self.backend_element.append_list(backend_children);
     }
+    fn set_attached(&mut self) {
+        if self.attached { return };
+        self.attached = true;
+        for child in self.children.clone() {
+            child.borrow_mut_with(self).set_attached();
+        }
+    }
+    fn set_detached(&mut self) {
+        if !self.attached { return };
+        self.attached = false;
+        for child in self.children.clone() {
+            child.borrow_mut_with(self).set_detached();
+        }
+    }
 }
 impl<B: Backend> fmt::Debug for NativeNode<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -210,6 +229,7 @@ pub enum VirtualNodeProperty<B: Backend> {
 
 pub struct VirtualNode<B: Backend> {
     pub(crate) backend: Rc<B>,
+    pub(crate) attached: bool,
     pub(crate) self_weak: Option<VirtualNodeWeak<B>>,
     pub(crate) tag_name: &'static str,
     pub(crate) property: VirtualNodeProperty<B>,
@@ -235,7 +255,7 @@ impl<B: Backend> VirtualNode<B> {
                 panic!("Slot cannot contain any child")
             }
         }
-        VirtualNode { backend, self_weak: None, tag_name, property, children, owner, parent: None, composed_parent: None }
+        VirtualNode { backend, attached: false, self_weak: None, tag_name, property, children, owner, parent: None, composed_parent: None }
     }
     pub fn tag_name(&self) -> &str {
         &self.tag_name
@@ -364,6 +384,20 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
             child.set_composed_parent(Some(self_weak.clone()));
         }
     }
+    fn set_attached(&mut self) {
+        if self.attached { return };
+        self.attached = true;
+        for child in self.children.clone() {
+            child.borrow_mut_with(self).set_attached();
+        }
+    }
+    fn set_detached(&mut self) {
+        if !self.attached { return };
+        self.attached = false;
+        for child in self.children.clone() {
+            child.borrow_mut_with(self).set_detached();
+        }
+    }
 }
 impl<B: Backend> fmt::Debug for VirtualNode<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -374,7 +408,9 @@ impl<B: Backend> fmt::Debug for VirtualNode<B> {
 pub struct ComponentNode<B: Backend> {
     pub(crate) backend: Rc<B>,
     pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendElement,
-    pub(crate) component: Box<dyn Any>,
+    pub(crate) ctx: Rc<ComponentContext>,
+    pub(crate) component: Box<dyn Component>,
+    pub(crate) attached: bool,
     pub(crate) self_weak: Option<ComponentNodeWeak<B>>,
     pub(crate) shadow_root: VirtualNodeRc<B>,
     pub(crate) children: Vec<NodeRc<B>>,
@@ -402,18 +438,20 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     fn collect_backend_nodes<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
         v.push(self.backend_element.ref_clone().into_node());
     }
-    fn new_with_children(backend: Rc<B>, tag_name: &'static str, component: Box<dyn Any>, shadow_root: VirtualNodeRc<B>, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    fn new_with_children<C: Component>(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, shadow_root: VirtualNodeRc<B>, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
-        ComponentNode { backend, backend_element, component, self_weak: None, shadow_root, slot, children, slots: HashMap::new(), owner, parent: None, composed_parent: None }
+        let ctx = Rc::new(ComponentContext::new(scheduler));
+        let component = Box::new(<C as Component>::new(ctx.clone()));
+        ComponentNode { backend, backend_element, ctx, component, attached: false, self_weak: None, shadow_root, slot, children, slots: HashMap::new(), owner, parent: None, composed_parent: None }
     }
     pub fn shadow_root_rc(&self) -> &VirtualNodeRc<B> {
         &self.shadow_root
     }
     pub fn as_component<C: Component>(&self) -> &C {
-        self.component.downcast_ref().unwrap()
+        self.component.downcast_ref::<C>().unwrap()
     }
     pub fn as_component_mut<C: Component>(&mut self) -> &mut C {
-        self.component.downcast_mut().unwrap()
+        self.component.downcast_mut::<C>().unwrap()
     }
     pub fn try_as_component<C: 'static + Component>(&self) -> Option<&C> {
         let c: &dyn Any = &self.component;
@@ -478,8 +516,8 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
     }
-    pub fn new_component_node<C: 'static + Component>(&mut self, tag_name: &'static str, component: Box<C>, slot: String, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
-        create_component(self, tag_name, component, slot, children, self.self_weak.clone())
+    pub fn new_component_node<C: 'static + Component>(&mut self, tag_name: &'static str, slot: String, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
+        create_component::<_, _, C>(self, self.ctx.scheduler().clone(), tag_name, slot, children, self.self_weak.clone())
     }
     pub fn new_text_node<T: ToString>(&mut self, text_content: T) -> TextNodeRc<B> {
         let backend = self.backend().clone();
@@ -586,6 +624,24 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
             self.backend_element.append_list(backend_children);
         }
         self.check_slots_update();
+        let w = self.self_weak.clone().unwrap().with_type::<C>();
+        <C as Component>::created(&mut self.duplicate().with_type::<C>(), w);
+    }
+    pub(crate) fn set_attached(&mut self) {
+        if self.attached { return };
+        self.attached = true;
+        for child in self.children.clone() {
+            child.borrow_mut_with(self).set_attached();
+        }
+        self.component.attached();
+    }
+    fn set_detached(&mut self) {
+        if !self.attached { return };
+        self.attached = false;
+        for child in self.children.clone() {
+            child.borrow_mut_with(self).set_detached();
+        }
+        self.component.detached();
     }
     pub(crate) fn update_node(&mut self) {
         self.check_slots_update();
@@ -600,6 +656,7 @@ impl<B: Backend> fmt::Debug for ComponentNode<B> {
 pub struct TextNode<B: Backend> {
     pub(crate) backend: Rc<B>,
     pub(crate) backend_element: <<B as Backend>::BackendNode as BackendNode>::BackendTextNode,
+    pub(crate) attached: bool,
     pub(crate) self_weak: Option<TextNodeWeak<B>>,
     pub(crate) text_content: String,
     pub(crate) owner: Option<ComponentNodeWeak<B>>,
@@ -613,7 +670,7 @@ impl<B: Backend> TextNode<B> {
     }
     pub fn new_with_content(backend: Rc<B>, text_content: String, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_text_node(text_content.as_ref());
-        TextNode { backend, backend_element, self_weak: None, text_content, owner, parent: None, composed_parent: None }
+        TextNode { backend, backend_element, attached: false, self_weak: None, text_content, owner, parent: None, composed_parent: None }
     }
     pub fn text_content(&self) -> &str {
         &self.text_content
@@ -621,6 +678,14 @@ impl<B: Backend> TextNode<B> {
     pub fn set_text_content<T: ToString>(&mut self, c: T) {
         self.text_content = c.to_string();
         self.backend_element.set_text_content(&self.text_content);
+    }
+    fn set_attached(&mut self) {
+        if self.attached { return };
+        self.attached = true;
+    }
+    fn set_detached(&mut self) {
+        if !self.attached { return };
+        self.attached = false;
     }
 }
 impl<'a, B: Backend> TextNodeRef<'a, B> {
@@ -840,6 +905,22 @@ impl<'a, B: Backend> NodeRefMut<'a, B> {
             NodeRefMut::TextNode(x) => x.set_composed_parent(p),
         }
     }
+    fn set_attached(&mut self) {
+        match self {
+            NodeRefMut::NativeNode(x) => x.set_attached(),
+            NodeRefMut::VirtualNode(x) => x.set_attached(),
+            NodeRefMut::ComponentNode(x) => x.set_attached(),
+            NodeRefMut::TextNode(x) => x.set_attached(),
+        }
+    }
+    fn set_detached(&mut self) {
+        match self {
+            NodeRefMut::NativeNode(x) => x.set_detached(),
+            NodeRefMut::VirtualNode(x) => x.set_detached(),
+            NodeRefMut::ComponentNode(x) => x.set_detached(),
+            NodeRefMut::TextNode(x) => x.set_detached(),
+        }
+    }
     pub fn to_ref<'b>(&'b self) -> NodeRef<'b, B> where 'a: 'b {
         match self {
             Self::NativeNode(x) => NodeRef::NativeNode(x.to_ref()),
@@ -1000,7 +1081,13 @@ macro_rules! some_node_def {
         pub struct $r<'a, B: Backend> {
             c: MeRef<'a, $t<B>>
         }
-        impl<'a, B: Backend> $r<'a, B> { }
+        impl<'a, B: Backend> $r<'a, B> {
+            pub fn duplicate<'b>(&'b self) -> $r<'b, B> {
+                $r {
+                    c: self.c.duplicate()
+                }
+            }
+        }
         impl<'a, B: Backend> Deref for $r<'a, B> {
             type Target = $t<B>;
             fn deref(&self) -> &$t<B> {
@@ -1033,6 +1120,11 @@ macro_rules! some_node_def {
             c: MeRefMut<'a, $t<B>>
         }
         impl<'a, B: Backend> $rm<'a, B> {
+            pub fn duplicate<'b>(&'b mut self) -> $rm<'b, B> {
+                $rm {
+                    c: self.c.duplicate()
+                }
+            }
             pub fn to_ref<'b>(&'b self) -> $r<'b, B> where 'a: 'b {
                 $r { c: self.c.to_ref() }
             }
