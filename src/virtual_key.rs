@@ -14,6 +14,10 @@ impl<T: PartialEq> VirtualKeyList<T> {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
     pub fn list_reorder<B: Backend>(&self, old: &Self, node: &mut VirtualNodeRefMut<B>) -> VirtualKeyChanges<B> {
         let old_keys = &old.keys;
         let new_keys = &self.keys;
@@ -22,11 +26,12 @@ impl<T: PartialEq> VirtualKeyList<T> {
         let old_len = old_keys.len();
         let new_len = new_keys.len();
         let mut index_map: Vec<Option<usize>> = (0..new_len).map(|_| None).collect();
-        let mut removes: Vec<Range<usize>> = vec![];
+        let mut removes: Vec<(usize, Box<[bool]>)> = vec![];
         let mut inserts: Vec<Range<usize>> = vec![];
-        let mut remove_and_insert = |old_i, old_len, new_i, new_len| {
+        let mut remove_and_insert = |old_i, old_i_end, new_i, new_i_end| {
             if old_i < old_len {
-                removes.push(old_i..old_len);
+                let reusable: Box<[bool]> = (old_i..old_len).map(|_| false).collect();
+                removes.push((old_i, reusable));
             }
             if new_i < new_len {
                 inserts.push(new_i..new_len);
@@ -73,10 +78,12 @@ impl<T: PartialEq> VirtualKeyList<T> {
         // try to reuse removed items
         for new_range in inserts.iter() {
             for new_i in new_range.clone() {
-                for old_range in removes.iter() {
-                    for old_i in old_range.clone() {
+                for (start, reusable) in removes.iter_mut() {
+                    for i in 0..reusable.len() {
+                        let old_i = i + *start;
                         if old_keys[old_i] == new_keys[new_i] {
                             index_map[new_i] = Some(old_i);
+                            reusable[i] = true;
                         }
                     }
                 }
@@ -96,7 +103,7 @@ impl<T: PartialEq> VirtualKeyList<T> {
 }
 
 pub struct VirtualKeyChanges<B: Backend> {
-    removes: Vec<Range<usize>>,
+    removes: Vec<(usize, Box<[bool]>)>,
     inserts: Vec<Range<usize>>,
     nodes: Vec<Option<NodeRc<B>>>,
 }
@@ -115,9 +122,9 @@ impl<B: Backend> VirtualKeyChanges<B> {
     pub fn apply(self, node: &mut VirtualNodeRefMut<B>) {
         let Self {inserts, removes, mut nodes} = self;
         let mut d = 0;
-        for old_range in removes {
-            node.remove_range((old_range.start - d)..(old_range.end - d));
-            d += old_range.len();
+        for (start, reusable) in removes {
+            node.remove_with_reuse(start - d, &reusable);
+            d += reusable.len();
         }
         for new_range in inserts {
             node.insert_list(new_range.start, nodes[new_range].iter_mut().map(|x| x.take().unwrap()).collect());

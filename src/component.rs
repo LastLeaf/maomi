@@ -1,5 +1,7 @@
+use std::marker::PhantomData;
+use std::fmt;
 use std::rc::Rc;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell};
 use std::ops::{Deref, DerefMut};
 use me_cell::MeRefHandle;
 
@@ -7,9 +9,9 @@ use super::context::Scheduler;
 use super::node::*;
 use super::backend::{Backend, BackendNode};
 
-pub trait Component: ComponentTemplate + downcast_rs::Downcast {
-    fn new(c: Rc<ComponentContext>) -> Self where Self: Sized;
-    fn created<B: Backend>(&mut self, _weak: ComponentWeak<B, Self>) where Self: Sized {
+pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
+    fn new(_ctx: ComponentContext<B, Self>) -> Self where Self: Sized;
+    fn created(&mut self, _weak: ComponentWeak<B, Self>) where Self: Sized {
 
     }
     fn attached(&mut self) {
@@ -22,10 +24,10 @@ pub trait Component: ComponentTemplate + downcast_rs::Downcast {
 
     }
 }
-downcast_rs::impl_downcast!(Component);
+downcast_rs::impl_downcast!(Component<B> where B: Backend);
 
-pub trait ComponentTemplate: 'static {
-    fn template<B: Backend>(component: &mut ComponentNodeRefMut<B>, is_update: bool) -> Option<Vec<NodeRc<B>>> where Self: Sized {
+pub trait ComponentTemplate<B: Backend>: 'static {
+    fn template(component: &mut ComponentNodeRefMut<B>, is_update: bool) -> Option<Vec<NodeRc<B>>> where Self: Sized {
         if is_update {
             return None
         }
@@ -36,45 +38,43 @@ pub trait ComponentTemplate: 'static {
     }
 }
 
-pub struct ComponentContext {
-    need_update: Cell<bool>,
+#[derive(Clone)]
+pub struct ComponentContext<B: Backend, C: Component<B>> {
+    node_weak: ComponentWeak<B, C>,
+    need_update: Rc<Cell<bool>>,
     scheduler: Rc<Scheduler>,
+    phantom_data: PhantomData<C>,
 }
-impl ComponentContext {
-    pub(crate) fn new(scheduler: Rc<Scheduler>) -> Self {
+impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
+    pub(crate) fn new(node_weak: ComponentWeak<B, C>, need_update: Rc<Cell<bool>>, scheduler: Rc<Scheduler>) -> Self {
         Self {
-            need_update: Cell::new(false),
+            node_weak,
+            need_update,
             scheduler,
+            phantom_data: PhantomData,
         }
-    }
-    pub(crate) fn scheduler(&self) -> &Rc<Scheduler> {
-        &self.scheduler
-    }
-    fn clear_update(&self) -> bool {
-        self.need_update.replace(false)
     }
     pub fn update(&self) {
         self.need_update.set(true);
     }
-    pub fn update_then<B: Backend, C: Component, F: 'static + FnOnce(&mut ComponentRefMut<B, C>)>(&self, callback: F) {
+    pub fn update_then<F: 'static + FnOnce(&mut ComponentRefMut<B, C>)>(&self, callback: F) {
         self.need_update.set(true);
-        self.scheduler.add_task(|| {
-            // TODO
+        self.tick(callback);
+    }
+    pub fn tick<F: 'static + FnOnce(&mut ComponentRefMut<B, C>)>(&self, f: F) {
+        let rc = self.node_weak.upgrade().unwrap();
+        self.scheduler.add_task(move || {
+            f(&mut rc.borrow_mut());
         });
-    }
-    pub fn tick<B: Backend, F: 'static + FnOnce(&mut ComponentRefMut<B, Self>)>(&self, f: F) {
-        // TODO
-    }
-    pub fn next_tick<B: Backend, F: 'static + FnOnce(&mut ComponentRefMut<B, Self>)>(&self, f: F) {
-        // TODO
     }
 }
 
-pub struct ComponentRc<B: Backend, C: Component> {
+#[derive(Clone)]
+pub struct ComponentRc<B: Backend, C: Component<B>> {
     n: ComponentNodeRc<B>,
     phantom_data: std::marker::PhantomData<C>,
 }
-impl<B: Backend, C: Component> ComponentRc<B, C> {
+impl<B: Backend, C: Component<B>> ComponentRc<B, C> {
     pub fn as_node(&self) -> &ComponentNodeRc<B> {
         &self.n
     }
@@ -97,7 +97,7 @@ impl<B: Backend, C: Component> ComponentRc<B, C> {
         self.n.downgrade().with_type::<C>()
     }
 }
-impl<B: Backend, C: Component> From<ComponentNodeRc<B>> for ComponentRc<B, C> {
+impl<B: Backend, C: Component<B>> From<ComponentNodeRc<B>> for ComponentRc<B, C> {
     fn from(n: ComponentNodeRc<B>) -> Self {
         Self {
             n,
@@ -106,11 +106,12 @@ impl<B: Backend, C: Component> From<ComponentNodeRc<B>> for ComponentRc<B, C> {
     }
 }
 
-pub struct ComponentWeak<B: Backend, C: Component> {
+#[derive(Clone)]
+pub struct ComponentWeak<B: Backend, C: Component<B>> {
     n: ComponentNodeWeak<B>,
     phantom_data: std::marker::PhantomData<C>,
 }
-impl<B: Backend, C: Component> ComponentWeak<B, C> {
+impl<B: Backend, C: Component<B>> ComponentWeak<B, C> {
     pub fn as_node(&self) -> &ComponentNodeWeak<B> {
         &self.n
     }
@@ -120,7 +121,7 @@ impl<B: Backend, C: Component> ComponentWeak<B, C> {
         })
     }
 }
-impl<B: Backend, C: Component> From<ComponentNodeWeak<B>> for ComponentWeak<B, C> {
+impl<B: Backend, C: Component<B>> From<ComponentNodeWeak<B>> for ComponentWeak<B, C> {
     fn from(n: ComponentNodeWeak<B>) -> Self {
         Self {
             n,
@@ -129,25 +130,31 @@ impl<B: Backend, C: Component> From<ComponentNodeWeak<B>> for ComponentWeak<B, C
     }
 }
 
-pub struct ComponentRef<'a, B: Backend, C: Component> {
+pub struct ComponentRef<'a, B: Backend, C: Component<B>> {
     n: ComponentNodeRef<'a, B>,
     phantom_data: std::marker::PhantomData<C>,
 }
-impl<'a, B: Backend, C: Component> ComponentRef<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> ComponentRef<'a, B, C> {
     pub fn as_node(&self) -> &ComponentNodeRef<'a, B> {
         &self.n
     }
     pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         self.n.backend_element()
     }
+    pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
+        self.n.owner()
+    }
+    pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        self.n.to_html(s)
+    }
 }
-impl<'a, B: Backend, C: Component> Deref for ComponentRef<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> Deref for ComponentRef<'a, B, C> {
     type Target = C;
     fn deref(&self) -> &C {
         self.n.as_component()
     }
 }
-impl<'a, B: Backend, C: Component> ElementRef<'a, B> for ComponentRef<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> ElementRef<'a, B> for ComponentRef<'a, B, C> {
     fn backend(&self) -> &Rc<B> {
         self.n.backend()
     }
@@ -158,7 +165,7 @@ impl<'a, B: Backend, C: Component> ElementRef<'a, B> for ComponentRef<'a, B, C> 
         self.n.as_node_ref()
     }
 }
-impl<'a, B: Backend, C: Component> From<ComponentNodeRef<'a, B>> for ComponentRef<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRef<'a, B>> for ComponentRef<'a, B, C> {
     fn from(n: ComponentNodeRef<'a, B>) -> Self {
         Self {
             n,
@@ -166,12 +173,17 @@ impl<'a, B: Backend, C: Component> From<ComponentNodeRef<'a, B>> for ComponentRe
         }
     }
 }
+impl<'a, B: Backend, C: Component<B>> fmt::Debug for ComponentRef<'a, B, C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.n)
+    }
+}
 
-pub struct ComponentRefMut<'a, B: Backend, C: Component> {
+pub struct ComponentRefMut<'a, B: Backend, C: Component<B>> {
     n: ComponentNodeRefMut<'a, B>,
     phantom_data: std::marker::PhantomData<C>,
 }
-impl<'a, B: Backend, C: Component> ComponentRefMut<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> ComponentRefMut<'a, B, C> {
     pub fn as_node(&mut self) -> &mut ComponentNodeRefMut<'a, B> {
         &mut self.n
     }
@@ -181,39 +193,36 @@ impl<'a, B: Backend, C: Component> ComponentRefMut<'a, B, C> {
     pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
         self.n.backend_element()
     }
-    pub fn apply_updates(&mut self) {
-        if self.n.ctx.clear_update() {
-            self.n.apply_updates::<C>();
-        }
-    }
-    pub fn force_apply_updates(&mut self) {
-        self.n.ctx.clear_update();
-        self.n.apply_updates::<C>();
-    }
     pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
         self.n.owner()
     }
-    pub fn sub_node(&self) -> Option<NodeRc<B>> {
-        unimplemented!()
+    pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        self.n.to_html(s)
+    }
+    pub fn apply_updates(&mut self) {
+        self.n.apply_updates::<C>();
+    }
+    pub fn force_apply_updates(&mut self) {
+        self.n.force_apply_updates::<C>();
     }
 }
-impl<'a, B: Backend, C: Component> Drop for ComponentRefMut<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> Drop for ComponentRefMut<'a, B, C> {
     fn drop(&mut self) {
         self.apply_updates();
     }
 }
-impl<'a, B: Backend, C: Component> Deref for ComponentRefMut<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> Deref for ComponentRefMut<'a, B, C> {
     type Target = C;
     fn deref(&self) -> &C {
         self.n.as_component()
     }
 }
-impl<'a, B: Backend, C: Component> DerefMut for ComponentRefMut<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> DerefMut for ComponentRefMut<'a, B, C> {
     fn deref_mut(&mut self) -> &mut C {
         self.n.as_component_mut()
     }
 }
-impl<'a, B: Backend, C: Component> From<ComponentNodeRefMut<'a, B>> for ComponentRefMut<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRefMut<'a, B>> for ComponentRefMut<'a, B, C> {
     fn from(n: ComponentNodeRefMut<'a, B>) -> Self {
         Self {
             n,
@@ -221,17 +230,18 @@ impl<'a, B: Backend, C: Component> From<ComponentNodeRefMut<'a, B>> for Componen
         }
     }
 }
-
-pub struct EmptyComponent {
-    ctx: Rc<ComponentContext>
-}
-impl Component for EmptyComponent {
-    fn new(ctx: Rc<ComponentContext>) -> Self {
-        Self {
-            ctx
-        }
+impl<'a, B: Backend, C: Component<B>> fmt::Debug for ComponentRefMut<'a, B, C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.n)
     }
 }
-impl ComponentTemplate for EmptyComponent {
+
+pub struct EmptyComponent { }
+impl<B: Backend> Component<B> for EmptyComponent {
+    fn new(_ctx: ComponentContext<B, Self>) -> Self {
+        Self { }
+    }
+}
+impl<B: Backend> ComponentTemplate<B> for EmptyComponent {
     // empty
 }

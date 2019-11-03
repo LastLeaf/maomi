@@ -14,6 +14,7 @@ pub trait BackendNode: Sized {
     fn text_node_ref(&self) -> &Self::BackendTextNode;
     fn comment_ref(&self) -> &Self::BackendComment;
     fn ref_clone(&self) -> Self;
+    fn remove_self(&self);
 }
 
 pub trait BackendTextNode {

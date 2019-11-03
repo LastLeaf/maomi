@@ -26,15 +26,19 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn root_component<C: 'static + Component>(&self) -> Option<ComponentRc<B, C>> {
+    pub fn root_component<C: 'static + Component<B>>(&self) -> Option<ComponentRc<B, C>> {
         self.root.clone().map(|x| {
             x.with_type::<C>()
         })
     }
-    pub fn new_root_component<C: 'static + Component>(&mut self) -> ComponentRc<B, C> {
-        create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", "".into(), vec![], None).with_type::<C>()
+    pub fn new_root_component<C: 'static + Component<B>>(&mut self) -> ComponentRc<B, C> {
+        let ret = create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", "".into(), vec![], None).with_type::<C>();
+        ret
     }
-    pub fn set_root_component<C: 'static + Component>(&mut self, component_node: &ComponentRc<B, C>) {
+    pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: &ComponentRc<B, C>) {
+        if let Some(old_root) = self.root.take() {
+            old_root.borrow_mut().set_detached();
+        }
         self.root = Some(component_node.as_node().clone());
         self.backend.set_root_node(&self.root.as_ref().unwrap().borrow_mut().backend_element);
         component_node.as_node().borrow_mut().set_attached();

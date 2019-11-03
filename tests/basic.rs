@@ -2,9 +2,6 @@
 
 #![cfg(target_arch = "wasm32")]
 
-#[macro_use] extern crate log;
-
-use std::rc::Rc;
 use std::sync::Once;
 use wasm_bindgen_test::*;
 use web_sys;
@@ -43,17 +40,18 @@ fn create_dom_context() -> maomi::Context<maomi::backend::Dom> {
     })
 }
 
-template!(tmpl HelloWorld {
+template!(tmpl for HelloWorld {
     div {
         style = "display: inline";
         (&self.a);
+        slot;
     }
 });
 struct HelloWorld {
     a: String,
 }
-impl Component for HelloWorld {
-    fn new(_ctx: Rc<ComponentContext>) -> Self {
+impl<B: Backend> Component<B> for HelloWorld {
+    fn new(_ctx: ComponentContext<B, Self>) -> Self {
         Self {
             a: "Hello world!".into()
         }
@@ -74,56 +72,106 @@ fn create_new_component() {
     assert_eq!(root_component.backend_element().inner_html(), r#"<div style="display: inline">Hello world again and again!</div>"#);
 }
 
-// template!(tmpl<B: Backend> TemplateIf<B> {
-//     div {
-//         if self.a == 0 {
-//             "branch 0";
-//         } else if self.a == 1 {
-//             "branch 1";
-//         } else {
-//             "other branches";
-//         }
-//     }
-// });
-// struct TemplateIf<B: Backend> {
-//     ctx: Rc<ComponentContext<B>>,
-//     pub a: Prop<String>,
-// }
-// impl<B: Backend> Component<B> for TemplateIf<B> {
-//     fn new(ctx: Rc<ComponentContext<B>>) -> Self {
-//         Self {
-//             ctx,
-//             a: "Hello world!".into()
-//         }
-//     }
-// }
-// #[wasm_bindgen_test]
-// fn template_if() {
-//     let test_component = maomi::render(Box::new(TemplateIf::new()));
-//     console_log!("{:?}", test_component);
-// }
-//
-// template!(tmpl TemplateFor {
-//     for item in &self.list {
-//         div {
-//             (item);
-//         }
-//     }
-// });
-// #[component]
-// struct TemplateFor<B: Backend> {
-//     list: Vec<String>,
-// }
-// #[component]
-// impl<B: Backend> TemplateFor<B> {
-//     fn new() -> Self {
-//         Self {
-//             list: vec!["Aa".into(), "Bb".into(), "Cc".into()]
-//         }
-//     }
-// }
-// #[wasm_bindgen_test]
-// fn template_for() {
-//     let test_component = maomi::render(Box::new(TemplateFor::new()));
-//     console_log!("{:?}", test_component);
-// }
+template!(tmpl for ParentComponent {
+    span {
+        HelloWorld {
+            style = "display: block";
+            a = "Hello world";
+            " | ";
+            HelloWorld {
+                a = &self.s;
+            }
+        }
+    }
+});
+struct ParentComponent {
+    pub s: String,
+}
+impl<B: Backend> Component<B> for ParentComponent {
+    fn new(_ctx: ComponentContext<B, Self>) -> Self {
+        Self {
+            s: "from parent!".into()
+        }
+    }
+}
+#[wasm_bindgen_test]
+fn parent_component() {
+    let mut context = create_dom_context();
+    let root_component = context.new_root_component::<ParentComponent>();
+    context.set_root_component(&root_component);
+    let mut root_component = root_component.borrow_mut();
+    assert_eq!(root_component.backend_element().inner_html(), r#"<span><maomi-hello-world style="display: block"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent!</div></maomi-hello-world></div></maomi-hello-world></span>"#);
+    root_component.s = "from parent again!".into();
+    root_component.force_apply_updates();
+    assert_eq!(root_component.backend_element().inner_html(), r#"<span><maomi-hello-world style="display: block"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent again!</div></maomi-hello-world></div></maomi-hello-world></span>"#);
+    root_component.s = "from parent again and again!".into();
+    root_component.force_apply_updates();
+    assert_eq!(root_component.backend_element().inner_html(), r#"<span><maomi-hello-world style="display: block"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent again and again!</div></maomi-hello-world></div></maomi-hello-world></span>"#);
+}
+
+template!(tmpl<D: Backend> for<D> TemplateIf<D> {
+    div {
+        if self.a == 0 {
+            "branch 0";
+        } else if self.a == 1 {
+            "branch 1";
+        } else {
+            "other branches";
+        }
+    }
+});
+struct TemplateIf<D: Backend> {
+    _ctx: ComponentContext<D, Self>,
+    pub a: i32,
+}
+impl<D: Backend> Component<D> for TemplateIf<D> {
+    fn new(_ctx: ComponentContext<D, Self>) -> Self {
+        Self {
+            _ctx,
+            a: 0
+        }
+    }
+}
+#[wasm_bindgen_test]
+fn template_if() {
+    let mut context = create_dom_context();
+    let root_component = context.new_root_component::<TemplateIf<_>>();
+    context.set_root_component(&root_component);
+    let mut root_component = root_component.borrow_mut();
+    assert_eq!(root_component.backend_element().inner_html(), "<div>branch 0</div>");
+    root_component.a = -1;
+    root_component.force_apply_updates();
+    assert_eq!(root_component.backend_element().inner_html(), "<div>other branches</div>");
+    root_component.a = 1;
+    root_component.force_apply_updates();
+    assert_eq!(root_component.backend_element().inner_html(), "<div>branch 1</div>");
+}
+
+template!(tmpl for TemplateFor {
+    for item in &self.list {
+        div {
+            (item);
+        }
+    }
+});
+struct TemplateFor {
+    list: Vec<String>,
+}
+impl<B: Backend> Component<B> for TemplateFor {
+    fn new(_ctx: ComponentContext<B, Self>) -> Self {
+        Self {
+            list: vec!["Aa".into(), "Bb".into(), "Cc".into()]
+        }
+    }
+}
+#[wasm_bindgen_test]
+fn template_for() {
+    let mut context = create_dom_context();
+    let root_component = context.new_root_component::<TemplateFor>();
+    context.set_root_component(&root_component);
+    let mut root_component = root_component.borrow_mut();
+    assert_eq!(root_component.backend_element().inner_html(), "<div>Aa</div><div>Bb</div><div>Cc</div>");
+    root_component.list[1] = "Dd".into();
+    root_component.force_apply_updates();
+    assert_eq!(root_component.backend_element().inner_html(), "<div>Aa</div><div>Dd</div><div>Cc</div>");
+}

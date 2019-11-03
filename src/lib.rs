@@ -1,4 +1,4 @@
-#[macro_use] extern crate log;
+#[allow(unused_imports)] #[macro_use] extern crate log;
 
 use wasm_bindgen::prelude::*;
 
@@ -14,6 +14,7 @@ pub mod context;
 pub use context::{Context};
 pub mod backend;
 pub mod virtual_key;
+mod escape;
 
 #[wasm_bindgen(start)]
 pub fn framework_init() {

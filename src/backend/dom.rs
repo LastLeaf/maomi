@@ -76,6 +76,14 @@ impl super::BackendNode for DomNode {
     fn ref_clone(&self) -> Self {
         self.clone()
     }
+    fn remove_self(&self) {
+        match self.dom_node().parent_node() {
+            Some(p) => {
+                p.remove_child(self).unwrap();
+            },
+            None => { },
+        }
+    }
 }
 
 #[derive(Clone)]

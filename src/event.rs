@@ -31,7 +31,7 @@ pub struct Event<B: Backend, T> {
 }
 
 impl<B: Backend, T> Event<B, T> {
-    pub fn trigger<C: Component>(self, target: &mut ComponentRefMut<B, C>, data: T) {
+    pub fn trigger<C: Component<B>>(self, target: &mut ComponentRefMut<B, C>, data: T) {
         if let Some(handler) = self.handler {
             if let Some(parent) = target.owner() {
                 let mut parent = parent.borrow_mut_with(target.as_node());
@@ -39,10 +39,12 @@ impl<B: Backend, T> Event<B, T> {
             }
         }
     }
-    pub fn bubble<C: Component>(self, target: &mut ComponentRefMut<B, C>, data: T) {
+    pub fn bubble<C: Component<B>>(self, target: &mut ComponentRefMut<B, C>, data: T) {
+        // TODO
         unimplemented!()
     }
-    pub fn bubble_composed<C: Component>(self, target: &mut ComponentRefMut<B, C>, data: T) {
+    pub fn bubble_composed<C: Component<B>>(self, target: &mut ComponentRefMut<B, C>, data: T) {
+        // TODO
         unimplemented!()
     }
 }
