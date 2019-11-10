@@ -1,9 +1,16 @@
 use std::ops::Deref;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use web_sys::*;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::convert::IntoWasmAbi;
+use wasm_bindgen::JsCast;
+
+use crate::global_events::*;
 
 thread_local! {
     static DOCUMENT: Document = window().unwrap().document().unwrap();
+    static ELEMENT_MAP: RefCell<HashMap<u32, DomElement>> = RefCell::new(HashMap::new());
 }
 
 #[derive(Clone)]
@@ -89,10 +96,30 @@ impl super::BackendNode for DomNode {
 #[derive(Clone)]
 pub struct DomElement {
     node: Element,
+
 }
 impl DomElement {
+    fn new(tag_name: &'static str) -> Self {
+        let ret = DomElement {
+            node: DOCUMENT.with(|document| {
+                document.create_element(tag_name).unwrap().into()
+            })
+        };
+        ELEMENT_MAP.with(|element_map| {
+            element_map.borrow_mut().insert((&ret.node).into_abi(), ret.clone());
+        });
+        ret
+    }
     pub fn dom_node(&self) -> &Element {
         &self.node
+    }
+}
+impl Drop for DomElement {
+    fn drop(&mut self) {
+        ELEMENT_MAP.with(|element_map| {
+            // TODO this may remove early if cloned
+            element_map.borrow_mut().remove(&(&self.node).into_abi());
+        });
     }
 }
 impl Deref for DomElement {
@@ -103,6 +130,9 @@ impl Deref for DomElement {
 }
 impl super::BackendElement for DomElement {
     type BackendNode = DomNode;
+    pub fn bind_node_weak(&mut self, n: NodeWeak<Dom>) {
+
+    }
     fn into_node(self) -> Self::BackendNode {
         DomNode::Element(self)
     }
@@ -190,6 +220,24 @@ impl super::BackendComment for DomComment {
     }
 }
 
+struct DomEvent {
+    event: Event,
+}
+impl DomEvent {
+    fn to_mouse_event(self) -> MouseEvent {
+        // TODO
+        unimplemented!()
+    }
+    fn to_touch_event(self) -> TouchEvent {
+        // TODO
+        unimplemented!()
+    }
+    fn to_keyboard_event(self) -> KeyboardEvent {
+        // TODO
+        unimplemented!()
+    }
+}
+
 pub struct Dom {
     root: RefCell<Element>,
 }
@@ -201,21 +249,35 @@ impl Dom {
             })),
         }
     }
+    fn init_event_listeners_on_root_node(&self) {
+        let init_single_event = |name, f: fn(&DomElement, DomEvent)| {
+            let cb = Closure::wrap(Box::new(move |element: Element, event: Event| {
+                let dom_event = DomEvent { event };
+                ELEMENT_MAP.with(|element_map| {
+                    match element_map.borrow_mut().get(&element.into_abi()) {
+                        None => { },
+                        Some(dom_element) => {
+                            f(dom_element, dom_event);
+                        }
+                    }
+                });
+            }) as Box<dyn FnMut(Element, Event)>);
+            let root = self.root.borrow();
+            root.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref()).unwrap();
+        };
+        init_single_event("click", |elem, ev| { trigger_global_events!(elem, click, ev.to_mouse_event()); });
+    }
 }
-
 impl super::Backend for Dom {
     type BackendNode = DomNode;
     fn set_root_node(&self, root_node: &DomElement) {
         let mut root = self.root.borrow_mut();
         root.parent_node().unwrap().replace_child(&root_node.node, &root).unwrap();
         *root = root_node.node.clone();
+        self.init_event_listeners_on_root_node();
     }
     fn create_element(&self, tag_name: &'static str) -> DomElement {
-        DomElement {
-            node: DOCUMENT.with(|document| {
-                document.create_element(tag_name).unwrap().into()
-            })
-        }
+        DomElement::new(tag_name)
     }
     fn create_text_node(&self, text_content: &str) -> DomTextNode {
         DomTextNode {
@@ -232,3 +294,5 @@ impl super::Backend for Dom {
         }
     }
 }
+
+

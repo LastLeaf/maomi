@@ -1,5 +1,5 @@
 pub use maomi_macro::*;
-pub use super::{Component, ComponentTemplate, EmptyComponent, ComponentContext, Property, Ev, backend::Backend, node::*, virtual_key::*};
+pub use super::{Component, ComponentTemplate, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*};
 
 fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
     struct SampleData {
@@ -78,12 +78,17 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     let children = node.as_ref().map(|node| { node.children() });
                     let ret_children: Vec<NodeRc<_>> = vec![text_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
-                        None => __owner.new_native_node("div", vec![], "".into(), ret_children),
+                        None => __owner.new_native_node("div", vec![], ret_children),
                         Some(node_rc) => node_rc.clone(),
                     };
                     {
                         // let mut node = node_rc.borrow_mut_with(__owner);
                         // node.set_attribute("data-xxx", "xxx");
+                        // node.global_events_mut().click.set_handler(Box::new(|self_ref_mut, e| {
+                        //     // (|mut self_ref_mut: ComponentRefMut<B, EmptyComponent>, e| {
+                        //     //     self_ref_mut.apply_updates()
+                        //     // })(self_ref_mut.with_type::<EmptyComponent>(), e)
+                        // }));
                     }
                     node_rc.into()
                 };
@@ -109,7 +114,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     let children = node.as_ref().map(|node| { node.children() });
                     let ret_children: Vec<NodeRc<_>> = vec![slot_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
-                        None => __owner.new_component_node::<EmptyComponent>("maomi-default-component", "".into(), ret_children),
+                        None => __owner.new_component_node::<EmptyComponent>("maomi-default-component", ret_children),
                         Some(node_rc) => node_rc.clone(),
                     };
                     {

@@ -3,6 +3,35 @@ use syn::parse::*;
 use syn::export::Span;
 
 use super::template::*;
+use super::template::Attribute as TemplateAttribute;
+
+const SYSTEM_ATTRIBUTES: [&'static str; 3] = [
+    "id",
+    "class",
+    "style",
+];
+const SYSTEM_EVENTS: [&'static str; 20] = [
+    "click",
+    "mouse_down",
+    "mouse_move",
+    "mouse_up",
+    "touch_start",
+    "touch_move",
+    "touch_end",
+    "touch_cancel",
+    "tap",
+    "long_tap",
+    "cancel_tap",
+    "key_down",
+    "key_press",
+    "key_up",
+    "change",
+    "submit",
+    "animation_start",
+    "animation_iteration",
+    "animation_end",
+    "transition_end",
+];
 
 fn ident_to_dashed_str(s: Ident) -> LitStr {
     let s: String = s.to_string().chars().map(|c| {
@@ -25,7 +54,7 @@ fn ty_to_string(s: &Ident) -> String {
     s
 }
 
-fn parse_children(input: ParseStream) -> Result<(Vec<TemplateNode>, Vec<(Ident, TemplateValue)>)> {
+fn parse_children(input: ParseStream, is_component: bool, is_virtual: bool) -> Result<(Vec<TemplateNode>, Vec<TemplateAttribute>)> {
     let content;
     braced!(content in input);
     let input = &content;
@@ -39,6 +68,53 @@ fn parse_children(input: ParseStream) -> Result<(Vec<TemplateNode>, Vec<(Ident, 
         } else if lookahead.peek(Token![for]) {
             input.parse::<Token![for]>()?;
             children.push(parse_template_for(input)?);
+        } else if lookahead.peek(Token![in]) {
+            input.parse::<Token![in]>()?;
+            children.push(parse_template_in(input)?);
+        } else if lookahead.peek(Token![@]) {
+            input.parse::<Token![@]>()?;
+            let lookahead = input.lookahead1();
+            let mut is_custom = false;
+            if lookahead.peek(Token![#]) {
+                input.parse::<Token![#]>()?;
+                is_custom = true;
+            } else if lookahead.peek(Ident) {
+                // empty
+            } else {
+                return Err(lookahead.error());
+            }
+            let name: Ident = input.parse()?;
+            if is_virtual {
+                return Err(Error::new(name.span(), "cannot add event listeners here"));
+            }
+            let name_str = name.to_string();
+            if !is_custom && SYSTEM_EVENTS.iter().position(|s| s == &name_str).is_none() {
+                is_custom = true;
+            }
+            input.parse::<Token![=]>()?;
+            let expr: Expr = input.parse()?;
+            input.parse::<Token![;]>()?;
+            if is_custom {
+                if !is_component {
+                    return Err(Error::new(name.span(), "custom events are not supported on this node"));
+                }
+                props.push(TemplateAttribute::Ev { name, value: TemplateValue::from(expr) });
+            } else {
+                props.push(TemplateAttribute::SystemEv { name, value: TemplateValue::from(expr) });
+            }
+        } else if lookahead.peek(Token![#]) {
+            input.parse::<Token![#]>()?;
+            let name: Ident = input.parse()?;
+            if is_virtual {
+                return Err(Error::new(name.span(), "cannot add attributes here"));
+            }
+            input.parse::<Token![=]>()?;
+            let expr: Expr = input.parse()?;
+            input.parse::<Token![;]>()?;
+            if !is_component {
+                return Err(Error::new(name.span(), "component properties are not supported on this node"));
+            }
+            props.push(TemplateAttribute::Prop { name, value: TemplateValue::from(expr) });
         } else if lookahead.peek(Ident) {
             let name: Ident = input.parse()?;
             if name.to_string() == "slot" {
@@ -46,10 +122,18 @@ fn parse_children(input: ParseStream) -> Result<(Vec<TemplateNode>, Vec<(Ident, 
             } else {
                 let lookahead = input.lookahead1();
                 if lookahead.peek(Token![=]) {
+                    if is_virtual {
+                        return Err(Error::new(name.span(), "cannot add attributes here"));
+                    }
+                    let name_str = name.to_string();
                     input.parse::<Token![=]>()?;
                     let expr: Expr = input.parse()?;
                     input.parse::<Token![;]>()?;
-                    props.push((name, TemplateValue::from(expr)));
+                    if is_component && SYSTEM_ATTRIBUTES.iter().position(|s| s == &name_str).is_none() {
+                        props.push(TemplateAttribute::Prop { name, value: TemplateValue::from(expr) });
+                    } else {
+                        props.push(TemplateAttribute::Common { name: ident_to_dashed_str(name), value: TemplateValue::from(expr) });
+                    }
                 } else if lookahead.peek(token::Brace) {
                     children.push(parse_template_element(name, input)?);
                 } else {
@@ -77,14 +161,14 @@ fn parse_template_slot(input: ParseStream) -> Result<TemplateNode> {
 }
 
 fn parse_template_shadow_root(input: ParseStream) -> Result<TemplateShadowRoot> {
-    let (children, _) = parse_children(input)?;
+    let (children, _) = parse_children(input, false, true)?;
     Ok(TemplateShadowRoot { children })
 }
 
 fn parse_template_if(input: ParseStream) -> Result<TemplateNode> {
     let mut branches = vec![];
     let cond: Expr = input.parse()?;
-    let (children, _) = parse_children(input)?;
+    let (children, _) = parse_children(input, false, true)?;
     branches.push((Some(cond), children));
     loop {
         let lookahead = input.lookahead1();
@@ -94,10 +178,10 @@ fn parse_template_if(input: ParseStream) -> Result<TemplateNode> {
             if lookahead.peek(Token![if]) {
                 input.parse::<Token![if]>()?;
                 let cond: Expr = input.parse()?;
-                let (children, _) = parse_children(input)?;
+                let (children, _) = parse_children(input, false, true)?;
                 branches.push((Some(cond), children));
             } else {
-                let (children, _) = parse_children(input)?;
+                let (children, _) = parse_children(input, false, true)?;
                 branches.push((None, children));
                 break
             }
@@ -132,37 +216,31 @@ fn parse_template_for(input: ParseStream) -> Result<TemplateNode> {
     } else {
         None
     };
-    let (children, _) = parse_children(input)?;
+    let (children, _) = parse_children(input, false, true)?;
     Ok(TemplateNode::VirtualNode(TemplateVirtualNode::For { index, item, list, key, children }))
+}
+
+fn parse_template_in(input: ParseStream) -> Result<TemplateNode> {
+    let name = input.parse()?;
+    let (children, _) = parse_children(input, false, true)?;
+    Ok(TemplateNode::VirtualNode(TemplateVirtualNode::InSlot { name, children }))
 }
 
 fn parse_template_element(name: Ident, input: ParseStream) -> Result<TemplateNode> {
     let name_s = name.to_string();
     let is_component = name_s.chars().next().unwrap().is_uppercase();
-    let lookahead = input.lookahead1();
-    let slot: LitStr = if lookahead.peek(Token![in]) {
-        input.parse()?
-    } else if lookahead.peek(token::Brace) {
-        LitStr::new("", Span::call_site())
-    } else {
-        return Err(lookahead.error());
-    };
-    let (children, props) = parse_children(input)?;
+    let (children, props) = parse_children(input, is_component, false)?;
     if is_component {
         Ok(TemplateNode::Component(TemplateComponent {
             tag_name: LitStr::new(format!("maomi{}", ty_to_string(&name)).as_str(), Span::call_site()),
             component: name,
             property_values: props,
-            slot,
             children,
         }))
     } else {
         Ok(TemplateNode::NativeNode(TemplateNativeNode {
             tag_name: ident_to_dashed_str(name),
-            attributes: props.into_iter().map(|(name, value)| {
-                (ident_to_dashed_str(name), value)
-            }).collect(),
-            slot,
+            attributes: props,
             children,
         }))
     }

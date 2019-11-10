@@ -32,7 +32,7 @@ impl<B: Backend> Context<B> {
         })
     }
     pub fn new_root_component<C: 'static + Component<B>>(&mut self) -> ComponentRc<B, C> {
-        let ret = create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", "".into(), vec![], None).with_type::<C>();
+        let ret = create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         ret
     }
     pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: &ComponentRc<B, C>) {

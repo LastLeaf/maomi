@@ -11,6 +11,7 @@ use super::{Component, ComponentTemplate, ComponentContext, ComponentRef, Compon
 use super::backend::*;
 use super::context::Scheduler;
 use super::escape;
+use super::global_events::GlobalEvents;
 
 fn dfs_shadow_tree<'a, B: Backend, T: ElementRef<'a, B>, F: FnMut(&NodeRc<B>)>(n: &T, children: &Vec<NodeRc<B>>, f: &mut F) {
     for child in children.iter() {
@@ -24,7 +25,7 @@ fn dfs_shadow_tree<'a, B: Backend, T: ElementRef<'a, B>, F: FnMut(&NodeRc<B>)>(n
     }
 }
 
-pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'static + Component<B>>(n: &mut T, scheduler: Rc<Scheduler>, tag_name: &'static str, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> ComponentNodeRc<B> {
+pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'static + Component<B>>(n: &mut T, scheduler: Rc<Scheduler>, tag_name: &'static str, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> ComponentNodeRc<B> {
     let backend = n.backend().clone();
     let shadow_root = VirtualNodeRc {
         c: Rc::new(n.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, "shadow-root", VirtualNodeProperty::ShadowRoot, vec![], owner.clone())))
@@ -32,7 +33,7 @@ pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'stat
     shadow_root.borrow_mut_with(n).initialize(shadow_root.downgrade());
     let backend = n.backend().clone();
     let ret = ComponentNodeRc {
-        c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode::new_with_children(backend, scheduler, tag_name, shadow_root.clone(), slot, children, owner)))
+        c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode::new_with_children(backend, scheduler, tag_name, shadow_root.clone(), children, owner)))
     };
     ret.borrow_mut_with(n).initialize::<C>(ret.downgrade());
     ret
@@ -96,17 +97,6 @@ macro_rules! define_tree_getter {
                 }
             }
         }
-        fn find_backend_parent(&self) -> Option<<<B as Backend>::BackendNode as BackendNode>::BackendElement> {
-            match self.composed_parent() {
-                None => None,
-                Some(composed_parent) => match composed_parent {
-                    NodeRc::NativeNode(x) => Some(x.borrow_with(self).backend_element.ref_clone()),
-                    NodeRc::VirtualNode(x) => x.borrow_with(self).find_backend_parent(),
-                    NodeRc::ComponentNode(x) => Some(x.borrow_with(self).backend_element.ref_clone()),
-                    _ => unreachable!()
-                }
-            }
-        }
     };
     (ref mut) => {
         pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
@@ -123,19 +113,31 @@ pub struct NativeNode<B: Backend> {
     pub(crate) tag_name: &'static str,
     pub(crate) attributes: Vec<(&'static str, String)>,
     pub(crate) children: Vec<NodeRc<B>>,
-    pub(crate) slot: String, // TODO handling slot change
     pub(crate) owner: Option<ComponentNodeWeak<B>>,
     pub(crate) parent: Option<NodeWeak<B>>,
     pub(crate) composed_parent: Option<NodeWeak<B>>,
+    pub(crate) global_events: GlobalEvents<B>,
 }
 impl<B: Backend> NativeNode<B> {
     define_tree_getter!(node);
     pub fn composed_children(&self) -> Vec<NodeRc<B>> {
         self.children.clone()
     }
-    pub(crate) fn new_with_children(backend: Rc<B>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    pub(crate) fn new_with_children(backend: Rc<B>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
-        NativeNode { backend, backend_element, attached: false, self_weak: None, tag_name, attributes, slot, children, owner, parent: None, composed_parent: None }
+        NativeNode {
+            backend,
+            backend_element,
+            attached: false,
+            self_weak: None,
+            tag_name,
+            attributes,
+            children,
+            owner,
+            parent: None,
+            composed_parent: None,
+            global_events: GlobalEvents::new(),
+        }
     }
     pub fn tag_name(&self) -> &str {
         &self.tag_name
@@ -154,6 +156,12 @@ impl<B: Backend> NativeNode<B> {
             None => { }
         }
         self.attributes.push((name, value))
+    }
+    pub fn global_events(&self) -> &GlobalEvents<B> {
+        &self.global_events
+    }
+    pub fn global_events_mut(&mut self) -> &mut GlobalEvents<B> {
+        &mut self.global_events
     }
 }
 impl<'a, B: Backend> NativeNodeRef<'a, B> {
@@ -246,6 +254,7 @@ pub enum VirtualNodeProperty<B: Backend> {
     None,
     ShadowRoot,
     Slot(&'static str, Vec<NodeRc<B>>),
+    InSlot(&'static str),
     Branch(usize),
     List(Box<dyn Any>),
 }
@@ -256,7 +265,7 @@ pub struct VirtualNode<B: Backend> {
     pub(crate) self_weak: Option<VirtualNodeWeak<B>>,
     pub(crate) tag_name: &'static str,
     pub(crate) property: VirtualNodeProperty<B>,
-    pub(crate) children: Vec<NodeRc<B>>, // for slot node, children means the children
+    pub(crate) children: Vec<NodeRc<B>>, // for slot node, children is always empty
     pub(crate) owner: Option<ComponentNodeWeak<B>>,
     pub(crate) parent: Option<NodeWeak<B>>,
     pub(crate) composed_parent: Option<NodeWeak<B>>,
@@ -278,7 +287,17 @@ impl<B: Backend> VirtualNode<B> {
                 panic!("Slot cannot contain any child")
             }
         }
-        VirtualNode { backend, attached: false, self_weak: None, tag_name, property, children, owner, parent: None, composed_parent: None }
+        VirtualNode {
+            backend,
+            attached: false,
+            self_weak: None,
+            tag_name,
+            property,
+            children,
+            owner,
+            parent: None,
+            composed_parent: None,
+        }
     }
     pub fn tag_name(&self) -> &str {
         &self.tag_name
@@ -297,23 +316,15 @@ impl<'a, B: Backend> VirtualNodeRef<'a, B> {
             child.borrow_with(self).collect_backend_nodes(v);
         }
     }
-    fn find_non_virtual_ancestor<'b>(&'b self) -> Option<NodeRc<B>> {
-        match self.parent() {
-            Some(parent) => {
-                match parent {
-                    NodeRc::NativeNode(_) => {
-                        Some(parent)
-                    },
-                    NodeRc::VirtualNode(n) => {
-                        n.borrow_with(self).find_non_virtual_ancestor()
-                    },
-                    NodeRc::ComponentNode(_) => {
-                        Some(parent)
-                    },
-                    _ => unreachable!()
-                }
-            },
-            None => None
+    fn find_backend_parent(&self) -> Option<<<B as Backend>::BackendNode as BackendNode>::BackendElement> {
+        match self.composed_parent() {
+            None => None,
+            Some(composed_parent) => match composed_parent {
+                NodeRc::NativeNode(x) => Some(x.borrow_with(self).backend_element.ref_clone()),
+                NodeRc::VirtualNode(x) => x.borrow_with(self).find_backend_parent(),
+                NodeRc::ComponentNode(x) => Some(x.borrow_with(self).backend_element.ref_clone()),
+                _ => unreachable!()
+            }
         }
     }
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
@@ -390,45 +401,20 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
         }
         {
             let self_ref = self.to_ref();
-            if let Some(p) = self_ref.find_non_virtual_ancestor() {
+            if let Some(p) = self_ref.find_backend_parent() {
                 // remove old backend children
                 let mut backend_children = vec![];
                 for n in list.iter() {
                     n.borrow_with(&self_ref).collect_backend_nodes(&mut backend_children);
                 }
-                for n in backend_children {
-                    n.remove_self();
-                }
+                p.remove_list(backend_children);
                 // insert new backend children
-                match p {
-                    NodeRc::NativeNode(n) => {
-                        let mut backend_children = vec![];
-                        for n in self.children.iter() {
-                            n.borrow_with(&self_ref).collect_backend_nodes(&mut backend_children);
-                        }
-                        let before = self_ref.find_next_backend_sibling(false);
-                        n.borrow_with(&self_ref).backend_element.insert_list_before(backend_children, before);
-                    },
-                    NodeRc::ComponentNode(n) => {
-                        // TODO
-                        // let slots: HashMap<_, (&VirtualNodeRc<B>, Vec<B::BackendNode>)> = n.borrow_with(&self_ref).slots.iter().map(|(k, v)| (k, (v, vec![]))).collect();
-                        // for n in self.children.iter() {
-                        //     n.borrow_with(&self_ref).collect_backend_nodes_with_slots(&mut slots);
-                        // }
-                        // let self_ref = self.to_ref();
-                        // for (slot, children) in slots.values() {
-                        //     let slot = slot.borrow_with(&self_ref);
-                        //     match slot.find_backend_parent() {
-                        //         Some(parent) => {
-                        //             let before = slot.find_next_backend_sibling(false);
-                        //             parent.insert_list_before(backend_children, before);
-                        //         },
-                        //         None => { }
-                        //     }
-                        // }
-                    },
-                    _ => unreachable!()
+                let mut backend_children = vec![];
+                for n in self.children.iter() {
+                    n.borrow_with(&self_ref).collect_backend_nodes(&mut backend_children);
                 }
+                let before = self_ref.find_next_backend_sibling(false);
+                p.insert_list_before(backend_children, before);
             }
         }
         // call detached and attached
@@ -454,14 +440,14 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
         // remove in backend
         {
             let self_ref = self.to_ref();
-            let mut backend_children = vec![];
-            for (i, n) in removed.iter().enumerate() {
-                if !reusable[i] {
-                    n.borrow_with(&self_ref).collect_backend_nodes(&mut backend_children);
+            if let Some(p) = self_ref.find_backend_parent() {
+                let mut backend_children = vec![];
+                for (i, n) in removed.iter().enumerate() {
+                    if !reusable[i] {
+                        n.borrow_with(&self_ref).collect_backend_nodes(&mut backend_children);
+                    }
                 }
-            }
-            for n in backend_children {
-                n.remove_self();
+                p.remove_list(backend_children);
             }
         }
         // call detached if it really needs to be detached
@@ -481,7 +467,6 @@ impl<'a, B: Backend> VirtualNodeRefMut<'a, B> {
         }
         {
             // insert in backend
-            // TODO handling slot inherit
             let self_ref = self.to_ref();
             if let Some(b) = self_ref.find_backend_parent() {
                 let mut backend_children = vec![];
@@ -553,11 +538,11 @@ pub struct ComponentNode<B: Backend> {
     pub(crate) self_weak: Option<ComponentNodeWeak<B>>,
     pub(crate) shadow_root: VirtualNodeRc<B>,
     pub(crate) children: Vec<NodeRc<B>>,
-    pub(crate) slot: String,
     pub(crate) slots: HashMap<&'static str, VirtualNodeRc<B>>,
     pub(crate) owner: Option<ComponentNodeWeak<B>>,
     pub(crate) parent: Option<NodeWeak<B>>,
     pub(crate) composed_parent: Option<NodeWeak<B>>,
+    pub(crate) global_events: GlobalEvents<B>,
 }
 impl<B: 'static + Backend> ComponentNodeRc<B> {
     pub fn with_type<C: Component<B>>(self) -> ComponentRc<B, C> {
@@ -577,11 +562,28 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     fn collect_backend_nodes<'b>(&'b self, v: &'b mut Vec<<B as Backend>::BackendNode>) {
         v.push(self.backend_element.ref_clone().into_node());
     }
-    fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, shadow_root: VirtualNodeRc<B>, slot: String, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, shadow_root: VirtualNodeRc<B>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
         let need_update = Rc::new(Cell::new(false));
         let component = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        ComponentNode { backend, backend_element, need_update, scheduler: scheduler, tag_name, attributes: vec![], component, attached: false, self_weak: None, shadow_root, slot, children, slots: HashMap::new(), owner, parent: None, composed_parent: None }
+        ComponentNode {
+            backend,
+            backend_element,
+            need_update,
+            scheduler,
+            tag_name,
+            attributes: vec![],
+            component,
+            attached: false,
+            self_weak: None,
+            shadow_root,
+            children,
+            slots: HashMap::new(),
+            owner,
+            parent: None,
+            composed_parent: None,
+            global_events: GlobalEvents::new(),
+        }
     }
     pub fn get_attribute(&self, name: &'static str) -> Option<&str> {
         self.attributes.iter().find(|x| x.0 == name).map(|x| x.1.as_str())
@@ -614,6 +616,12 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     pub fn try_as_component_mut<C: 'static + Component<B>>(&mut self) -> Option<&mut C> {
         let c: &mut dyn Any = &mut self.component;
         c.downcast_mut()
+    }
+    pub fn global_events(&self) -> &GlobalEvents<B> {
+        &self.global_events
+    }
+    pub fn global_events_mut(&mut self) -> &mut GlobalEvents<B> {
+        &mut self.global_events
     }
 }
 impl<'a, B: Backend> ComponentNodeRef<'a, B> {
@@ -668,11 +676,11 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         <C as ComponentTemplate<B>>::template(self, true);
         self.update_node();
     }
-    pub fn new_native_node(&mut self, tag_name: &'static str, attributes: Vec<(&'static str, String)>, slot: String, children: Vec<NodeRc<B>>) -> NativeNodeRc<B> {
+    pub fn new_native_node(&mut self, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>) -> NativeNodeRc<B> {
         let backend = self.backend().clone();
         let owner = self.self_weak.clone();
         let n = NativeNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(NativeNode::new_with_children(backend, tag_name, attributes, slot, children, owner)))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(NativeNode::new_with_children(backend, tag_name, attributes, children, owner)))
         };
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
@@ -686,8 +694,8 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
     }
-    pub fn new_component_node<C: 'static + Component<B>>(&mut self, tag_name: &'static str, slot: String, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
-        create_component::<_, _, C>(self, self.scheduler.clone(), tag_name, slot, children, self.self_weak.clone())
+    pub fn new_component_node<C: 'static + Component<B>>(&mut self, tag_name: &'static str, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
+        create_component::<_, _, C>(self, self.scheduler.clone(), tag_name, children, self.self_weak.clone())
     }
     pub fn new_text_node<T: ToString>(&mut self, text_content: T) -> TextNodeRc<B> {
         let backend = self.backend().clone();
@@ -698,59 +706,86 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
     }
-    fn reassign_slots(&mut self) {
-        let mut slots: HashMap<&'static str, Vec<NodeRc<B>>> = self.slots.keys().map(|name| {
-            (*name, vec![])
-        }).collect();
-        macro_rules! collect_into_slots_def {
-            ($r: ident, $n: ident) => {
-                fn $n<B: Backend>(s: &$r<B>, slots: &mut HashMap<&'static str, Vec<NodeRc<B>>>) {
-                    for child in s.children.iter() {
-                        let slot = match child.borrow_with(s) {
-                            NodeRef::NativeNode(x) => slots.get_mut(x.slot.as_str()),
-                            NodeRef::VirtualNode(_) => slots.get_mut(""),
-                            NodeRef::ComponentNode(x) => slots.get_mut(x.slot.as_str()),
-                            NodeRef::TextNode(_) => slots.get_mut(""),
-                        };
-                        match slot {
-                            None => { },
-                            Some(slot) => {
-                                slot.push(child.clone());
-                            },
+    fn reassign_slots(&mut self, new_slots: HashMap<&'static str, VirtualNodeRc<B>>) {
+        let main_slot_changed = self.slots.get("") != new_slots.get("");
+        // clear composed children for slots
+        for (name, slot) in new_slots.iter() {
+            if *name == "" && !main_slot_changed {
+                continue
+            }
+            let mut slot = slot.borrow_mut_with(self);
+            if let VirtualNodeProperty::Slot(_, c) = &mut slot.property {
+                c.truncate(0);
+            } else {
+                unreachable!()
+            }
+        }
+        let mut old_slots = new_slots.clone();
+        std::mem::swap(&mut self.slots, &mut old_slots);
+        for (name, slot) in old_slots.iter() {
+            if *name == "" && !main_slot_changed {
+                continue
+            }
+            let mut slot = slot.borrow_mut_with(self);
+            if let VirtualNodeProperty::Slot(_, c) = &mut slot.property {
+                c.truncate(0);
+            } else {
+                unreachable!()
+            }
+        }
+        // re-insert children
+        for child in self.children.clone() {
+            let child_node_rc = child.clone();
+            let put_child_in_slot = |name, mut child: NodeRefMut<_>| {
+                match new_slots.get(name) {
+                    Some(slot) => {
+                        let slot_weak = slot.borrow_with(&child.to_ref()).self_weak.clone().map(|x| x.into());
+                        child.set_composed_parent(slot_weak);
+                        let mut nodes = vec![];
+                        child.to_ref().collect_backend_nodes(&mut nodes);
+                        let mut slot = slot.borrow_mut_with(&mut child);
+                        if let VirtualNodeProperty::Slot(_, c) = &mut slot.property {
+                            c.push(child_node_rc);
+                        } else {
+                            unreachable!()
                         }
-                        if let NodeRef::VirtualNode(x) = child.borrow_with(s) {
-                            collect_into_slots_virtual(&x, slots);
+                        let slot = slot.to_ref();
+                        let before = slot.find_next_backend_sibling(false);
+                        match slot.find_backend_parent() {
+                            Some(parent) => parent.insert_list_before(nodes, before),
+                            None => {
+                                for n in nodes {
+                                    n.remove_self();
+                                }
+                            }
+                        }
+                    },
+                    None => {
+                        child.set_composed_parent(None);
+                        let mut nodes = vec![];
+                        child.to_ref().collect_backend_nodes(&mut nodes);
+                        for n in nodes {
+                            n.remove_self();
                         }
                     }
                 }
-            }
-        }
-        collect_into_slots_def!(ComponentNodeRef, collect_into_slots);
-        collect_into_slots_def!(VirtualNodeRef, collect_into_slots_virtual);
-        collect_into_slots(&self.to_ref().into(), &mut slots);
-        for (name, mut list) in slots {
-            let slot_node = self.slots[name].clone();
-            let self_weak = slot_node.borrow_with(&self.to_ref()).self_weak.clone().map(|x| x.into());
-            for child in list.iter() {
-                child.borrow_mut_with(self).set_composed_parent(self_weak.clone());
-            }
-            let mut slot_node = slot_node.borrow_mut_with(self);
-            let before = slot_node.to_ref().find_next_backend_sibling(false);
-            match &mut slot_node.property {
-                VirtualNodeProperty::Slot(_, children) => {
-                    std::mem::swap(children, &mut list);
-                },
-                _ => unreachable!()
-            }
-            let slot_node_ref = slot_node.to_ref();
-            match slot_node_ref.find_backend_parent() {
-                None => { },
-                Some(x) => {
-                    let mut n = vec![];
-                    slot_node_ref.collect_backend_nodes(&mut n);
-                    x.insert_list_before(n, before);
+            };
+            if let NodeRc::VirtualNode(child) = &child {
+                let child = child.borrow_mut_with(self);
+                if let VirtualNodeProperty::InSlot(p) = child.property {
+                    if p != "" {
+                        // insert children in common slot
+                        put_child_in_slot(p, child.into());
+                        continue;
+                    }
                 }
             }
+            if !main_slot_changed {
+                continue;
+            }
+            // insert children in main slot
+            let child = child.borrow_mut_with(self);
+            put_child_in_slot("", child);
         }
     }
     fn check_slots_update(&mut self) {
@@ -769,8 +804,7 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         if self.slots == slots {
             return
         }
-        std::mem::swap(&mut self.slots, &mut slots);
-        self.reassign_slots();
+        self.reassign_slots(slots);
     }
     fn initialize<C: 'static + Component<B>>(&mut self, self_weak: ComponentNodeWeak<B>) {
         // create component
@@ -1028,6 +1062,14 @@ impl<'a, B: Backend> NodeRef<'a, B> {
             Self::TextNode(x) => x.collect_backend_nodes(v),
         }
     }
+    pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
+        match self {
+            Self::NativeNode(x) => x.owner(),
+            Self::VirtualNode(x) => x.owner(),
+            Self::ComponentNode(x) => x.owner(),
+            Self::TextNode(x) => x.owner(),
+        }
+    }
     pub fn composed_children(&self) -> Vec<NodeRc<B>> {
         match self {
             Self::NativeNode(x) => x.composed_children(),
@@ -1091,6 +1133,14 @@ impl<'a, B: Backend> fmt::Debug for NodeRef<'a, B> {
     }
 }
 impl<'a, B: Backend> NodeRefMut<'a, B> {
+    pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
+        match self {
+            Self::NativeNode(x) => x.owner(),
+            Self::VirtualNode(x) => x.owner(),
+            Self::ComponentNode(x) => x.owner(),
+            Self::TextNode(x) => x.owner(),
+        }
+    }
     fn set_parent(&mut self, p: Option<NodeWeak<B>>) {
         match self {
             NodeRefMut::NativeNode(x) => x.set_parent(p),

@@ -33,16 +33,34 @@ impl From<Expr> for TemplateValue {
 }
 
 #[derive(Clone)]
+pub(crate) enum Attribute {
+    Common { name: LitStr, value: TemplateValue },
+    Prop { name: Ident, value: TemplateValue },
+    SystemEv { name: Ident, value: TemplateValue },
+    Ev { name: Ident, value: TemplateValue },
+}
+impl Attribute {
+    fn is_dynamic(&self) -> bool {
+        match self {
+            Attribute::Common { value, .. } => value.is_dynamic,
+            Attribute::Prop { value, .. } => value.is_dynamic,
+            Attribute::SystemEv { value, .. } => value.is_dynamic,
+            Attribute::Ev { value, .. } => value.is_dynamic,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct TemplateNativeNode {
     pub(crate) tag_name: LitStr,
-    pub(crate) attributes: Vec<(LitStr, TemplateValue)>,
-    pub(crate) slot: LitStr,
+    pub(crate) attributes: Vec<Attribute>,
     pub(crate) children: Vec<TemplateNode>
 }
 
 #[derive(Clone)]
 pub(crate) enum TemplateVirtualNode {
     Slot { name: Option<LitStr> },
+    InSlot { name: LitStr, children: Vec<TemplateNode> },
     If { branches: Vec<(Option<Expr>, Vec<TemplateNode>)> },
     For { list: Expr, index: Ident, item: Ident, key: Option<(Ident, Path)>, children: Vec<TemplateNode> },
 }
@@ -51,8 +69,7 @@ pub(crate) enum TemplateVirtualNode {
 pub(crate) struct TemplateComponent {
     pub(crate) tag_name: LitStr,
     pub(crate) component: Ident,
-    pub(crate) property_values: Vec<(Ident, TemplateValue)>,
-    pub(crate) slot: LitStr,
+    pub(crate) property_values: Vec<Attribute>,
     pub(crate) children: Vec<TemplateNode>
 }
 
@@ -69,13 +86,23 @@ impl ToTokens for TemplateNode {
 
             TemplateNode::NativeNode(x) => {
                 // native node logic
-                let TemplateNativeNode { tag_name, attributes, slot, children } = x;
+                let TemplateNativeNode { tag_name, attributes, children } = x;
                 let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                let update_attributes: Vec<TokenStream2> = attributes.iter().map(|(name, value)| {
-                    let content = quote! {
-                        node.set_attribute(#name, #value);
+                let update_attributes: Vec<TokenStream2> = attributes.iter().map(|attribute| {
+                    let content = match attribute {
+                        Attribute::Common { name, value } => quote! {
+                            node.set_attribute(#name, #value)
+                        },
+                        Attribute::SystemEv { name, value } => quote! {
+                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                                (#value)(self_ref_mut.with_type::<Self>(), e)
+                            }));
+                        },
+                        _ => {
+                            unreachable!()
+                        },
                     };
-                    if value.is_dynamic {
+                    if attribute.is_dynamic() {
                         quote! { #content }
                     } else {
                         quote! { if is_init { #content } }
@@ -91,7 +118,7 @@ impl ToTokens for TemplateNode {
                         ),*];
                         let is_init = __node_rc.is_none();
                         let node_rc = match __node_rc {
-                            None => __owner.new_native_node(#tag_name, vec![], (#slot).into(), ret_children),
+                            None => __owner.new_native_node(#tag_name, vec![], ret_children),
                             Some(node_rc) => node_rc.clone(),
                         };
                         {
@@ -117,6 +144,29 @@ impl ToTokens for TemplateNode {
                                 match __update_to {
                                     None => {
                                         __owner.new_virtual_node("slot", VirtualNodeProperty::Slot(#slot_name, vec![]), vec![]).into()
+                                    },
+                                    Some(node_rc) => {
+                                        node_rc.clone()
+                                    },
+                                }
+                            }
+                        }
+                    },
+
+                    TemplateVirtualNode::InSlot { name, children } => {
+                        // in-slot node logic
+                        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
+                        quote! {
+                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                                match __update_to {
+                                    None => {
+                                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
+                                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
+                                        let __children = __node.as_ref().map(|node| { node.children() });
+                                        let ret_children: Vec<NodeRc<_>> = vec![#(
+                                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
+                                        ),*];
+                                        __owner.new_virtual_node("in", VirtualNodeProperty::InSlot(#name, ret_children), vec![]).into()
                                     },
                                     Some(node_rc) => {
                                         node_rc.clone()
@@ -277,23 +327,28 @@ impl ToTokens for TemplateNode {
             },
 
             TemplateNode::Component(x) => {
-                let TemplateComponent { tag_name, component, property_values, slot, children } = x;
+                let TemplateComponent { tag_name, component, property_values, children } = x;
                 let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                let property_apply: Vec<TokenStream2> = property_values.iter().map(|(name, value)| {
-                    let s = name.to_string();
-                    let content = match s.as_str() {
-                        "class" | "style" | "id" => {
-                            quote! {
-                                node.as_node().set_attribute(#s, #value);
-                            }
+                let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
+                    let content = match attribute {
+                        Attribute::Common { name, value } => quote! {
+                            node.as_node().set_attribute(#name, #value);
                         },
-                        _ => {
-                            quote! {
-                                if Property::update_from(&mut node.#name, #value) { changed = true };
-                            }
-                        }
+                        Attribute::Prop { name, value } => quote! {
+                            if Property::update_from(&mut node.#name, #value) { changed = true };
+                        },
+                        Attribute::SystemEv { name, value } => quote! {
+                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                                (#value)(self_ref_mut.with_type::<Self>(), e)
+                            }));
+                        },
+                        Attribute::Ev { name, value } => quote! {
+                            node.#name.set_handler(Box::new(|self_ref_mut, e| {
+                                (#value)(self_ref_mut.with_type::<Self>(), e)
+                            }));
+                        },
                     };
-                    if value.is_dynamic {
+                    if attribute.is_dynamic() {
                         quote! { #content }
                     } else {
                         quote! { if is_init { #content } }
@@ -309,7 +364,7 @@ impl ToTokens for TemplateNode {
                         ),*];
                         let is_init = __node_rc.is_none();
                         let node_rc = match __node_rc {
-                            None => __owner.new_component_node::<#component>(#tag_name, (#slot).into(), ret_children),
+                            None => __owner.new_component_node::<#component>(#tag_name, ret_children),
                             Some(node_rc) => node_rc.clone(),
                         };
                         {

@@ -12,6 +12,7 @@ pub use event::{Event, Ev};
 pub mod node;
 pub mod context;
 pub use context::{Context};
+#[macro_use] pub mod global_events;
 pub mod backend;
 pub mod virtual_key;
 mod escape;
