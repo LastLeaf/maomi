@@ -3,47 +3,55 @@ pub use empty::Empty;
 mod dom;
 pub use dom::Dom;
 
-pub trait BackendNode: Sized {
-    type BackendElement: BackendElement<BackendNode = Self>;
-    type BackendTextNode: BackendTextNode<BackendNode = Self>;
-    type BackendComment: BackendComment<BackendNode = Self>;
-    fn is_element(&self) -> bool;
-    fn is_text_node(&self) -> bool;
-    fn is_comment(&self) -> bool;
-    fn element_ref(&self) -> &Self::BackendElement;
-    fn text_node_ref(&self) -> &Self::BackendTextNode;
-    fn comment_ref(&self) -> &Self::BackendComment;
-    fn ref_clone(&self) -> Self;
-    fn remove_self(&self);
+use crate::node::NodeWeak;
+
+#[derive(Clone)]
+pub enum BackendNodeRef<'a, B: Backend> {
+    Element(&'a B::BackendElement),
+    TextNode(&'a B::BackendTextNode),
+}
+impl<'a, B: Backend> BackendNodeRef<'a, B> {
+    pub(crate) fn remove_self(&self) {
+        match self {
+            Self::Element(x) => x.remove_self(),
+            Self::TextNode(x) => x.remove_self(),
+        }
+    }
+}
+
+pub enum BackendNode<B: Backend> {
+    Element(B::BackendElement),
+    TextNode(B::BackendTextNode),
+}
+impl<B: Backend> BackendNode<B> {
+    pub(crate) fn remove_self(&self) {
+        match self {
+            Self::Element(x) => x.remove_self(),
+            Self::TextNode(x) => x.remove_self(),
+        }
+    }
 }
 
 pub trait BackendTextNode {
-    type BackendNode: BackendNode;
-    fn into_node(self) -> Self::BackendNode;
-    fn ref_clone(&self) -> Self;
+    type Backend: Backend;
     fn set_text_content(&self, text_content: &str);
+    fn remove_self(&self);
 }
 
 pub trait BackendElement {
-    type BackendNode: BackendNode;
-    fn into_node(self) -> Self::BackendNode;
-    fn ref_clone(&self) -> Self;
-    fn append_list(&self, children: Vec<Self::BackendNode>);
-    fn insert_list_before(&self, children: Vec<Self::BackendNode>, before: Option<Self::BackendNode>);
-    fn remove_list(&self, children: Vec<Self::BackendNode>);
+    type Backend: Backend;
+    fn bind_node_weak(&mut self, node_weak: NodeWeak<Self::Backend>);
+    fn append_list(&self, children: Vec<BackendNodeRef<Self::Backend>>);
+    fn insert_list_before<'a>(&'a self, children: Vec<BackendNodeRef<Self::Backend>>, before: Option<BackendNodeRef<'a, Self::Backend>>);
+    fn remove_list(&self, children: Vec<BackendNodeRef<Self::Backend>>);
+    fn remove_self(&self);
     fn set_attribute(&self, name: &'static str, value: &str);
 }
 
-pub trait BackendComment {
-    type BackendNode: BackendNode;
-    fn into_node(self) -> Self::BackendNode;
-    fn ref_clone(&self) -> Self;
-}
-
-pub trait Backend: 'static {
-    type BackendNode: BackendNode;
-    fn set_root_node(&self, root_node: &<<Self as Backend>::BackendNode as BackendNode>::BackendElement);
-    fn create_element(&self, tag_name: &'static str) -> <<Self as Backend>::BackendNode as BackendNode>::BackendElement;
-    fn create_text_node(&self, text_content: &str) -> <<Self as Backend>::BackendNode as BackendNode>::BackendTextNode;
-    fn create_comment(&self) -> <<Self as Backend>::BackendNode as BackendNode>::BackendComment;
+pub trait Backend: 'static + Sized {
+    type BackendElement: BackendElement<Backend = Self>;
+    type BackendTextNode: BackendTextNode<Backend = Self>;
+    fn set_root_node(&self, root_node: &Self::BackendElement);
+    fn create_element(&self, tag_name: &'static str) -> Self::BackendElement;
+    fn create_text_node(&self, text_content: &str) -> Self::BackendTextNode;
 }

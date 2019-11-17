@@ -20,7 +20,7 @@ downcast-rs = "1.1"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Document", "HtmlElement", "Node", "NodeList", "Element", "Text", "Comment", "DocumentFragment", "EventTarget", "Event"]
+features = ["Window", "Document", "HtmlElement", "Node", "NodeList", "Element", "Text", "Comment", "DocumentFragment", "EventListener", "EventTarget", "Event", "MouseEvent", "TouchEvent", "TouchList", "Touch", "KeyboardEvent"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2"

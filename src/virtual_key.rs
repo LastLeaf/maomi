@@ -30,11 +30,11 @@ impl<T: PartialEq> VirtualKeyList<T> {
         let mut inserts: Vec<Range<usize>> = vec![];
         let mut remove_and_insert = |old_i, old_i_end, new_i, new_i_end| {
             if old_i < old_i_end {
-                let reusable: Box<[bool]> = (old_i..old_len).map(|_| false).collect();
+                let reusable: Box<[bool]> = (old_i..old_i_end).map(|_| false).collect();
                 removes.push((old_i, reusable));
             }
             if new_i < new_i_end {
-                inserts.push(new_i..new_len);
+                inserts.push(new_i..new_i_end);
             }
         };
         // find a long common sub sequence

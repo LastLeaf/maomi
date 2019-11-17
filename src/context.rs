@@ -35,7 +35,7 @@ impl<B: Backend> Context<B> {
         let ret = create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         ret
     }
-    pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: &ComponentRc<B, C>) {
+    pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: ComponentRc<B, C>) {
         if let Some(old_root) = self.root.take() {
             old_root.borrow_mut().set_detached();
         }

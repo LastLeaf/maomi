@@ -138,7 +138,7 @@ impl<'a, B: Backend, C: Component<B>> ComponentRef<'a, B, C> {
     pub fn as_node(&self) -> &ComponentNodeRef<'a, B> {
         &self.n
     }
-    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
+    pub fn backend_element(&self) -> &B::BackendElement {
         self.n.backend_element()
     }
     pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
@@ -190,7 +190,7 @@ impl<'a, B: Backend, C: Component<B>> ComponentRefMut<'a, B, C> {
     pub fn to_ref<'b>(&'b self) -> ComponentRef<'b, B, C> where 'a: 'b {
         self.n.to_ref().into()
     }
-    pub fn backend_element(&self) -> &<<B as Backend>::BackendNode as BackendNode>::BackendElement {
+    pub fn backend_element(&self) -> &B::BackendElement {
         self.n.backend_element()
     }
     pub fn owner(&self) -> Option<ComponentNodeRc<B>> {

@@ -1,24 +1,29 @@
-use super::{backend::Backend, event::SystemEv};
+use super::{backend::*, event::SystemEv};
 
-#[derive(Default)]
-pub struct ViewportPosition {
-    pub x: f32,
-    pub y: f32,
+#[derive(Default, Clone, PartialEq, Debug)]
+pub struct CommonEvent { }
+
+#[derive(Default, Clone, PartialEq, Debug)]
+pub struct ViewportPosition<T: Clone> {
+    pub x: T,
+    pub y: T,
 }
 
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MouseButton {
     Primary,
     Secondary,
     Auxiliary,
+    Other,
 }
 
 impl Default for MouseButton {
     fn default() -> Self {
-        Self::Primary
+        Self::Other
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct DecorationKeys {
     pub alt: bool,
     pub ctrl: bool,
@@ -26,35 +31,35 @@ pub struct DecorationKeys {
     pub shift: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct MouseEvent {
-    pub pos: ViewportPosition,
+    pub pos: ViewportPosition<i32>,
     pub button: MouseButton,
     pub decoration_keys: DecorationKeys,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct Touch {
-    pub id: usize,
-    pub pos: ViewportPosition,
+    pub id: i32,
+    pub pos: ViewportPosition<i32>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct TouchEvent {
     pub touches: Vec<Touch>,
     pub changed_touches: Vec<Touch>,
     pub decoration_keys: DecorationKeys,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct TapEvent {
-    pub pos: ViewportPosition,
+    pub pos: ViewportPosition<i32>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct KeyboardEvent {
-    pub key_code: usize,
-    pub char_code: char,
+    pub key_code: u32,
+    pub char_code: u32,
     pub key: String,
 }
 
@@ -74,12 +79,12 @@ pub struct GlobalEvents<B: Backend> {
     pub key_down: SystemEv<B, KeyboardEvent>,
     pub key_press: SystemEv<B, KeyboardEvent>,
     pub key_up: SystemEv<B, KeyboardEvent>,
-    pub change: SystemEv<B, ()>,
-    pub submit: SystemEv<B, ()>,
-    pub animation_start: SystemEv<B, ()>,
-    pub animation_iteration: SystemEv<B, ()>,
-    pub animation_end: SystemEv<B, ()>,
-    pub transition_end: SystemEv<B, ()>,
+    pub change: SystemEv<B, CommonEvent>,
+    pub submit: SystemEv<B, CommonEvent>,
+    pub animation_start: SystemEv<B, CommonEvent>,
+    pub animation_iteration: SystemEv<B, CommonEvent>,
+    pub animation_end: SystemEv<B, CommonEvent>,
+    pub transition_end: SystemEv<B, CommonEvent>,
 }
 
 impl<B: Backend> GlobalEvents<B> {
@@ -110,37 +115,70 @@ impl<B: Backend> GlobalEvents<B> {
 }
 
 #[macro_export]
-macro_rules! trigger_global_events {
+macro_rules! trigger_global_event {
     ($node_ref_mut: expr, $event_name: ident, $data: expr) => {
         let node_ref_mut: $crate::node::NodeRefMut<_> = $node_ref_mut;
         let data = $data;
-        match node_ref_mut {
+        let e = match &node_ref_mut {
             $crate::node::NodeRefMut::NativeNode(n) => {
-                n.global_events.$event_name.new_event().trigger(node_ref_mut, data);
+                Some(n.global_events.$event_name.new_event())
             },
-            $crate::node::NodeRefMut::VirtualNode(n) => {
-                // empty
+            $crate::node::NodeRefMut::VirtualNode(_) => {
+                None
             },
             $crate::node::NodeRefMut::ComponentNode(n) => {
-                n.global_events.$event_name.new_event().trigger(node_ref_mut, data);
+                Some(n.global_events.$event_name.new_event())
             },
-            $crate::node::NodeRefMut::TextNode(n) => {
-                // empty
+            $crate::node::NodeRefMut::TextNode(_) => {
+                None
             },
+        };
+        if let Some(e) = e {
+            e.trigger(node_ref_mut, data);
         }
     }
 }
 
 #[macro_export]
-macro_rules! bubble_global_events {
+macro_rules! bubble_global_event {
     ($node_ref_mut: expr, $event_name: ident, $data: expr) => {
-        // TODO
+        let mut node_ref_mut: $crate::node::NodeRefMut<_> = $node_ref_mut;
+        let data = $data;
+        {
+            trigger_global_events!(node_ref_mut.duplicate(), $event_name, data);
+        }
+        let mut parent = node_ref_mut.to_ref().parent();
+        loop {
+            match parent.clone() {
+                Some(p) => {
+                    let node_ref_mut = p.borrow_mut_with(&mut node_ref_mut);
+                    parent = node_ref_mut.to_ref().parent();
+                    trigger_global_event!(node_ref_mut, $event_name, data);
+                },
+                None => break
+            }
+        }
     }
 }
 
 #[macro_export]
-macro_rules! bubble_composed_global_events {
+macro_rules! bubble_composed_global_event {
     ($node_ref_mut: expr, $event_name: ident, $data: expr) => {
-        // TODO
+        let mut node_ref_mut: $crate::node::NodeRefMut<_> = $node_ref_mut;
+        let data = $data;
+        {
+            trigger_global_event!(node_ref_mut.duplicate(), $event_name, data);
+        }
+        let mut parent = node_ref_mut.to_ref().composed_parent();
+        loop {
+            match parent.clone() {
+                Some(p) => {
+                    let node_ref_mut = p.borrow_mut_with(&mut node_ref_mut);
+                    parent = node_ref_mut.to_ref().composed_parent();
+                    trigger_global_event!(node_ref_mut, $event_name, data);
+                },
+                None => break
+            }
+        }
     }
 }
