@@ -22,7 +22,8 @@ impl<B: Backend> Component<B> for HelloWorld {
 fn create_new_component() {
     let mut context = Context::new(maomi::backend::Empty::new());
     let root_component = context.new_root_component::<HelloWorld>();
-    context.set_root_component(&root_component);
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<HelloWorld>().unwrap();
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
@@ -70,7 +71,8 @@ impl<B: Backend> Component<B> for ParentComponent<B> {
 fn parent_component() {
     let mut context = Context::new(maomi::backend::Empty::new());
     let root_component = context.new_root_component::<ParentComponent<_>>();
-    context.set_root_component(&root_component);
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<ParentComponent<_>>().unwrap();
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
@@ -114,7 +116,8 @@ impl<D: Backend> Component<D> for TemplateIf<D> {
 fn template_if() {
     let mut context = Context::new(maomi::backend::Empty::new());
     let root_component = context.new_root_component::<TemplateIf<_>>();
-    context.set_root_component(&root_component);
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<TemplateIf<_>>().unwrap();
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
@@ -152,16 +155,55 @@ impl<B: Backend> Component<B> for TemplateFor {
 fn template_for() {
     let mut context = Context::new(maomi::backend::Empty::new());
     let root_component = context.new_root_component::<TemplateFor>();
-    context.set_root_component(&root_component);
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<TemplateFor>().unwrap();
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
     assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Aa</div><div>Bb</div><div>Cc</div></maomi>"#);
+    // modify
     root_component.list[1] = "Dd".into();
     root_component.force_apply_updates();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
     assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Aa</div><div>Dd</div><div>Cc</div></maomi>"#);
+    // append
+    root_component.list.push("Ee".into());
+    root_component.list.push("Ff".into());
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Aa</div><div>Dd</div><div>Cc</div><div>Ee</div><div>Ff</div></maomi>"#);
+    // insert
+    root_component.list.insert(1, "Gg".into());
+    root_component.list.insert(2, "Hh".into());
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Aa</div><div>Gg</div><div>Hh</div><div>Dd</div><div>Cc</div><div>Ee</div><div>Ff</div></maomi>"#);
+    // remove
+    root_component.list.remove(3);
+    root_component.list.remove(3);
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Aa</div><div>Gg</div><div>Hh</div><div>Ee</div><div>Ff</div></maomi>"#);
+    // multi-insert
+    root_component.list.insert(0, "Ii".into());
+    root_component.list.insert(3, "Jj".into());
+    root_component.list.push("Kk".into());
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Ii</div><div>Aa</div><div>Gg</div><div>Jj</div><div>Hh</div><div>Ee</div><div>Ff</div><div>Kk</div></maomi>"#);
+    // multi-remove
+    root_component.list.remove(0);
+    root_component.list.remove(1);
+    root_component.list.remove(5);
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>Aa</div><div>Jj</div><div>Hh</div><div>Ee</div><div>Ff</div></maomi>"#);
 }
 
 template!(tmpl for TemplateForKey {
@@ -195,14 +237,80 @@ impl<B: Backend> Component<B> for TemplateForKey {
 fn template_for_key() {
     let mut context = Context::new(maomi::backend::Empty::new());
     let root_component = context.new_root_component::<TemplateForKey>();
-    context.set_root_component(&root_component);
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<TemplateForKey>().unwrap();
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
     assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>1</div><div>2</div></maomi>"#);
-    root_component.list.remove(0);
+    // modify
+    root_component.list[1] = TemplateForKeyItem {
+        k: 2,
+        v: "22".into(),
+    };
     root_component.force_apply_updates();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>2</div></maomi>"#);
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>1</div><div>22</div></maomi>"#);
+    // append
+    root_component.list.push(TemplateForKeyItem {
+        k: 3,
+        v: "3".into(),
+    });
+    root_component.list.push(TemplateForKeyItem {
+        k: 4,
+        v: "4".into(),
+    });
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>1</div><div>22</div><div>3</div><div>4</div></maomi>"#);
+    // insert
+    root_component.list.insert(1, TemplateForKeyItem {
+        k: 5,
+        v: "5".into(),
+    });
+    root_component.list.insert(2, TemplateForKeyItem {
+        k: 6,
+        v: "6".into(),
+    });
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>1</div><div>5</div><div>6</div><div>22</div><div>3</div><div>4</div></maomi>"#);
+    // remove
+    root_component.list.remove(3);
+    root_component.list.remove(3);
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>1</div><div>5</div><div>6</div><div>4</div></maomi>"#);
+    // multi-insert
+    root_component.list.insert(0, TemplateForKeyItem {
+        k: 7,
+        v: "7".into(),
+    });
+    root_component.list.insert(3, TemplateForKeyItem {
+        k: 8,
+        v: "8".into(),
+    });
+    root_component.list.push(TemplateForKeyItem {
+        k: 9,
+        v: "9".into(),
+    });
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>7</div><div>1</div><div>5</div><div>8</div><div>6</div><div>4</div><div>9</div></maomi>"#);
+    // multi-remove
+    root_component.list.remove(0);
+    root_component.list.remove(1);
+    root_component.list.remove(4);
+    root_component.force_apply_updates();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div>1</div><div>8</div><div>6</div><div>4</div></maomi>"#);
 }
+
+// TODO event testing
+// TODO lifetime testing

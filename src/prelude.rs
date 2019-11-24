@@ -201,7 +201,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
             Some(node_rc) => {
                 let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
                 let mut node = node_rc.borrow_mut_with(__owner);
-                __reordered_list.apply(&mut node);
+                __reordered_list.apply(&mut node, children);
                 *node.property_mut() = VirtualNodeProperty::List(__keys);
                 node_rc.clone().into()
             }

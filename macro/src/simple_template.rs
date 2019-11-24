@@ -129,7 +129,9 @@ fn parse_children(input: ParseStream, is_component: bool, is_virtual: bool) -> R
                     input.parse::<Token![=]>()?;
                     let expr: Expr = input.parse()?;
                     input.parse::<Token![;]>()?;
-                    if is_component && SYSTEM_ATTRIBUTES.iter().position(|s| s == &name_str).is_none() {
+                    if name_str == "mark" {
+                        props.push(TemplateAttribute::Mark { value: TemplateValue::from(expr) });
+                    } else if is_component && SYSTEM_ATTRIBUTES.iter().position(|s| s == &name_str).is_none() {
                         props.push(TemplateAttribute::Prop { name, value: TemplateValue::from(expr) });
                     } else {
                         props.push(TemplateAttribute::Common { name: ident_to_dashed_str(name), value: TemplateValue::from(expr) });

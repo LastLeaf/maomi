@@ -7,11 +7,11 @@ use me_cell::MeRefHandle;
 
 use super::context::Scheduler;
 use super::node::*;
-use super::backend::{Backend, BackendNode};
+use super::backend::{Backend};
 
 pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
     fn new(_ctx: ComponentContext<B, Self>) -> Self where Self: Sized;
-    fn created(&mut self, _weak: ComponentWeak<B, Self>) where Self: Sized {
+    fn created(&mut self) {
 
     }
     fn attached(&mut self) {
@@ -144,6 +144,9 @@ impl<'a, B: Backend, C: Component<B>> ComponentRef<'a, B, C> {
     pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
         self.n.owner()
     }
+    pub fn marked(&self, r: &str) -> Option<NodeRc<B>> {
+        self.n.marked(r)
+    }
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
         self.n.to_html(s)
     }
@@ -160,9 +163,6 @@ impl<'a, B: Backend, C: Component<B>> ElementRef<'a, B> for ComponentRef<'a, B, 
     }
     fn as_me_ref_handle(&self) -> &MeRefHandle<'a> {
         self.n.as_me_ref_handle()
-    }
-    fn as_node_ref<'b>(self) -> NodeRef<'b, B> where 'a: 'b {
-        self.n.as_node_ref()
     }
 }
 impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRef<'a, B>> for ComponentRef<'a, B, C> {
@@ -204,6 +204,9 @@ impl<'a, B: Backend, C: Component<B>> ComponentRefMut<'a, B, C> {
     }
     pub fn force_apply_updates(&mut self) {
         self.n.force_apply_updates::<C>();
+    }
+    pub fn marked(&self, r: &str) -> Option<NodeRc<B>> {
+        self.n.marked(r)
     }
 }
 impl<'a, B: Backend, C: Component<B>> Drop for ComponentRefMut<'a, B, C> {

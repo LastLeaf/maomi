@@ -34,7 +34,6 @@ impl From<Expr> for TemplateValue {
 
 #[derive(Clone)]
 pub(crate) enum Attribute {
-    Mark { value: TemplateValue },
     Common { name: LitStr, value: TemplateValue },
     Prop { name: Ident, value: TemplateValue },
     SystemEv { name: Ident, value: TemplateValue },
@@ -43,7 +42,6 @@ pub(crate) enum Attribute {
 impl Attribute {
     fn is_dynamic(&self) -> bool {
         match self {
-            Attribute::Mark { value, .. } => value.is_dynamic,
             Attribute::Common { value, .. } => value.is_dynamic,
             Attribute::Prop { value, .. } => value.is_dynamic,
             Attribute::SystemEv { value, .. } => value.is_dynamic,
@@ -92,16 +90,12 @@ impl ToTokens for TemplateNode {
                 let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
                 let update_attributes: Vec<TokenStream2> = attributes.iter().map(|attribute| {
                     let content = match attribute {
-                        Attribute::Mark { value } => quote! {
-                            node.set_mark(#value);
-                        },
                         Attribute::Common { name, value } => quote! {
                             node.set_attribute(#name, #value)
                         },
                         Attribute::SystemEv { name, value } => quote! {
                             node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
-                                let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.with_type::<Self>(), e)
+                                (#value)(self_ref_mut.with_type::<Self>(), e)
                             }));
                         },
                         _ => {
@@ -321,7 +315,7 @@ impl ToTokens for TemplateNode {
                                     Some(node_rc) => {
                                         let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
                                         let mut node = node_rc.borrow_mut_with(__owner);
-                                        __reordered_list.apply(&mut node, children);
+                                        __reordered_list.apply(&mut node);
                                         *node.property_mut() = VirtualNodeProperty::List(__keys);
                                         node_rc.clone().into()
                                     }
@@ -337,9 +331,6 @@ impl ToTokens for TemplateNode {
                 let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
                 let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
                     let content = match attribute {
-                        Attribute::Mark { value } => quote! {
-                            node.set_mark(#value);
-                        },
                         Attribute::Common { name, value } => quote! {
                             node.as_node().set_attribute(#name, #value);
                         },
@@ -348,14 +339,12 @@ impl ToTokens for TemplateNode {
                         },
                         Attribute::SystemEv { name, value } => quote! {
                             node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
-                                let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.with_type::<Self>(), e)
+                                (#value)(self_ref_mut.with_type::<Self>(), e)
                             }));
                         },
                         Attribute::Ev { name, value } => quote! {
                             node.#name.set_handler(Box::new(|self_ref_mut, e| {
-                                let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.with_type::<Self>(), e)
+                                (#value)(self_ref_mut.with_type::<Self>(), e)
                             }));
                         },
                     };

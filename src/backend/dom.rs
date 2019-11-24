@@ -1,19 +1,25 @@
 use std::ops::Deref;
-use std::cell::RefCell;
+use std::rc::Rc;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::pin::Pin;
 use web_sys::*;
+use futures::prelude::*;
+use futures::task::*;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::convert::IntoWasmAbi;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::global_events;
 use crate::global_events::*;
 use crate::node::NodeWeak;
 use super::*;
 
+const ELEMENT_INNER_ID_MAGIC: u32 = 1234567890;
+
 thread_local! {
     static DOCUMENT: Document = window().unwrap().document().unwrap();
-    static ELEMENT_MAP: RefCell<HashMap<u32, NodeWeak<Dom>>> = RefCell::new(HashMap::new());
+    static ELEMENT_MAP: RefCell<HashMap<usize, NodeWeak<Dom>>> = RefCell::new(HashMap::new());
+    static ELEMENT_INNER_ID_INC: Cell<usize> = Cell::new(0);
 }
 
 pub struct TimeoutHandler {
@@ -25,24 +31,71 @@ impl Drop for TimeoutHandler {
         window().unwrap().clear_timeout_with_handle(self.id);
     }
 }
-fn set_timeout<F: 'static + FnOnce()>(cb: F, timeout: i32) -> TimeoutHandler {
-    let cb = Closure::once(Box::new(cb) as Box<dyn FnOnce()>);
-    let id = window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), timeout).unwrap();
+pub fn set_timeout<F: 'static + FnOnce()>(cb: F, timeout: i32) -> TimeoutHandler {
+    let cb_wrapper = Closure::once(Box::new(cb) as Box<dyn FnOnce()>);
+    let id = window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(cb_wrapper.as_ref().unchecked_ref(), timeout).unwrap();
     TimeoutHandler {
-        _cb: cb,
+        _cb: cb_wrapper,
         id,
+    }
+}
+
+pub struct Timeout {
+    _timeout_handler: Option<TimeoutHandler>,
+    done: Rc<Cell<bool>>,
+    waker: Rc<Cell<Option<Waker>>>,
+}
+impl Future for Timeout {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if self.done.get() {
+            Poll::Ready(())
+        } else {
+            self.waker.set(Some(cx.waker().clone()));
+            Poll::Pending
+        }
+    }
+}
+impl Timeout {
+    pub fn new(timeout: i32) -> Self {
+        let done = Rc::new(Cell::new(false));
+        let done2 = done.clone();
+        let waker = Rc::new(Cell::new(None));
+        let waker2 = waker.clone();
+        let timeout_handler = set_timeout(move || {
+            done2.set(true);
+            match waker2.take() {
+                Some(waker) => {
+                    let waker: Waker = waker;
+                    waker.wake();
+                },
+                None => { }
+            }
+        }, timeout);
+        Self {
+            _timeout_handler: Some(timeout_handler),
+            done,
+            waker,
+        }
     }
 }
 
 pub struct DomElement {
     node: Element,
+    inner_id: usize,
 }
 impl DomElement {
     fn new(tag_name: &'static str) -> Self {
+        let inner_id = ELEMENT_INNER_ID_INC.with(|inner_id_inc| {
+            let inner_id = inner_id_inc.take();
+            inner_id_inc.set(inner_id + 1);
+            inner_id
+        });
         DomElement {
             node: DOCUMENT.with(|document| {
                 document.create_element(tag_name).unwrap().into()
             }),
+            inner_id
         }
     }
     pub fn dom_node(&self) -> &Element {
@@ -53,8 +106,7 @@ impl Drop for DomElement {
     fn drop(&mut self) {
         ELEMENT_MAP.with(|element_map| {
             let mut element_map = element_map.borrow_mut();
-            let addr = (&*self.node).into_abi();
-            element_map.remove(&addr);
+            element_map.remove(&self.inner_id);
         });
     }
 }
@@ -67,8 +119,9 @@ impl Deref for DomElement {
 impl BackendElement for DomElement {
     type Backend = Dom;
     fn bind_node_weak(&mut self, node_weak: NodeWeak<Dom>) {
+        js_sys::Reflect::set_u32(&self.node, ELEMENT_INNER_ID_MAGIC, &JsValue::from_f64(self.inner_id as f64)).unwrap();
         ELEMENT_MAP.with(|element_map| {
-            element_map.borrow_mut().insert((&self.node).into_abi(), node_weak);
+            element_map.borrow_mut().insert(self.inner_id, node_weak);
         });
     }
     fn append_list(&self, children: Vec<BackendNodeRef<Dom>>) {
@@ -224,7 +277,7 @@ impl DomEvent {
 struct DomEventListener {
     element: Element,
     name: &'static str,
-    _cb: Closure<dyn 'static + FnMut(Element, Event)>,
+    _cb: Closure<dyn 'static + FnMut(Event)>,
     el: EventListener,
 }
 impl Drop for DomEventListener {
@@ -247,21 +300,26 @@ impl Dom {
         }
     }
     fn set_event_listener_on_root_node<F: 'static + Fn(&NodeWeak<Dom>, DomEvent)>(&self, name: &'static str, f: F) {
-        let cb = Closure::wrap(Box::new(move |element: Element, event: Event| {
+        let cb = Closure::wrap(Box::new(move |event: Event| {
+            let element: &Element = &event.target().unwrap().dyn_into().unwrap();
             let dom_event = DomEvent { event };
             ELEMENT_MAP.with(|element_map| {
-                match element_map.borrow_mut().get(&element.into_abi()) {
-                    None => { },
-                    Some(node_weak) => {
-                        f(node_weak, dom_event);
+                let inner_id = js_sys::Reflect::get_u32(&element, ELEMENT_INNER_ID_MAGIC).unwrap().as_f64();
+                if let Some(inner_id) = inner_id {
+                    let inner_id = inner_id as usize;
+                    match element_map.borrow().get(&inner_id) {
+                        None => { },
+                        Some(node_weak) => {
+                            f(node_weak, dom_event);
+                        }
                     }
                 }
             });
-        }) as Box<dyn FnMut(Element, Event)>);
+        }) as Box<dyn FnMut(Event)>);
         let mut el = EventListener::new();
         el.handle_event(cb.as_ref().unchecked_ref());
         let root = self.root.borrow();
-        root.add_event_listener_with_event_listener_and_bool(name, &el, true).unwrap();
+        root.add_event_listener_with_event_listener_and_bool(name, &el, false).unwrap();
         self.event_listeners.borrow_mut().push(DomEventListener {
             element: root.clone(),
             name,
@@ -274,9 +332,11 @@ impl Backend for Dom {
     type BackendElement = DomElement;
     type BackendTextNode = DomTextNode;
     fn set_root_node(&self, root_node: &DomElement) {
-        let mut root = self.root.borrow_mut();
-        root.parent_node().unwrap().replace_child(&root_node.node, &root).unwrap();
-        *root = root_node.node.clone();
+        {
+            let mut root = self.root.borrow_mut();
+            root.parent_node().unwrap().replace_child(&root_node.node, &root).unwrap();
+            *root = root_node.node.clone();
+        }
         self.event_listeners.borrow_mut().truncate(0);
         event::init_backend_event(self);
     }

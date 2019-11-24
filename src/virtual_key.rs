@@ -119,15 +119,16 @@ impl<B: Backend> VirtualKeyChanges<B> {
     pub fn nodes_mut(&mut self) -> &mut Vec<Option<NodeRc<B>>> {
         &mut self.nodes
     }
-    pub fn apply(self, node: &mut VirtualNodeRefMut<B>) {
-        let Self {inserts, removes, mut nodes} = self;
+    pub fn apply(self, node: &mut VirtualNodeRefMut<B>, children: Vec<NodeRc<B>>) {
+        let Self {inserts, removes, nodes} = self;
+        dbg!(&inserts, &removes, nodes.iter().map(|x| x.is_some()).collect::<Vec<_>>());
         let mut d = 0;
         for (start, reusable) in removes {
             node.remove_with_reuse(start - d, &reusable);
             d += reusable.len();
         }
         for new_range in inserts {
-            node.insert_list(new_range.start, nodes[new_range].iter_mut().map(|x| x.take().unwrap()).collect());
+            node.insert_list(new_range.start, children[new_range].to_vec());
         }
     }
 }

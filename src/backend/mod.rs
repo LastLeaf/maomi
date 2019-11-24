@@ -1,6 +1,6 @@
-mod empty;
+pub mod empty;
 pub use empty::Empty;
-mod dom;
+pub mod dom;
 pub use dom::Dom;
 
 use crate::node::NodeWeak;
@@ -22,14 +22,6 @@ impl<'a, B: Backend> BackendNodeRef<'a, B> {
 pub enum BackendNode<B: Backend> {
     Element(B::BackendElement),
     TextNode(B::BackendTextNode),
-}
-impl<B: Backend> BackendNode<B> {
-    pub(crate) fn remove_self(&self) {
-        match self {
-            Self::Element(x) => x.remove_self(),
-            Self::TextNode(x) => x.remove_self(),
-        }
-    }
 }
 
 pub trait BackendTextNode {

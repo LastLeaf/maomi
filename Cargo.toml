@@ -17,13 +17,32 @@ js-sys = "0.3"
 log = "0.4"
 console_log = "0.1"
 downcast-rs = "1.1"
+futures = "0.3"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Document", "HtmlElement", "Node", "NodeList", "Element", "Text", "Comment", "DocumentFragment", "EventListener", "EventTarget", "Event", "MouseEvent", "TouchEvent", "TouchList", "Touch", "KeyboardEvent"]
+features = [
+  "Window",
+  "Document",
+  "HtmlElement",
+  "Node",
+  "NodeList",
+  "Element",
+  "Text",
+  "Comment",
+  "DocumentFragment",
+  "EventListener",
+  "EventTarget",
+  "Event",
+  "MouseEvent",
+  "TouchEvent",
+  "TouchList",
+  "Touch",
+  "KeyboardEvent"
+]
 
 [dev-dependencies]
-wasm-bindgen-test = "0.2"
+wasm-bindgen-test = "0.3"
 
 [profile.release]
 opt-level = "s"
