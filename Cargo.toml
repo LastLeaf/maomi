@@ -18,6 +18,9 @@ log = "0.4"
 console_log = "0.1"
 downcast-rs = "1.1"
 futures = "0.3"
+serde = "1.0"
+bincode = "1.2"
+base64 = "0.11"
 
 [dependencies.web-sys]
 version = "0.3"

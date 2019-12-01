@@ -11,7 +11,8 @@ use wasm_bindgen::{JsCast, JsValue};
 
 use crate::global_events;
 use crate::global_events::*;
-use crate::node::NodeWeak;
+use crate::node::{NodeWeak, NodeRefMut};
+use crate::component::{Component, ComponentRefMut};
 use super::*;
 
 const ELEMENT_INNER_ID_MAGIC: u32 = 1234567890;
@@ -81,25 +82,42 @@ impl Timeout {
 }
 
 pub struct DomElement {
-    node: Element,
+    node: Option<Element>,
     inner_id: usize,
+    pending_node_weak: Option<NodeWeak<Dom>>,
 }
 impl DomElement {
-    fn new(tag_name: &'static str) -> Self {
+    fn new(tag_name: &'static str, prerendering: bool) -> Self {
         let inner_id = ELEMENT_INNER_ID_INC.with(|inner_id_inc| {
             let inner_id = inner_id_inc.take();
             inner_id_inc.set(inner_id + 1);
             inner_id
         });
         DomElement {
-            node: DOCUMENT.with(|document| {
-                document.create_element(tag_name).unwrap().into()
-            }),
-            inner_id
+            node: if prerendering {
+                None
+            } else {
+                DOCUMENT.with(|document| {
+                    Some(document.create_element(tag_name).unwrap())
+                })
+            },
+            inner_id,
+            pending_node_weak: None,
         }
     }
     pub fn dom_node(&self) -> &Element {
-        &self.node
+        self.node.as_ref().expect("Dom node cannot be accessed while prerendering")
+    }
+    fn add_node_to_hash_map(&self, node_weak: NodeWeak<Dom>) {
+        js_sys::Reflect::set_u32(self.node.as_ref().unwrap(), ELEMENT_INNER_ID_MAGIC, &JsValue::from_f64(self.inner_id as f64)).unwrap();
+        ELEMENT_MAP.with(|element_map| {
+            element_map.borrow_mut().insert(self.inner_id, node_weak);
+        });
+    }
+    fn apply_pending_node_weak(&mut self) {
+        if let Some(node_weak) = self.pending_node_weak.take() {
+            self.add_node_to_hash_map(node_weak);
+        }
     }
 }
 impl Drop for DomElement {
@@ -119,71 +137,82 @@ impl Deref for DomElement {
 impl BackendElement for DomElement {
     type Backend = Dom;
     fn bind_node_weak(&mut self, node_weak: NodeWeak<Dom>) {
-        js_sys::Reflect::set_u32(&self.node, ELEMENT_INNER_ID_MAGIC, &JsValue::from_f64(self.inner_id as f64)).unwrap();
-        ELEMENT_MAP.with(|element_map| {
-            element_map.borrow_mut().insert(self.inner_id, node_weak);
-        });
+        if self.node.is_some() {
+            self.add_node_to_hash_map(node_weak);
+        } else {
+            self.pending_node_weak = Some(node_weak);
+        }
     }
     fn append_list(&self, children: Vec<BackendNodeRef<Dom>>) {
-        DOCUMENT.with(|document| {
-            let frag = document.create_document_fragment();
-            for child in children {
-                let dom_node: &Node = match child {
-                    BackendNodeRef::Element(x) => x.dom_node(),
-                    BackendNodeRef::TextNode(x) => x.dom_node(),
-                };
-                frag.append_child(dom_node).unwrap();
-            }
-            self.node.append_child(&frag).unwrap();
-        })
+        if let Some(node) = self.node.as_ref() {
+            DOCUMENT.with(|document| {
+                let frag = document.create_document_fragment();
+                for child in children {
+                    let dom_node: &Node = match child {
+                        BackendNodeRef::Element(x) => x.dom_node(),
+                        BackendNodeRef::TextNode(x) => x.dom_node(),
+                    };
+                    frag.append_child(dom_node).unwrap();
+                }
+                node.append_child(&frag).unwrap();
+            })
+        }
     }
     fn insert_list_before<'a>(&'a self, children: Vec<BackendNodeRef<Dom>>, before: Option<BackendNodeRef<'a, Dom>>) {
-        DOCUMENT.with(|document| {
-            let frag = document.create_document_fragment();
+        if let Some(node) = self.node.as_ref() {
+            DOCUMENT.with(|document| {
+                let frag = document.create_document_fragment();
+                for child in children {
+                    let dom_node: &Node = match child {
+                        BackendNodeRef::Element(x) => x.dom_node(),
+                        BackendNodeRef::TextNode(x) => x.dom_node(),
+                    };
+                    frag.append_child(dom_node).unwrap();
+                }
+                node.insert_before(&frag, before.as_ref().map(|x| {
+                    let n: &Node = match x {
+                        BackendNodeRef::Element(x) => x.dom_node(),
+                        BackendNodeRef::TextNode(x) => x.dom_node(),
+                    };
+                    n
+                })).unwrap();
+            })
+        }
+    }
+    fn remove_list(&self, children: Vec<BackendNodeRef<Dom>>) {
+        if let Some(node) = self.node.as_ref() {
             for child in children {
                 let dom_node: &Node = match child {
                     BackendNodeRef::Element(x) => x.dom_node(),
                     BackendNodeRef::TextNode(x) => x.dom_node(),
                 };
-                frag.append_child(dom_node).unwrap();
+                node.remove_child(&dom_node).unwrap();
             }
-            self.node.insert_before(&frag, before.as_ref().map(|x| {
-                let n: &Node = match x {
-                    BackendNodeRef::Element(x) => x.dom_node(),
-                    BackendNodeRef::TextNode(x) => x.dom_node(),
-                };
-                n
-            })).unwrap();
-        })
-    }
-    fn remove_list(&self, children: Vec<BackendNodeRef<Dom>>) {
-        for child in children {
-            let dom_node: &Node = match child {
-                BackendNodeRef::Element(x) => x.dom_node(),
-                BackendNodeRef::TextNode(x) => x.dom_node(),
-            };
-            self.node.remove_child(&dom_node).unwrap();
         }
     }
     fn remove_self(&self) {
-        match self.node.parent_node() {
-            Some(p) => {
-                p.remove_child(self).unwrap();
-            },
-            None => { },
+        if let Some(node) = self.node.as_ref() {
+            match node.parent_node() {
+                Some(p) => {
+                    p.remove_child(self).unwrap();
+                },
+                None => { },
+            }
         }
     }
     fn set_attribute(&self, name: &'static str, value: &str) {
-        self.node.set_attribute(name, value).unwrap();
+        if let Some(node) = self.node.as_ref() {
+            node.set_attribute(name, value).unwrap();
+        }
     }
 }
 
 pub struct DomTextNode {
-    node: Text,
+    node: Option<Text>,
 }
 impl DomTextNode {
     pub fn dom_node(&self) -> &Text {
-        &self.node
+        self.node.as_ref().expect("Dom node cannot be accessed while prerendering")
     }
 }
 impl Deref for DomTextNode {
@@ -195,14 +224,18 @@ impl Deref for DomTextNode {
 impl BackendTextNode for DomTextNode {
     type Backend = Dom;
     fn set_text_content(&self, text_content: &str) {
-        self.node.set_text_content(Some(text_content));
+        if let Some(node) = self.node.as_ref() {
+            node.set_text_content(Some(text_content));
+        }
     }
     fn remove_self(&self) {
-        match self.node.parent_node() {
-            Some(p) => {
-                p.remove_child(self).unwrap();
-            },
-            None => { },
+        if let Some(node) = self.node.as_ref() {
+            match node.parent_node() {
+                Some(p) => {
+                    p.remove_child(self).unwrap();
+                },
+                None => { },
+            }
         }
     }
 }
@@ -289,6 +322,7 @@ impl Drop for DomEventListener {
 pub struct Dom {
     root: RefCell<Element>,
     event_listeners: RefCell<Vec<DomEventListener>>,
+    dom_prerendering: Cell<bool>,
 }
 impl Dom {
     pub fn new(placeholder_id: &str) -> Self {
@@ -297,7 +331,77 @@ impl Dom {
                 document.get_element_by_id(placeholder_id).unwrap().into()
             })),
             event_listeners: RefCell::new(vec![]),
+            dom_prerendering: Cell::new(false),
         }
+    }
+    pub fn new_prerendering(placeholder_id: &str) -> Self {
+        Self {
+            root: RefCell::new(DOCUMENT.with(|document| {
+                document.get_element_by_id(placeholder_id).unwrap().into()
+            })),
+            event_listeners: RefCell::new(vec![]),
+            dom_prerendering: Cell::new(true),
+        }
+    }
+    pub fn prerendered<C: Component<Dom>>(&self, component_ref_mut: &mut ComponentRefMut<Dom, C>) {
+        fn attach_dom(mut node_ref_mut: NodeRefMut<Dom>, node: Node) -> Option<Node> {
+            macro_rules! handle_non_virtual_element {
+                ($n: ident) => {
+                    {
+                        let mut cur_child_node = node.child_nodes().get(0);
+                        let mut composed_children = $n.composed_children().into_iter();
+                        loop {
+                            let child = match composed_children.next() {
+                                None => break,
+                                Some(child) => child,
+                            };
+                            match cur_child_node {
+                                None => break,
+                                Some(child_node) => {
+                                    cur_child_node = attach_dom(child.borrow_mut_with($n), child_node);
+                                }
+                            }
+                        }
+                        let dom_element = &mut $n.backend_element;
+                        let next = node.next_sibling();
+                        dom_element.node = Some(node.dyn_into().unwrap());
+                        dom_element.apply_pending_node_weak();
+                        next
+                    }
+                }
+            }
+            match &mut node_ref_mut {
+                NodeRefMut::NativeNode(n) => handle_non_virtual_element!(n),
+                NodeRefMut::VirtualNode(n) => {
+                    let mut cur_child_node = Some(node);
+                    let mut composed_children = n.composed_children().into_iter();
+                    loop {
+                        let child = match composed_children.next() {
+                            None => break,
+                            Some(child) => child,
+                        };
+                        match cur_child_node {
+                            None => break,
+                            Some(child_node) => {
+                                cur_child_node = attach_dom(child.borrow_mut_with(n), child_node);
+                            }
+                        }
+                    }
+                    cur_child_node
+                },
+                NodeRefMut::ComponentNode(n) => handle_non_virtual_element!(n),
+                NodeRefMut::TextNode(n) => {
+                    let dom_element = &mut n.backend_element;
+                    let next = node.next_sibling();
+                    dom_element.node = Some(node.dyn_into().unwrap());
+                    next
+                },
+            }
+        }
+        let n: &Node = &self.root.borrow();
+        attach_dom(NodeRefMut::ComponentNode(component_ref_mut.as_node().duplicate()), n.clone());
+        self.dom_prerendering.set(false);
+        event::init_backend_event(self);
     }
     fn set_event_listener_on_root_node<F: 'static + Fn(&NodeWeak<Dom>, DomEvent)>(&self, name: &'static str, f: F) {
         let cb = Closure::wrap(Box::new(move |event: Event| {
@@ -319,7 +423,7 @@ impl Dom {
         let mut el = EventListener::new();
         el.handle_event(cb.as_ref().unchecked_ref());
         let root = self.root.borrow();
-        root.add_event_listener_with_event_listener_and_bool(name, &el, false).unwrap();
+        root.add_event_listener_with_event_listener_and_bool(name, &el, true).unwrap();
         self.event_listeners.borrow_mut().push(DomEventListener {
             element: root.clone(),
             name,
@@ -332,22 +436,29 @@ impl Backend for Dom {
     type BackendElement = DomElement;
     type BackendTextNode = DomTextNode;
     fn set_root_node(&self, root_node: &DomElement) {
+        if self.dom_prerendering.get() {
+            return;
+        }
         {
             let mut root = self.root.borrow_mut();
-            root.parent_node().unwrap().replace_child(&root_node.node, &root).unwrap();
-            *root = root_node.node.clone();
+            root.parent_node().unwrap().replace_child(root_node.node.as_ref().unwrap(), &root).unwrap();
+            *root = root_node.node.as_ref().unwrap().clone();
         }
-        self.event_listeners.borrow_mut().truncate(0);
+        self.event_listeners.borrow_mut().clear();
         event::init_backend_event(self);
     }
     fn create_element(&self, tag_name: &'static str) -> DomElement {
-        DomElement::new(tag_name)
+        DomElement::new(tag_name, self.dom_prerendering.get())
     }
     fn create_text_node(&self, text_content: &str) -> DomTextNode {
         DomTextNode {
-            node: DOCUMENT.with(|document| {
-                document.create_text_node(text_content).into()
-            })
+            node: if self.dom_prerendering.get() {
+                None
+            } else {
+                DOCUMENT.with(|document| {
+                    Some(document.create_text_node(text_content))
+                })
+            }
         }
     }
 }

@@ -4,6 +4,7 @@
 
 #[allow(unused_imports)] #[macro_use] extern crate log;
 
+use std::marker::PhantomData;
 use std::sync::Once;
 use wasm_bindgen_test::*;
 use wasm_bindgen::JsCast;
@@ -29,17 +30,35 @@ thread_local! {
     };
 }
 
-fn create_dom_context() -> maomi::Context<maomi::backend::Dom> {
+fn init_logger() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         console_log::init_with_level(log::Level::Debug).unwrap();
     });
+}
+
+fn create_dom_context() -> maomi::Context<maomi::backend::Dom> {
+    init_logger();
     DOCUMENT.with(|document| {
         WRAPPER.with(|wrapper| {
             let placeholder = document.create_element("div").unwrap();
             placeholder.set_id("placeholder");
             wrapper.append_child(&placeholder).unwrap();
             maomi::Context::new(maomi::backend::Dom::new("placeholder"))
+        })
+    })
+}
+
+fn create_dom_context_with_prerender(html: &str) -> maomi::Context<maomi::backend::Dom> {
+    init_logger();
+    DOCUMENT.with(|document| {
+        WRAPPER.with(|wrapper| {
+            let placeholder = document.create_element("div").unwrap();
+            wrapper.append_child(&placeholder).unwrap();
+            placeholder.set_outer_html(html);
+            let child_nodes = wrapper.child_nodes();
+            child_nodes.get(child_nodes.length() - 1).unwrap().dyn_into::<web_sys::Element>().unwrap().set_id("placeholder");
+            maomi::Context::new(maomi::backend::Dom::new_prerendering("placeholder"))
         })
     })
 }
@@ -335,15 +354,113 @@ fn template_global_event() {
     let root_component = context.new_root_component::<TemplateGlobalEvent>();
     context.set_root_component(root_component);
     let root_component = context.root_component::<TemplateGlobalEvent>().unwrap();
-    {
-        DOCUMENT.with(|document| {
-            let dom_ev = document.create_event("MouseEvents").unwrap().dyn_into::<web_sys::MouseEvent>().unwrap();
-            dom_ev.init_mouse_event_with_can_bubble_arg("click", true);
-            let child = root_component.borrow().marked("child").unwrap();
-            let backend_element = child.borrow().backend_element().unwrap() as *const maomi::backend::dom::DomElement; // HACK force child exit borrowing
-            let backend_element: &maomi::backend::dom::DomElement = unsafe { backend_element.as_ref() }.unwrap();
-            backend_element.dispatch_event(&dom_ev).unwrap();
-        });
-    }
+    DOCUMENT.with(|document| {
+        let dom_ev = document.create_event("MouseEvents").unwrap().dyn_into::<web_sys::MouseEvent>().unwrap();
+        dom_ev.init_mouse_event_with_can_bubble_arg("click", true);
+        let child = root_component.borrow().marked("child").unwrap();
+        let backend_element = child.borrow().backend_element().unwrap() as *const maomi::backend::dom::DomElement; // force child exit borrowing
+        let backend_element: &maomi::backend::dom::DomElement = unsafe { backend_element.as_ref() }.unwrap();
+        backend_element.dispatch_event(&dom_ev).unwrap();
+    });
     assert_eq!(root_component.borrow().triggered, vec![2, 1]);
+}
+
+template!(tmpl<B: Backend> for<B> DomPrerendering<B> {
+    div {
+        data_attr = &self.attr;
+        span {
+            (&self.text);
+        }
+    }
+    DomPrerenderingChild<B> {
+        mark = "child";
+        child_attr = &self.attr;
+        @click = |mut self_ref_mut, _| {
+            self_ref_mut.attr = "CLICKED".into();
+            self_ref_mut.force_apply_updates();
+        };
+    }
+});
+struct DomPrerendering<B: Backend> {
+    attr: String,
+    text: String,
+    ctx: ComponentContext<B, Self>,
+}
+impl<B: Backend> Component<B> for DomPrerendering<B> {
+    fn new(ctx: ComponentContext<B, Self>) -> Self {
+        Self {
+            attr: "".into(),
+            text: "".into(),
+            ctx,
+        }
+    }
+    fn attached(&mut self) {
+        self.attr = "ATTR".into();
+        self.text = "TEXT".into();
+        self.ctx.update();
+    }
+}
+template!(tmpl<B: Backend> for<B> DomPrerenderingChild<B> {
+    (&self.child_attr);
+});
+struct DomPrerenderingChild<B: Backend> {
+    child_attr: String,
+    _pd: PhantomData<B>,
+}
+impl<B: Backend> Component<B> for DomPrerenderingChild<B> {
+    fn new(_ctx: ComponentContext<B, Self>) -> Self {
+        Self {
+            child_attr: "".into(),
+            _pd: PhantomData,
+        }
+    }
+}
+#[wasm_bindgen_test]
+fn dom_prerendering() {
+    // prerender in empty backend
+    let mut context = maomi::context::Context::new(maomi::backend::Empty::new());
+    let root_component = context.new_root_component::<DomPrerendering<maomi::backend::Empty>>();
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<DomPrerendering<maomi::backend::Empty>>().unwrap();
+    let root_component = root_component.borrow();
+    let mut html: Vec<u8> = vec![];
+    root_component.to_html(&mut html).unwrap();
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div data-attr="ATTR"><span>TEXT</span></div><maomi-dom-prerendering-child>ATTR</maomi-dom-prerendering-child></maomi>"#);
+    // put into dom
+    let mut context = create_dom_context_with_prerender(std::str::from_utf8(&html.into_boxed_slice()).unwrap());
+    let root_component = context.new_root_component::<DomPrerendering<maomi::backend::Dom>>();
+    context.set_root_component(root_component);
+    let root_component = context.root_component::<DomPrerendering<maomi::backend::Dom>>().unwrap();
+    // go with prerender
+    {
+        let mut root_component = root_component.borrow_mut();
+        context.backend().prerendered(&mut root_component);
+        assert_eq!(root_component.backend_element().inner_html(), r#"<div data-attr="ATTR"><span>TEXT</span></div><maomi-dom-prerendering-child>ATTR</maomi-dom-prerendering-child>"#);
+        {
+            let child = root_component.marked_component::<DomPrerenderingChild<_>>("child").unwrap();
+            let child = child.borrow_mut_with(&mut root_component);
+            assert_eq!(child.backend_element().outer_html(), r#"<maomi-dom-prerendering-child>ATTR</maomi-dom-prerendering-child>"#);
+        }
+    }
+    // event handling and modify text
+    DOCUMENT.with(|document| {
+        let dom_ev = document.create_event("MouseEvents").unwrap().dyn_into::<web_sys::MouseEvent>().unwrap();
+        dom_ev.init_mouse_event_with_can_bubble_arg("click", true);
+        let child = root_component.borrow_mut().marked_component::<DomPrerenderingChild<_>>("child").unwrap();
+        let backend_element = child.borrow().backend_element() as *const maomi::backend::dom::DomElement; // force child exit borrowing
+        let backend_element: &maomi::backend::dom::DomElement = unsafe { backend_element.as_ref() }.unwrap();
+        backend_element.dispatch_event(&dom_ev).unwrap();
+    });
+    {
+        let mut root_component = root_component.borrow_mut();
+        let mut html: Vec<u8> = vec![];
+        root_component.to_html(&mut html).unwrap();
+        assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div data-attr="CLICKED"><span>TEXT</span></div><maomi-dom-prerendering-child>CLICKED</maomi-dom-prerendering-child></maomi>"#);
+        assert_eq!(root_component.backend_element().inner_html(), r#"<div data-attr="CLICKED"><span>TEXT</span></div><maomi-dom-prerendering-child>CLICKED</maomi-dom-prerendering-child>"#);
+        {
+            let child = root_component.marked_component::<DomPrerenderingChild<_>>("child").unwrap();
+            let child = child.borrow_mut_with(&mut root_component);
+            assert_eq!(child.backend_element().outer_html(), r#"<maomi-dom-prerendering-child>CLICKED</maomi-dom-prerendering-child>"#);
+        }
+    }
 }

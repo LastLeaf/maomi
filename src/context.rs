@@ -26,6 +26,9 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
     pub fn root_component<C: 'static + Component<B>>(&self) -> Option<ComponentRc<B, C>> {
         self.root.clone().map(|x| {
             x.with_type::<C>()

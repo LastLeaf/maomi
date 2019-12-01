@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 use std::fmt;
 use std::rc::Rc;
-use std::cell::{Cell};
+use std::cell::{RefCell};
 use std::ops::{Deref, DerefMut};
-use me_cell::MeRefHandle;
+use serde::Serialize;
+use me_cell::{MeRefHandle, MeRefMutHandle};
 
 use super::context::Scheduler;
 use super::node::*;
@@ -23,6 +24,13 @@ pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
     fn detached(&mut self) {
 
     }
+    // TODO ssr
+    fn serialize(&self) -> Vec<u8> {
+        panic!("the component is not serializable")
+    }
+    fn deserialize(&self, _data: Vec<u8>) {
+        panic!("the component is not deserializable")
+    }
 }
 downcast_rs::impl_downcast!(Component<B> where B: Backend);
 
@@ -41,12 +49,12 @@ pub trait ComponentTemplate<B: Backend>: 'static {
 #[derive(Clone)]
 pub struct ComponentContext<B: Backend, C: Component<B>> {
     node_weak: ComponentWeak<B, C>,
-    need_update: Rc<Cell<bool>>,
+    need_update: Rc<RefCell<Vec<Box<dyn 'static + FnOnce(&mut ComponentNodeRefMut<B>)>>>>,
     scheduler: Rc<Scheduler>,
     phantom_data: PhantomData<C>,
 }
 impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
-    pub(crate) fn new(node_weak: ComponentWeak<B, C>, need_update: Rc<Cell<bool>>, scheduler: Rc<Scheduler>) -> Self {
+    pub(crate) fn new(node_weak: ComponentWeak<B, C>, need_update: Rc<RefCell<Vec<Box<dyn 'static + FnOnce(&mut ComponentNodeRefMut<B>)>>>>, scheduler: Rc<Scheduler>) -> Self {
         Self {
             node_weak,
             need_update,
@@ -54,12 +62,25 @@ impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
             phantom_data: PhantomData,
         }
     }
+    fn add_updater(v: &mut Vec<Box<dyn 'static + FnOnce(&mut ComponentNodeRefMut<B>)>>) {
+        v.push(Box::new(|c: &mut ComponentNodeRefMut<B>| {
+            <C as ComponentTemplate<B>>::template(c, true);
+        }));
+    }
     pub fn update(&self) {
-        self.need_update.set(true);
+        let mut update_callbacks = self.need_update.borrow_mut();
+        if update_callbacks.len() == 0 {
+            Self::add_updater(&mut update_callbacks);
+        }
     }
     pub fn update_then<F: 'static + FnOnce(&mut ComponentRefMut<B, C>)>(&self, callback: F) {
-        self.need_update.set(true);
-        self.tick(callback);
+        let mut update_callbacks = self.need_update.borrow_mut();
+        if update_callbacks.len() == 0 {
+            Self::add_updater(&mut update_callbacks);
+        }
+        update_callbacks.push(Box::new(|x| {
+            callback(&mut x.duplicate().with_type::<C>());
+        }));
     }
     pub fn tick<F: 'static + FnOnce(&mut ComponentRefMut<B, C>)>(&self, f: F) {
         let rc = self.node_weak.upgrade().unwrap();
@@ -147,6 +168,15 @@ impl<'a, B: Backend, C: Component<B>> ComponentRef<'a, B, C> {
     pub fn marked(&self, r: &str) -> Option<NodeRc<B>> {
         self.n.marked(r)
     }
+    pub fn marked_native_node(&self, r: &str) -> Option<NativeNodeRc<B>> {
+        self.n.marked_native_node(r)
+    }
+    pub fn marked_component_node(&self, r: &str) -> Option<ComponentNodeRc<B>> {
+        self.n.marked_component_node(r)
+    }
+    pub fn marked_component<D: Component<B>>(&self, r: &str) -> Option<ComponentRc<B, D>> {
+        self.n.marked_component(r)
+    }
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
         self.n.to_html(s)
     }
@@ -200,13 +230,22 @@ impl<'a, B: Backend, C: Component<B>> ComponentRefMut<'a, B, C> {
         self.n.to_html(s)
     }
     pub fn apply_updates(&mut self) {
-        self.n.apply_updates::<C>();
+        self.n.apply_updates();
     }
     pub fn force_apply_updates(&mut self) {
         self.n.force_apply_updates::<C>();
     }
     pub fn marked(&self, r: &str) -> Option<NodeRc<B>> {
         self.n.marked(r)
+    }
+    pub fn marked_native_node(&self, r: &str) -> Option<NativeNodeRc<B>> {
+        self.n.marked_native_node(r)
+    }
+    pub fn marked_component_node(&self, r: &str) -> Option<ComponentNodeRc<B>> {
+        self.n.marked_component_node(r)
+    }
+    pub fn marked_component<D: Component<B>>(&self, r: &str) -> Option<ComponentRc<B, D>> {
+        self.n.marked_component(r)
     }
 }
 impl<'a, B: Backend, C: Component<B>> Drop for ComponentRefMut<'a, B, C> {
@@ -223,6 +262,14 @@ impl<'a, B: Backend, C: Component<B>> Deref for ComponentRefMut<'a, B, C> {
 impl<'a, B: Backend, C: Component<B>> DerefMut for ComponentRefMut<'a, B, C> {
     fn deref_mut(&mut self) -> &mut C {
         self.n.as_component_mut()
+    }
+}
+impl<'a, B: Backend, C: Component<B>> ElementRefMut<'a, B> for ComponentRefMut<'a, B, C> {
+    fn backend(&self) -> &Rc<B> {
+        self.n.backend()
+    }
+    fn as_me_ref_mut_handle<'b>(&'b mut self) -> &'b mut MeRefMutHandle<'a> where 'a: 'b {
+        self.n.as_me_ref_mut_handle()
     }
 }
 impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRefMut<'a, B>> for ComponentRefMut<'a, B, C> {

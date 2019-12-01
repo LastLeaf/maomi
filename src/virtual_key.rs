@@ -120,8 +120,7 @@ impl<B: Backend> VirtualKeyChanges<B> {
         &mut self.nodes
     }
     pub fn apply(self, node: &mut VirtualNodeRefMut<B>, children: Vec<NodeRc<B>>) {
-        let Self {inserts, removes, nodes} = self;
-        dbg!(&inserts, &removes, nodes.iter().map(|x| x.is_some()).collect::<Vec<_>>());
+        let Self {inserts, removes, nodes: _} = self;
         let mut d = 0;
         for (start, reusable) in removes {
             node.remove_with_reuse(start - d, &reusable);

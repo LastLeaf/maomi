@@ -70,7 +70,7 @@ pub(crate) enum TemplateVirtualNode {
 #[derive(Clone)]
 pub(crate) struct TemplateComponent {
     pub(crate) tag_name: LitStr,
-    pub(crate) component: Ident,
+    pub(crate) component: Path,
     pub(crate) property_values: Vec<Attribute>,
     pub(crate) children: Vec<TemplateNode>
 }
@@ -101,7 +101,7 @@ impl ToTokens for TemplateNode {
                         Attribute::SystemEv { name, value } => quote! {
                             node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
                                 let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.with_type::<Self>(), e)
+                                f(self_ref_mut.duplicate().with_type::<Self>(), e)
                             }));
                         },
                         _ => {
@@ -338,7 +338,7 @@ impl ToTokens for TemplateNode {
                 let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
                     let content = match attribute {
                         Attribute::Mark { value } => quote! {
-                            node.set_mark(#value);
+                            node.as_node().set_mark(#value);
                         },
                         Attribute::Common { name, value } => quote! {
                             node.as_node().set_attribute(#name, #value);
@@ -347,15 +347,15 @@ impl ToTokens for TemplateNode {
                             if Property::update_from(&mut node.#name, #value) { changed = true };
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                            node.as_node().global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
                                 let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.with_type::<Self>(), e)
+                                f(self_ref_mut.duplicate().with_type::<Self>(), e)
                             }));
                         },
                         Attribute::Ev { name, value } => quote! {
                             node.#name.set_handler(Box::new(|self_ref_mut, e| {
                                 let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.with_type::<Self>(), e)
+                                f(self_ref_mut.duplicate().with_type::<Self>(), e)
                             }));
                         },
                     };

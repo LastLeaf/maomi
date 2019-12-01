@@ -33,7 +33,7 @@ const SYSTEM_EVENTS: [&'static str; 20] = [
     "transition_end",
 ];
 
-fn ident_to_dashed_str(s: Ident) -> LitStr {
+fn ident_to_dashed_str(s: &Ident) -> LitStr {
     let s: String = s.to_string().chars().map(|c| {
         match c {
             '_' => '-',
@@ -116,12 +116,11 @@ fn parse_children(input: ParseStream, is_component: bool, is_virtual: bool) -> R
             }
             props.push(TemplateAttribute::Prop { name, value: TemplateValue::from(expr) });
         } else if lookahead.peek(Ident) {
-            let name: Ident = input.parse()?;
-            if name.to_string() == "slot" {
-                children.push(parse_template_slot(input)?);
-            } else {
-                let lookahead = input.lookahead1();
-                if lookahead.peek(Token![=]) {
+            if input.peek2(Token![=]) || input.peek2(Token![;]) {
+                let name: Ident = input.parse()?;
+                if name.to_string() == "slot" {
+                    children.push(parse_template_slot(input)?);
+                } else {
                     if is_virtual {
                         return Err(Error::new(name.span(), "cannot add attributes here"));
                     }
@@ -134,13 +133,11 @@ fn parse_children(input: ParseStream, is_component: bool, is_virtual: bool) -> R
                     } else if is_component && SYSTEM_ATTRIBUTES.iter().position(|s| s == &name_str).is_none() {
                         props.push(TemplateAttribute::Prop { name, value: TemplateValue::from(expr) });
                     } else {
-                        props.push(TemplateAttribute::Common { name: ident_to_dashed_str(name), value: TemplateValue::from(expr) });
+                        props.push(TemplateAttribute::Common { name: ident_to_dashed_str(&name), value: TemplateValue::from(expr) });
                     }
-                } else if lookahead.peek(token::Brace) {
-                    children.push(parse_template_element(name, input)?);
-                } else {
-                    return Err(lookahead.error());
                 }
+            } else {
+                children.push(parse_template_element(input)?);
             }
         } else if lookahead.peek(token::Paren) || lookahead.peek(LitStr) {
             children.push(parse_template_text_node(&input)?);
@@ -156,6 +153,7 @@ fn parse_template_slot(input: ParseStream) -> Result<TemplateNode> {
     let name = if lookahead.peek(Token![;]) {
         None
     } else {
+        input.parse::<Token![=]>()?;
         Some(input.parse()?)
     };
     input.parse::<Token![;]>()?;
@@ -228,14 +226,16 @@ fn parse_template_in(input: ParseStream) -> Result<TemplateNode> {
     Ok(TemplateNode::VirtualNode(TemplateVirtualNode::InSlot { name, children }))
 }
 
-fn parse_template_element(name: Ident, input: ParseStream) -> Result<TemplateNode> {
+fn parse_template_element(input: ParseStream) -> Result<TemplateNode> {
+    let component: Path = input.parse()?;
+    let name = &component.segments[0].ident;
     let name_s = name.to_string();
-    let is_component = name_s.chars().next().unwrap().is_uppercase();
+    let is_component = component.leading_colon.is_some() || name_s.chars().next().unwrap().is_uppercase();
     let (children, props) = parse_children(input, is_component, false)?;
     if is_component {
         Ok(TemplateNode::Component(TemplateComponent {
             tag_name: LitStr::new(format!("maomi{}", ty_to_string(&name)).as_str(), Span::call_site()),
-            component: name,
+            component,
             property_values: props,
             children,
         }))

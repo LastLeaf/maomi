@@ -186,6 +186,9 @@ impl<'a, B: Backend> NativeNodeRef<'a, B> {
         }
         write!(s, "</{}>", self.tag_name)
     }
+    pub(crate) fn prerender<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        self.to_html(s)
+    }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
             write!(f, "  ")?;
@@ -358,6 +361,9 @@ impl<'a, B: Backend> VirtualNodeRef<'a, B> {
             },
         }
         Ok(())
+    }
+    pub(crate) fn prerender<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        self.to_html(s)
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
@@ -577,7 +583,7 @@ impl<B: Backend> fmt::Debug for VirtualNode<B> {
 pub struct ComponentNode<B: Backend> {
     pub(crate) backend: Rc<B>,
     pub(crate) backend_element: B::BackendElement,
-    pub(crate) need_update: Rc<Cell<bool>>,
+    pub(crate) need_update: Rc<RefCell<Vec<Box<dyn 'static + FnOnce(&mut ComponentNodeRefMut<B>)>>>>,
     pub(crate) scheduler: Rc<Scheduler>,
     pub(crate) mark: Cow<'static, str>,
     pub(crate) marks_cache: RefCell<HashMap<Cow<'static, str>, NodeRc<B>>>,
@@ -615,7 +621,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     }
     fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, shadow_root: VirtualNodeRc<B>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
-        let need_update = Rc::new(Cell::new(false));
+        let need_update = Rc::new(RefCell::new(vec![]));
         let component = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         ComponentNode {
             backend,
@@ -716,12 +722,46 @@ impl<'a, B: Backend> ComponentNodeRef<'a, B> {
         self.check_marks_cache();
         self.marks_cache.borrow().get(r).cloned()
     }
+    pub fn marked_native_node(&self, r: &str) -> Option<NativeNodeRc<B>> {
+        match self.marked(r) {
+            None => None,
+            Some(x) => {
+                match x {
+                    NodeRc::NativeNode(x) => Some(x),
+                    _ => None,
+                }
+            }
+        }
+    }
+    pub fn marked_component_node(&self, r: &str) -> Option<ComponentNodeRc<B>> {
+        match self.marked(r) {
+            None => None,
+            Some(x) => {
+                match x {
+                    NodeRc::ComponentNode(x) => Some(x),
+                    _ => None,
+                }
+            }
+        }
+    }
+    pub fn marked_component<C: Component<B>>(&self, r: &str) -> Option<ComponentRc<B, C>> {
+        self.marked_component_node(r).map(|x| x.with_type::<C>())
+    }
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
         write!(s, "<{}", self.tag_name)?;
         for (name, value) in self.attributes.iter() {
             write!(s, r#" {}="{}""#, name, escape::escape_html(value))?;
         }
         write!(s, ">")?;
+        self.shadow_root.borrow_with(self).to_html(s)?;
+        write!(s, "</{}>", self.tag_name)
+    }
+    pub(crate) fn prerender<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        write!(s, "<{}", self.tag_name)?;
+        for (name, value) in self.attributes.iter() {
+            write!(s, r#" {}="{}""#, name, escape::escape_html(value))?;
+        }
+        write!(s, r#" data-maomi="{}">"#, base64::encode(&self.component.serialize()))?;
         self.shadow_root.borrow_with(self).to_html(s)?;
         write!(s, "</{}>", self.tag_name)
     }
@@ -746,16 +786,35 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     pub fn with_type<C: Component<B>>(self) -> ComponentRefMut<'a, B, C> {
         ComponentRefMut::from(self)
     }
-    pub fn apply_updates<C: Component<B>>(&mut self) {
-        if self.need_update.replace(false) {
-            <C as ComponentTemplate<B>>::template(self, true);
-            self.update_node();
+    pub fn apply_updates(&mut self) {
+        let new_updates = {
+            let mut updates = self.need_update.borrow_mut();
+            if updates.len() == 0 {
+                return;
+            }
+            let mut new_updates = vec![];
+            std::mem::swap(&mut *updates, &mut new_updates);
+            new_updates
+        };
+        let mut updates = new_updates.into_iter();
+        let f = updates.next().unwrap();
+        f(self);
+        self.update_node();
+        for f in updates {
+            f(self);
         }
     }
     pub fn force_apply_updates<C: Component<B>>(&mut self) {
-        self.need_update.set(false);
-        <C as ComponentTemplate<B>>::template(self, true);
-        self.update_node();
+        let forced = {
+            let updates = self.need_update.borrow_mut();
+            updates.len() == 0
+        };
+        if forced {
+            <C as ComponentTemplate<B>>::template(self, true);
+            self.update_node();
+        } else {
+            self.apply_updates();
+        }
     }
     pub fn new_native_node(&mut self, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>) -> NativeNodeRc<B> {
         let backend = self.backend().clone();
@@ -941,6 +1000,15 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     pub fn marked(&self, r: &str) -> Option<NodeRc<B>> {
         self.to_ref().marked(r)
     }
+    pub fn marked_native_node(&self, r: &str) -> Option<NativeNodeRc<B>> {
+        self.to_ref().marked_native_node(r)
+    }
+    pub fn marked_component_node(&self, r: &str) -> Option<ComponentNodeRc<B>> {
+        self.to_ref().marked_component_node(r)
+    }
+    pub fn marked_component<C: Component<B>>(&self, r: &str) -> Option<ComponentRc<B, C>> {
+        self.to_ref().marked_component::<C>(r)
+    }
     pub(crate) fn set_attached(&mut self) {
         if self.attached { return };
         self.attached = true;
@@ -949,6 +1017,7 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
             child.borrow_mut_with(self).set_attached();
         }
         self.component.attached();
+        self.apply_updates();
     }
     pub(crate) fn set_detached(&mut self) {
         if !self.attached { return };
@@ -1019,6 +1088,9 @@ impl<'a, B: Backend> TextNodeRef<'a, B> {
     }
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
         write!(s, "{}", escape::escape_html(&self.text_content))
+    }
+    pub(crate) fn prerender<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        self.to_html(s)
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
@@ -1254,6 +1326,14 @@ impl<'a, B: Backend> NodeRef<'a, B> {
             Self::VirtualNode(x) => x.to_html(s),
             Self::ComponentNode(x) => x.to_html(s),
             Self::TextNode(x) => x.to_html(s),
+        }
+    }
+    pub(crate) fn prerender<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
+        match self {
+            Self::NativeNode(x) => x.prerender(s),
+            Self::VirtualNode(x) => x.prerender(s),
+            Self::ComponentNode(x) => x.prerender(s),
+            Self::TextNode(x) => x.prerender(s),
         }
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
