@@ -11,8 +11,7 @@ use wasm_bindgen::{JsCast, JsValue};
 
 use crate::global_events;
 use crate::global_events::*;
-use crate::node::{NodeWeak, NodeRefMut};
-use crate::component::{Component, ComponentRefMut};
+use crate::node::{NodeWeak};
 use super::*;
 
 const ELEMENT_INNER_ID_MAGIC: u32 = 1234567890;
@@ -205,6 +204,15 @@ impl BackendElement for DomElement {
             node.set_attribute(name, value).unwrap();
         }
     }
+    fn match_prerendered_first_child(&self, node: &BackendNode<Dom>) {
+        unreachable!()
+    }
+    fn match_prerendered_next_sibling(&self, node: &BackendNode<Dom>) {
+        unreachable!()
+    }
+    fn prerendered_data(&self) -> Vec<u8> {
+        unreachable!()
+    }
 }
 
 pub struct DomTextNode {
@@ -237,6 +245,9 @@ impl BackendTextNode for DomTextNode {
                 None => { },
             }
         }
+    }
+    fn match_prerendered_next_sibling(&self, node: &BackendNode<Dom>) {
+        unreachable!()
     }
 }
 
@@ -343,66 +354,6 @@ impl Dom {
             dom_prerendering: Cell::new(true),
         }
     }
-    pub fn prerendered<C: Component<Dom>>(&self, component_ref_mut: &mut ComponentRefMut<Dom, C>) {
-        fn attach_dom(mut node_ref_mut: NodeRefMut<Dom>, node: Node) -> Option<Node> {
-            macro_rules! handle_non_virtual_element {
-                ($n: ident) => {
-                    {
-                        let mut cur_child_node = node.child_nodes().get(0);
-                        let mut composed_children = $n.composed_children().into_iter();
-                        loop {
-                            let child = match composed_children.next() {
-                                None => break,
-                                Some(child) => child,
-                            };
-                            match cur_child_node {
-                                None => break,
-                                Some(child_node) => {
-                                    cur_child_node = attach_dom(child.borrow_mut_with($n), child_node);
-                                }
-                            }
-                        }
-                        let dom_element = &mut $n.backend_element;
-                        let next = node.next_sibling();
-                        dom_element.node = Some(node.dyn_into().unwrap());
-                        dom_element.apply_pending_node_weak();
-                        next
-                    }
-                }
-            }
-            match &mut node_ref_mut {
-                NodeRefMut::NativeNode(n) => handle_non_virtual_element!(n),
-                NodeRefMut::VirtualNode(n) => {
-                    let mut cur_child_node = Some(node);
-                    let mut composed_children = n.composed_children().into_iter();
-                    loop {
-                        let child = match composed_children.next() {
-                            None => break,
-                            Some(child) => child,
-                        };
-                        match cur_child_node {
-                            None => break,
-                            Some(child_node) => {
-                                cur_child_node = attach_dom(child.borrow_mut_with(n), child_node);
-                            }
-                        }
-                    }
-                    cur_child_node
-                },
-                NodeRefMut::ComponentNode(n) => handle_non_virtual_element!(n),
-                NodeRefMut::TextNode(n) => {
-                    let dom_element = &mut n.backend_element;
-                    let next = node.next_sibling();
-                    dom_element.node = Some(node.dyn_into().unwrap());
-                    next
-                },
-            }
-        }
-        let n: &Node = &self.root.borrow();
-        attach_dom(NodeRefMut::ComponentNode(component_ref_mut.as_node().duplicate()), n.clone());
-        self.dom_prerendering.set(false);
-        event::init_backend_event(self);
-    }
     fn set_event_listener_on_root_node<F: 'static + Fn(&NodeWeak<Dom>, DomEvent)>(&self, name: &'static str, f: F) {
         let cb = Closure::wrap(Box::new(move |event: Event| {
             let element: &Element = &event.target().unwrap().dyn_into().unwrap();
@@ -461,6 +412,98 @@ impl Backend for Dom {
             }
         }
     }
+    fn is_prerendering(&self) -> bool {
+        self.dom_prerendering.get()
+    }
+    fn match_prerendered_root_element(&self, root_node: &DomElement) {
+        unreachable!()
+    }
+    fn end_prerendering(&self) {
+        self.dom_prerendering.set(false);
+        event::init_backend_event(self);
+    }
+    // fn prerendered<C: Component<Dom>, F: FnOnce(Option<&Vec<u8>>) -> ComponentRc<Dom, C>>(&self, prerender_root_fn: F) -> ComponentRc<Dom, C> {
+    //     fn attach_dom(mut component_ref_mut: ComponentNodeRefMut<Dom>, node: Node) -> Option<Node> {
+    //         match &mut node_ref_mut {
+    //             NodeRefMut::NativeNode(n) => {
+    //                 let mut cur_child_node = node.child_nodes().get(0);
+    //                 let mut composed_children = n.composed_children().into_iter();
+    //                 loop {
+    //                     let child = match composed_children.next() {
+    //                         None => break,
+    //                         Some(child) => child,
+    //                     };
+    //                     match cur_child_node {
+    //                         None => break,
+    //                         Some(child_node) => {
+    //                             cur_child_node = attach_dom(child.borrow_mut_with(n), child_node);
+    //                         }
+    //                     }
+    //                 }
+    //                 let dom_element = &mut n.backend_element;
+    //                 let next = node.next_sibling();
+    //                 dom_element.node = Some(node.dyn_into().unwrap());
+    //                 dom_element.apply_pending_node_weak();
+    //                 next
+    //             },
+    //             NodeRefMut::VirtualNode(n) => {
+    //                 let mut cur_child_node = Some(node);
+    //                 let mut composed_children = n.composed_children().into_iter();
+    //                 loop {
+    //                     let child = match composed_children.next() {
+    //                         None => break,
+    //                         Some(child) => child,
+    //                     };
+    //                     match cur_child_node {
+    //                         None => break,
+    //                         Some(child_node) => {
+    //                             cur_child_node = attach_dom(child.borrow_mut_with(n), child_node);
+    //                         }
+    //                     }
+    //                 }
+    //                 cur_child_node
+    //             },
+    //             NodeRefMut::ComponentNode(n) => {
+    //
+    //                 let mut cur_child_node = node.child_nodes().get(0);
+    //                 let mut composed_children = n.composed_children().into_iter();
+    //                 loop {
+    //                     let child = match composed_children.next() {
+    //                         None => break,
+    //                         Some(child) => child,
+    //                     };
+    //                     match cur_child_node {
+    //                         None => break,
+    //                         Some(child_node) => {
+    //                             cur_child_node = attach_dom(child.borrow_mut_with(n), child_node);
+    //                         }
+    //                     }
+    //                 }
+    //                 let dom_element = &mut n.backend_element;
+    //                 let next = node.next_sibling();
+    //                 dom_element.node = Some(node.dyn_into().unwrap());
+    //                 dom_element.apply_pending_node_weak();
+    //                 next
+    //             },
+    //             NodeRefMut::TextNode(n) => {
+    //                 let dom_element = &mut n.backend_element;
+    //                 let next = node.next_sibling();
+    //                 dom_element.node = Some(node.dyn_into().unwrap());
+    //                 next
+    //             },
+    //         }
+    //     }
+    //     let n: &Element = &self.root.borrow();
+    //     let data = match n.get_attribute("data-maomi") {
+    //         Some(data) => Some(base64::decode(&data).unwrap()),
+    //         None => None,
+    //     };
+    //     let root = prerender_root_fn(data.as_ref());
+    //     attach_dom(NodeRefMut::ComponentNode(root.borrow_mut().as_node().duplicate()), (n as &Node).clone());
+    //     self.dom_prerendering.set(false);
+    //     event::init_backend_event(self);
+    //     root
+    // }
 }
 
 mod event {

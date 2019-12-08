@@ -1,7 +1,7 @@
 pub use maomi_macro::*;
-pub use super::{Component, ComponentTemplate, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*};
+pub use super::{Component, ComponentTemplate, ComponentTemplateOperation, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*, prerender::PrerenderReader};
 
-fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
+fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>, __prerendered_data: &mut Option<&mut PrerenderReader>) -> Vec<NodeRc<B>> {
     struct SampleData {
         list: Vec<ForSampleData>
     }
@@ -23,7 +23,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
     };
 
     // for node logic
-    let for_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
+    let mut for_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
         let (__keys, mut __reordered_list) = {
             let keys: Box<VirtualKeyList<i32>> = {
                 let v: Vec<Option<i32>> = data.list.iter().map(|x| {
@@ -53,7 +53,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
         let children: Vec<_> = data.list.iter().enumerate().map(|(index, item)| -> NodeRc<_> {
 
             // if node logic
-            let if_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
+            let mut if_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
 
                 // native node logic
                 let native_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
@@ -94,7 +94,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                 };
 
                 // native node logic
-                let component_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
+                let mut component_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
 
                     // text node logic
                     let slot_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
@@ -114,7 +114,12 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     let children = node.as_ref().map(|node| { node.children() });
                     let ret_children: Vec<NodeRc<_>> = vec![slot_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
-                        None => __owner.new_component_node::<EmptyComponent>("maomi-default-component", ret_children),
+                        None => {
+                            match __prerendered_data.as_mut() {
+                                Some(__prerendered_data) => __owner.new_prerendered_component_node::<EmptyComponent>("maomi-default-component", ret_children, __prerendered_data),
+                                None => __owner.new_component_node::<EmptyComponent>("maomi-default-component", ret_children),
+                            }
+                        },
                         Some(node_rc) => node_rc.clone(),
                     };
                     {
@@ -214,8 +219,11 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
     vec![for_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })]
 }
 
-pub fn __template_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __is_update: bool) -> Option<Vec<NodeRc<B>>> {
+pub fn __template_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> {
     let sr = __owner.shadow_root_rc().clone();
-    let ret = __shadow_root_sample(__owner, if __is_update { Some(&sr) } else { None });
+    let __is_update = if let ComponentTemplateOperation::Update = __operation { true } else { false };
+    let __update_to = if __is_update { Some(&sr) } else { None };
+    let mut __prerendered_data = if let ComponentTemplateOperation::InitPrerendered(d) = __operation { Some(d) } else { None };
+    let ret = __shadow_root_sample(__owner, __update_to, &mut __prerendered_data);
     if __is_update { None } else { Some(ret) }
 }

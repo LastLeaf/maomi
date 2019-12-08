@@ -5,6 +5,7 @@ use std::rc::Rc;
 use super::{Component, ComponentRc};
 use super::backend::*;
 use super::node::*;
+use super::prerender::PrerenderReader;
 
 pub struct Context<B: Backend> {
     group_holder: VirtualNodeRc<B>,
@@ -26,8 +27,33 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
+    pub fn new_prerendered<C: 'static + Component<B>>(backend: B, prerendered_data: Box<[u8]>) -> Context<B> {
+        let backend = Rc::new(backend);
+        if !backend.is_prerendering() {
+            panic!("the backend is not in prerendering progress");
+        }
+        let group_holder = VirtualNodeRc::new_with_me_cell_group(
+            VirtualNode::new_empty(backend.clone())
+        );
+        let scheduler = Rc::new(Scheduler::new());
+        let mut prerendered_data = PrerenderReader::new(prerendered_data);
+        let prerendered_root = create_component::<_, _, C>(&mut group_holder.borrow_mut(), scheduler.clone(), "maomi", vec![], None, Some(&mut prerendered_data)).with_type::<C>();
+        // TODO impl rematch process
+        let ret = Self {
+            group_holder,
+            root: Some(prerendered_root.into_node()),
+            backend,
+            scheduler,
+        };
+        ret
+    }
     pub fn backend(&self) -> &B {
         &self.backend
+    }
+    pub fn get_prerendered_data(&self) -> Vec<u8> {
+        let mut s = super::prerender::PrerenderWriter::new();
+        self.root.as_ref().unwrap().borrow().serialize_component_tree_data(&mut s);
+        s.end()
     }
     pub fn root_component<C: 'static + Component<B>>(&self) -> Option<ComponentRc<B, C>> {
         self.root.clone().map(|x| {
@@ -35,7 +61,7 @@ impl<B: Backend> Context<B> {
         })
     }
     pub fn new_root_component<C: 'static + Component<B>>(&mut self) -> ComponentRc<B, C> {
-        let ret = create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", vec![], None).with_type::<C>();
+        let ret = create_component::<_, _, C>(&mut self.group_holder.borrow_mut(), self.scheduler.clone(), "maomi", vec![], None, None).with_type::<C>();
         ret
     }
     pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: ComponentRc<B, C>) {

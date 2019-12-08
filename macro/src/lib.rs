@@ -54,23 +54,26 @@ impl ToTokens for TemplateDefinition {
         let template_fn_body = quote! {
             let shadow_root_fn = #root;
             let sr = __owner.shadow_root_rc().clone();
-            let ret: Vec<NodeRc<_>> = shadow_root_fn(__owner, if __is_update { Some(&sr) } else { None });
+            let __is_update = if let ComponentTemplateOperation::Update = __operation { true } else { false };
+            let __update_to = if __is_update { Some(&sr) } else { None };
+            let mut __prerendered_data = if let ComponentTemplateOperation::InitPrerendered(d) = __operation { Some(d) } else { None };
+            let ret: Vec<NodeRc<_>> = shadow_root_fn(__owner, __update_to, &mut __prerendered_data);
             if __is_update { None } else { Some(ret) }
         };
         let template_trait_fn_body = quote! {
             let rc = __owner.rc();
             let __owner2 = unsafe { rc.borrow_mut_unsafe_with(__owner) };
-            __owner2.as_component::<#name>().__template(__owner, __is_update)
+            __owner2.as_component::<#name>().__template(__owner, __operation)
         };
         if template_generics.is_some() {
             tokens.append_all(quote! {
                 impl #generics #name {
-                    fn __template(&self, __owner: &mut ComponentNodeRefMut #template_generics , __is_update: bool) -> Option<Vec<NodeRc #template_generics >> {
+                    fn __template(&self, __owner: &mut ComponentNodeRefMut #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> {
                         #template_fn_body
                     }
                 }
                 impl #generics ComponentTemplate #template_generics for #name {
-                    fn template(__owner: &mut ComponentNodeRefMut #template_generics , __is_update: bool) -> Option<Vec<NodeRc #template_generics >> where Self: Sized {
+                    fn template(__owner: &mut ComponentNodeRefMut #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> where Self: Sized {
                         #template_trait_fn_body
                     }
                 }
@@ -87,12 +90,12 @@ impl ToTokens for TemplateDefinition {
             };
             tokens.append_all(quote! {
                 impl #generics #name {
-                    fn __template<B: Backend>(&self, __owner: &mut ComponentNodeRefMut<B>, __is_update: bool) -> Option<Vec<NodeRc<B>>> {
+                    fn __template<B: Backend>(&self, __owner: &mut ComponentNodeRefMut<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> {
                         #template_fn_body
                     }
                 }
                 impl #combined_generics ComponentTemplate<B> for #name {
-                    fn template(__owner: &mut ComponentNodeRefMut<B>, __is_update: bool) -> Option<Vec<NodeRc<B>>> where Self: Sized {
+                    fn template(__owner: &mut ComponentNodeRefMut<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> where Self: Sized {
                         #template_trait_fn_body
                     }
                 }

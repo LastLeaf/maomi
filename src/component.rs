@@ -3,12 +3,12 @@ use std::fmt;
 use std::rc::Rc;
 use std::cell::{RefCell};
 use std::ops::{Deref, DerefMut};
-use serde::Serialize;
 use me_cell::{MeRefHandle, MeRefMutHandle};
 
 use super::context::Scheduler;
 use super::node::*;
 use super::backend::{Backend};
+use super::prerender::PrerenderReader;
 
 pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
     fn new(_ctx: ComponentContext<B, Self>) -> Self where Self: Sized;
@@ -24,19 +24,24 @@ pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
     fn detached(&mut self) {
 
     }
-    // TODO ssr
     fn serialize(&self) -> Vec<u8> {
         panic!("the component is not serializable")
     }
-    fn deserialize(&self, _data: Vec<u8>) {
+    fn deserialize(_ctx: ComponentContext<B, Self>, _data: &[u8]) -> Self where Self: Sized {
         panic!("the component is not deserializable")
     }
 }
 downcast_rs::impl_downcast!(Component<B> where B: Backend);
 
+pub enum ComponentTemplateOperation<'a> {
+    Init,
+    Update,
+    InitPrerendered(&'a mut PrerenderReader),
+}
+
 pub trait ComponentTemplate<B: Backend>: 'static {
-    fn template(component: &mut ComponentNodeRefMut<B>, is_update: bool) -> Option<Vec<NodeRc<B>>> where Self: Sized {
-        if is_update {
+    fn template(component: &mut ComponentNodeRefMut<B>, operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> where Self: Sized {
+        if let ComponentTemplateOperation::Update = operation {
             return None
         }
         let mut f = || {
@@ -64,7 +69,7 @@ impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
     }
     fn add_updater(v: &mut Vec<Box<dyn 'static + FnOnce(&mut ComponentNodeRefMut<B>)>>) {
         v.push(Box::new(|c: &mut ComponentNodeRefMut<B>| {
-            <C as ComponentTemplate<B>>::template(c, true);
+            <C as ComponentTemplate<B>>::template(c, ComponentTemplateOperation::Update);
         }));
     }
     pub fn update(&self) {
@@ -96,6 +101,9 @@ pub struct ComponentRc<B: Backend, C: Component<B>> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<B: Backend, C: Component<B>> ComponentRc<B, C> {
+    pub fn into_node(self) -> ComponentNodeRc<B> {
+        self.n
+    }
     pub fn as_node(&self) -> &ComponentNodeRc<B> {
         &self.n
     }
@@ -133,6 +141,9 @@ pub struct ComponentWeak<B: Backend, C: Component<B>> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<B: Backend, C: Component<B>> ComponentWeak<B, C> {
+    pub fn into_node(self) -> ComponentNodeWeak<B> {
+        self.n
+    }
     pub fn as_node(&self) -> &ComponentNodeWeak<B> {
         &self.n
     }
@@ -156,6 +167,9 @@ pub struct ComponentRef<'a, B: Backend, C: Component<B>> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<'a, B: Backend, C: Component<B>> ComponentRef<'a, B, C> {
+    pub fn into_node(self) -> ComponentNodeRef<'a, B> {
+        self.n
+    }
     pub fn as_node(&self) -> &ComponentNodeRef<'a, B> {
         &self.n
     }
