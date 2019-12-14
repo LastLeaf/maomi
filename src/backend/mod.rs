@@ -5,7 +5,6 @@ pub use dom::Dom;
 
 use crate::node::NodeWeak;
 
-#[derive(Clone)]
 pub enum BackendNodeRef<'a, B: Backend> {
     Element(&'a B::BackendElement),
     TextNode(&'a B::BackendTextNode),
@@ -19,6 +18,11 @@ impl<'a, B: Backend> BackendNodeRef<'a, B> {
     }
 }
 
+pub enum BackendNodeRefMut<'a, B: Backend> {
+    Element(&'a mut B::BackendElement),
+    TextNode(&'a mut B::BackendTextNode),
+}
+
 pub enum BackendNode<B: Backend> {
     Element(B::BackendElement),
     TextNode(B::BackendTextNode),
@@ -28,7 +32,7 @@ pub trait BackendTextNode {
     type Backend: Backend;
     fn set_text_content(&self, text_content: &str);
     fn remove_self(&self);
-    fn match_prerendered_next_sibling(&self, node: &BackendNode<Dom>) {
+    fn match_prerendered_next_sibling(&mut self, _node: BackendNodeRefMut<Self::Backend>) {
         unreachable!()
     }
 }
@@ -41,13 +45,10 @@ pub trait BackendElement {
     fn remove_list(&self, children: Vec<BackendNodeRef<Self::Backend>>);
     fn remove_self(&self);
     fn set_attribute(&self, name: &'static str, value: &str);
-    fn match_prerendered_first_child(&self, node: &BackendNode<Dom>) {
+    fn match_prerendered_first_child(&mut self, _node: BackendNodeRefMut<Self::Backend>) {
         unreachable!()
     }
-    fn match_prerendered_next_sibling(&self, node: &BackendNode<Dom>) {
-        unreachable!()
-    }
-    fn prerendered_data(&self) -> Vec<u8> {
+    fn match_prerendered_next_sibling(&mut self, _node: BackendNodeRefMut<Self::Backend>) {
         unreachable!()
     }
 }
@@ -61,7 +62,7 @@ pub trait Backend: 'static + Sized {
     fn is_prerendering(&self) -> bool {
         false
     }
-    fn match_prerendered_root_element(&self, root_node: &Self::BackendElement) {
+    fn match_prerendered_root_element(&self, _root_node: &mut Self::BackendElement) {
         unreachable!()
     }
     fn end_prerendering(&self) {

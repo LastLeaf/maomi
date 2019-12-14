@@ -25,13 +25,23 @@ pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
 
     }
     fn serialize(&self) -> Vec<u8> {
-        panic!("the component is not serializable")
+        panic!("the component is not serializable");
     }
-    fn deserialize(_ctx: ComponentContext<B, Self>, _data: &[u8]) -> Self where Self: Sized {
-        panic!("the component is not deserializable")
+    fn deserialize(&mut self, _data: &[u8]) {
+        panic!("the component is not deserializable");
     }
 }
 downcast_rs::impl_downcast!(Component<B> where B: Backend);
+
+pub mod component_serializer {
+    use super::*;
+    pub fn serialize<B: Backend, C: Component<B> + serde::Serialize>(c: &C) -> Vec<u8> {
+        bincode::serialize(c).expect("the component serialization failed")
+    }
+    pub fn deserialize<'a, B: Backend, C: Component<B> + serde::Deserialize<'a>>(c: &mut C, data: &'a [u8]) {
+        bincode::deserialize_in_place(bincode::SliceReader::new(data), c).expect("the component deserialization failed")
+    }
+}
 
 pub enum ComponentTemplateOperation<'a> {
     Init,

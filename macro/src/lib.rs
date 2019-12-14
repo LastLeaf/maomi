@@ -11,6 +11,44 @@ mod template;
 mod simple_template;
 mod xml_template;
 
+#[proc_macro_attribute]
+pub fn serializable_component(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as SerializableComopnentDefinition);
+    let ret = quote! {
+        #input
+    };
+    TokenStream::from(ret)
+}
+struct SerializableComopnentDefinition {
+    item_impl: ItemImpl,
+}
+impl Parse for SerializableComopnentDefinition {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut item_impl: ItemImpl = input.parse()?;
+        let ser_item: ImplItem = parse_str(r#"
+            fn serialize(&self) -> Vec<u8> {
+                component_serializer::serialize(self)
+            }
+        "#).unwrap();
+        let de_item: ImplItem = parse_str(r#"
+            fn deserialize(&mut self, data: &[u8]) {
+                component_serializer::deserialize(self, data)
+            }
+        "#).unwrap();
+        item_impl.items.push(ser_item);
+        item_impl.items.push(de_item);
+        Ok(Self {
+            item_impl,
+        })
+    }
+}
+impl ToTokens for SerializableComopnentDefinition {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        let Self { item_impl } = self;
+        tokens.append_all(quote! { #item_impl });
+    }
+}
+
 #[derive(Clone)]
 struct TemplateDefinition {
     name: Path,

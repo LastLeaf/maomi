@@ -5,7 +5,7 @@ use std::rc::Rc;
 use super::{Component, ComponentRc};
 use super::backend::*;
 use super::node::*;
-use super::prerender::PrerenderReader;
+use super::prerender::{PrerenderReader, match_prerendered_tree};
 
 pub struct Context<B: Backend> {
     group_holder: VirtualNodeRc<B>,
@@ -37,11 +37,11 @@ impl<B: Backend> Context<B> {
         );
         let scheduler = Rc::new(Scheduler::new());
         let mut prerendered_data = PrerenderReader::new(prerendered_data);
-        let prerendered_root = create_component::<_, _, C>(&mut group_holder.borrow_mut(), scheduler.clone(), "maomi", vec![], None, Some(&mut prerendered_data)).with_type::<C>();
-        // TODO impl rematch process
+        let prerendered_root = create_component::<_, _, C>(&mut group_holder.borrow_mut(), scheduler.clone(), "maomi", vec![], None, Some(&mut prerendered_data)).with_type::<C>().into_node();
+        match_prerendered_tree(prerendered_root.borrow_mut(), &backend);
         let ret = Self {
             group_holder,
-            root: Some(prerendered_root.into_node()),
+            root: Some(prerendered_root),
             backend,
             scheduler,
         };

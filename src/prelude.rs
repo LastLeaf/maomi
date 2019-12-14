@@ -1,5 +1,5 @@
 pub use maomi_macro::*;
-pub use super::{Component, ComponentTemplate, ComponentTemplateOperation, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*, prerender::PrerenderReader};
+pub use super::{Component, component::component_serializer, ComponentTemplate, ComponentTemplateOperation, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*, prerender::PrerenderReader};
 
 fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>, __prerendered_data: &mut Option<&mut PrerenderReader>) -> Vec<NodeRc<B>> {
     struct SampleData {

@@ -971,11 +971,12 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         // create component
         self.self_weak = Some(self_weak.clone());
         let ctx = ComponentContext::new(self_weak.clone().into(), self.need_update.clone(), self.scheduler.clone());
-        let comp = Box::new(match prerendered_data.as_mut() {
+        let mut comp = Box::new(<C as Component<B>>::new(ctx));
+        Box::new(match prerendered_data.as_mut() {
             Some(data) => {
-                <C as Component<B>>::deserialize(ctx, data.next())
+                comp.deserialize(data.next())
             },
-            None => <C as Component<B>>::new(ctx),
+            None => { }
         });
         let uninit = std::mem::replace(&mut self.component, comp);
         std::mem::forget(uninit);
@@ -1202,7 +1203,7 @@ impl<B: Backend> NodeRc<B> {
             NodeRc::TextNode(x) => NodeRefMut::TextNode(x.borrow_mut_with(source)),
         }
     }
-    pub unsafe fn borrow_mut_unsafe_with<'a: 'b, 'b, U>(&'b self, source: &'b mut U) -> NodeRefMut<'b, B> where U: ElementRefMut<'a, B> {
+    pub unsafe fn borrow_mut_unsafe_with<'a: 'b, 'b, 'c, U>(&'c self, source: &'b mut U) -> NodeRefMut<'c, B> where U: ElementRefMut<'a, B> {
         match self {
             NodeRc::NativeNode(x) => NodeRefMut::NativeNode(x.borrow_mut_unsafe_with(source)),
             NodeRc::VirtualNode(x) => NodeRefMut::VirtualNode(x.borrow_mut_unsafe_with(source)),
@@ -1371,6 +1372,14 @@ impl<'a, B: Backend> fmt::Debug for NodeRef<'a, B> {
     }
 }
 impl<'a, B: Backend> NodeRefMut<'a, B> {
+    pub(crate) fn backend_node_mut<'b>(&'b mut self) -> Option<BackendNodeRefMut<'b, B>> {
+        match self {
+            Self::NativeNode(x) => Some(BackendNodeRefMut::Element(&mut x.backend_element)),
+            Self::VirtualNode(_) => None,
+            Self::ComponentNode(x) => Some(BackendNodeRefMut::Element(&mut x.backend_element)),
+            Self::TextNode(x) => Some(BackendNodeRefMut::TextNode(&mut x.backend_element)),
+        }
+    }
     pub fn owner(&self) -> Option<ComponentNodeRc<B>> {
         match self {
             Self::NativeNode(x) => x.owner(),
