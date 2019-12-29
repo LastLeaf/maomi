@@ -1,14 +1,15 @@
+use std::pin::Pin;
 use std::marker::PhantomData;
 use std::fmt;
 use std::rc::Rc;
 use std::cell::{RefCell};
 use std::ops::{Deref, DerefMut};
+use futures::Future;
 use me_cell::{MeRefHandle, MeRefMutHandle};
 
 use super::context::Scheduler;
 use super::node::*;
 use super::backend::{Backend};
-use super::prerender::PrerenderReader;
 
 pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
     fn new(_ctx: ComponentContext<B, Self>) -> Self where Self: Sized;
@@ -24,29 +25,18 @@ pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
     fn detached(&mut self) {
 
     }
-    fn serialize(&self) -> Vec<u8> {
-        panic!("the component is not serializable");
-    }
-    fn deserialize(&mut self, _data: &[u8]) {
-        panic!("the component is not deserializable");
-    }
 }
 downcast_rs::impl_downcast!(Component<B> where B: Backend);
 
-pub mod component_serializer {
-    use super::*;
-    pub fn serialize<B: Backend, C: Component<B> + serde::Serialize>(c: &C) -> Vec<u8> {
-        bincode::serialize(c).expect("the component serialization failed")
-    }
-    pub fn deserialize<'a, B: Backend, C: Component<B> + serde::Deserialize<'a>>(c: &mut C, data: &'a [u8]) {
-        bincode::deserialize_in_place(bincode::SliceReader::new(data), c).expect("the component deserialization failed")
-    }
+pub trait PrerenderableComponent<'a, B: Backend>: Component<B> {
+    type PrerenderedData: serde::Serialize + serde::Deserialize<'a>;
+    fn get_prerendered_data(&self) -> Pin<Box<dyn Future<Output = Self::PrerenderedData>>>;
+    fn apply_prerendered_data(&mut self, _data: &Self::PrerenderedData);
 }
 
-pub enum ComponentTemplateOperation<'a> {
+pub enum ComponentTemplateOperation {
     Init,
     Update,
-    InitPrerendered(&'a mut PrerenderReader),
 }
 
 pub trait ComponentTemplate<B: Backend>: 'static {

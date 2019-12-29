@@ -356,7 +356,7 @@ fn custom_event() {
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><maomi-event-child-component></maomi-event-child-component></maomi>"#);
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><!----><maomi-event-child-component></maomi-event-child-component></maomi>"#);
     {
         let child = root_component.marked_component::<EventChildComponent<_>>("c").unwrap();
         let child = child.borrow_mut_with(&mut root_component);

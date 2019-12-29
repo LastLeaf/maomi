@@ -115,12 +115,12 @@ impl ToTokens for TemplateNode {
                     }
                 }).collect();
                 quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
                         let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
                         let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                         let __children = __node.as_ref().map(|node| { node.children() });
                         let ret_children: Vec<NodeRc<_>> = vec![#(
-                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None }, __prerendered_data)
+                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                         ),*];
                         let is_init = __node_rc.is_none();
                         let node_rc = match __node_rc {
@@ -146,7 +146,7 @@ impl ToTokens for TemplateNode {
                             Some(x) => x.clone(),
                         };
                         quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
                                 match __update_to {
                                     None => {
                                         __owner.new_virtual_node("slot", VirtualNodeProperty::Slot(#slot_name, vec![]), vec![]).into()
@@ -163,14 +163,14 @@ impl ToTokens for TemplateNode {
                         // in-slot node logic
                         let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
                         quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
                                 match __update_to {
                                     None => {
                                         let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
                                         let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                                         let __children = __node.as_ref().map(|node| { node.children() });
                                         let ret_children: Vec<NodeRc<_>> = vec![#(
-                                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None }, __prerendered_data)
+                                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                                         ),*];
                                         __owner.new_virtual_node("in", VirtualNodeProperty::InSlot(#name, ret_children), vec![]).into()
                                     },
@@ -193,7 +193,7 @@ impl ToTokens for TemplateNode {
                                     let children: Vec<NodeRc<_>> = vec![#(
                                         (#children)(__owner, if let Some(children) = __children {
                                             if __equal { Some(&children[#indexes]) } else { None }
-                                        } else { None }, __prerendered_data)
+                                        } else { None })
                                     ),*];
                                     if __equal {
                                         __node_rc.unwrap().clone().into()
@@ -224,7 +224,7 @@ impl ToTokens for TemplateNode {
                         quote! {
 
                             // if node logic
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
                                 let __node_rc = __update_to.map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
                                 let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                                 let __old_key = match &__node {
@@ -298,7 +298,7 @@ impl ToTokens for TemplateNode {
                             },
                         };
                         quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| -> NodeRc<_> {
+                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
                                 let (__keys, mut __reordered_list) = #key_list;
 
                                 let children: Vec<_> = (#list).into_iter().enumerate().map(|(#index, #item)| -> NodeRc<_> {
@@ -308,7 +308,7 @@ impl ToTokens for TemplateNode {
                                     let children: Vec<NodeRc<_>> = vec![#(
                                         (#children)(__owner, if let Some(children) = __children {
                                             Some(&children[#indexes])
-                                        } else { None }, __prerendered_data)
+                                        } else { None })
                                     ),*];
                                     match __node_rc {
                                         None => __owner.new_virtual_node("for-item", VirtualNodeProperty::None, children).into(),
@@ -366,21 +366,15 @@ impl ToTokens for TemplateNode {
                     }
                 }).collect();
                 quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
                         let __node_rc = __update_to.map(|node_rc| if let NodeRc::ComponentNode(node_rc) = node_rc { node_rc } else { unreachable!() });
                         let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                         let __children = __node.as_ref().map(|node| { node.children() });
                         let ret_children: Vec<NodeRc<_>> = vec![#(
-                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None }, __prerendered_data)
+                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                         ),*];
                         let is_init = __node_rc.is_none();
                         let node_rc = match __node_rc {
-                            None => {
-                                match __prerendered_data.as_mut() {
-                                    Some(__prerendered_data) => __owner.new_prerendered_component_node::<#component>(#tag_name, ret_children, __prerendered_data),
-                                    None => __owner.new_component_node::<#component>(#tag_name, ret_children),
-                                }
-                            },
                             None => __owner.new_component_node::<#component>(#tag_name, ret_children),
                             Some(node_rc) => node_rc.clone(),
                         };
@@ -411,7 +405,7 @@ impl ToTokens for TemplateNode {
                     }
                 };
                 quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
                         match __update_to {
                             None => {
                                 __owner.new_text_node(#x).into()
@@ -437,12 +431,12 @@ impl ToTokens for TemplateShadowRoot {
         let TemplateShadowRoot { children } = self;
         let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
         tokens.append_all(quote! {
-            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&VirtualNodeRc<_>>, __prerendered_data: &mut Option<&mut PrerenderReader>| {
+            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&VirtualNodeRc<_>>| {
                 // shadow root node logic
                 let __node = __update_to.map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                 let __children = __node.as_ref().map(|node| { node.children() });
                 vec![#(
-                    (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None }, __prerendered_data)
+                    (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                 ),*]
             }
         });

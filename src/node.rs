@@ -13,7 +13,6 @@ use super::backend::*;
 use super::context::Scheduler;
 use super::escape;
 use super::global_events::GlobalEvents;
-use super::prerender::*;
 
 fn dfs_shadow_tree<'a, B: Backend, T: ElementRef<'a, B>, F: FnMut(&NodeRc<B>)>(n: &T, children: &Vec<NodeRc<B>>, f: &mut F) {
     for child in children.iter() {
@@ -32,7 +31,6 @@ pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'stat
     tag_name: &'static str,
     children: Vec<NodeRc<B>>,
     owner: Option<ComponentNodeWeak<B>>,
-    prerendered_data: Option<&mut PrerenderReader>,
 ) -> ComponentNodeRc<B> {
     let backend = n.backend().clone();
     let shadow_root = VirtualNodeRc {
@@ -43,7 +41,7 @@ pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'stat
     let ret = ComponentNodeRc {
         c: Rc::new(n.as_me_ref_mut_handle().entrance(ComponentNode::new_with_children(backend, scheduler, tag_name, shadow_root.clone(), children, owner)))
     };
-    ret.borrow_mut_with(n).initialize::<C>(ret.downgrade(), prerendered_data);
+    ret.borrow_mut_with(n).initialize::<C>(ret.downgrade());
     ret
 }
 
@@ -192,11 +190,6 @@ impl<'a, B: Backend> NativeNodeRef<'a, B> {
             child.borrow_with(self).to_html(s)?;
         }
         write!(s, "</{}>", self.tag_name)
-    }
-    pub(crate) fn serialize_component_tree_data(&self, s: &mut PrerenderWriter) {
-        for child in self.composed_children() {
-            child.borrow_with(self).serialize_component_tree_data(s);
-        }
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
@@ -370,11 +363,6 @@ impl<'a, B: Backend> VirtualNodeRef<'a, B> {
             },
         }
         Ok(())
-    }
-    pub(crate) fn serialize_component_tree_data(&self, s: &mut PrerenderWriter) {
-        for child in self.composed_children() {
-            child.borrow_with(self).serialize_component_tree_data(s);
-        }
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
@@ -767,11 +755,6 @@ impl<'a, B: Backend> ComponentNodeRef<'a, B> {
         self.shadow_root.borrow_with(self).to_html(s)?;
         write!(s, "</{}>", self.tag_name)
     }
-    pub(crate) fn serialize_component_tree_data(&self, s: &mut PrerenderWriter) {
-        let component_data = self.component.serialize();
-        s.append(component_data);
-        self.shadow_root.borrow_with(self).serialize_component_tree_data(s);
-    }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
             write!(f, "  ")?;
@@ -842,10 +825,7 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         n
     }
     pub fn new_component_node<C: 'static + Component<B>>(&mut self, tag_name: &'static str, children: Vec<NodeRc<B>>) -> ComponentNodeRc<B> {
-        create_component::<_, _, C>(self, self.scheduler.clone(), tag_name, children, self.self_weak.clone(), None)
-    }
-    pub fn new_prerendered_component_node<C: 'static + Component<B>>(&mut self, tag_name: &'static str, children: Vec<NodeRc<B>>, deserialize_data: &mut PrerenderReader) -> ComponentNodeRc<B> {
-        create_component::<_, _, C>(self, self.scheduler.clone(), tag_name, children, self.self_weak.clone(), Some(deserialize_data))
+        create_component::<_, _, C>(self, self.scheduler.clone(), tag_name, children, self.self_weak.clone())
     }
     pub fn new_text_node<T: ToString>(&mut self, text_content: T) -> TextNodeRc<B> {
         let backend = self.backend().clone();
@@ -965,19 +945,13 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         }
         self.reassign_slots(slots);
     }
-    fn initialize<C: 'static + Component<B>>(&mut self, self_weak: ComponentNodeWeak<B>, mut prerendered_data: Option<&mut PrerenderReader>) {
+    fn initialize<C: 'static + Component<B>>(&mut self, self_weak: ComponentNodeWeak<B>) {
         // bind backend element
         self.backend_element.bind_node_weak(self_weak.clone().into());
         // create component
         self.self_weak = Some(self_weak.clone());
         let ctx = ComponentContext::new(self_weak.clone().into(), self.need_update.clone(), self.scheduler.clone());
-        let mut comp = Box::new(<C as Component<B>>::new(ctx));
-        Box::new(match prerendered_data.as_mut() {
-            Some(data) => {
-                comp.deserialize(data.next())
-            },
-            None => { }
-        });
+        let comp = Box::new(<C as Component<B>>::new(ctx));
         let uninit = std::mem::replace(&mut self.component, comp);
         std::mem::forget(uninit);
         // set chilren's parent
@@ -987,11 +961,7 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
         }
         {
             // initialize shadow root
-            let template_operation = match prerendered_data {
-                Some(data) => ComponentTemplateOperation::InitPrerendered(data),
-                None => ComponentTemplateOperation::Init,
-            };
-            let shadow_root_content = <C as ComponentTemplate<B>>::template(self, template_operation);
+            let shadow_root_content = <C as ComponentTemplate<B>>::template(self, ComponentTemplateOperation::Init);
             let shadow_root = self.shadow_root.clone();
             let mut shadow_root = unsafe { shadow_root.borrow_mut_unsafe_with(self) };
             shadow_root.set_composed_parent(Some(self_weak.clone()));
@@ -1108,10 +1078,12 @@ impl<'a, B: Backend> TextNodeRef<'a, B> {
         &self.backend_element
     }
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
-        write!(s, "{}", escape::escape_html(&self.text_content))
-    }
-    pub(crate) fn serialize_component_tree_data(&self, _s: &mut PrerenderWriter) {
-        // empty
+        let html = escape::escape_html(&self.text_content);
+        if html == "" {
+            write!(s, "<!---->")
+        } else {
+            write!(s, "{}", html)
+        }
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
@@ -1347,14 +1319,6 @@ impl<'a, B: Backend> NodeRef<'a, B> {
             Self::VirtualNode(x) => x.to_html(s),
             Self::ComponentNode(x) => x.to_html(s),
             Self::TextNode(x) => x.to_html(s),
-        }
-    }
-    pub(crate) fn serialize_component_tree_data(&self, s: &mut PrerenderWriter) {
-        match self {
-            Self::NativeNode(x) => x.serialize_component_tree_data(s),
-            Self::VirtualNode(x) => x.serialize_component_tree_data(s),
-            Self::ComponentNode(x) => x.serialize_component_tree_data(s),
-            Self::TextNode(x) => x.serialize_component_tree_data(s),
         }
     }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {

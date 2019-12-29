@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod prelude;
 pub mod component;
-pub use component::{Component, ComponentTemplate, ComponentTemplateOperation, ComponentContext, ComponentRc, ComponentWeak, ComponentRef, ComponentRefMut, EmptyComponent};
+pub use component::{Component, PrerenderableComponent, ComponentTemplate, ComponentTemplateOperation, ComponentContext, ComponentRc, ComponentWeak, ComponentRef, ComponentRefMut, EmptyComponent};
 pub mod property;
 pub use property::{Property, Prop};
 pub mod event;

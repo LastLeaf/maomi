@@ -9,7 +9,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 me-cell = { path = "./me-cell" }
-lazy-observer = { path = "./lazy-observer" }
 maomi-macro = { path = "./macro" }
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"

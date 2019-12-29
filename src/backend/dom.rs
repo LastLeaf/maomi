@@ -205,7 +205,8 @@ impl BackendElement for DomElement {
         }
     }
     fn match_prerendered_first_child(&mut self, node: BackendNodeRefMut<Dom>) {
-        match self.node.as_ref().unwrap().first_child() {
+        let p = self.node.as_ref().unwrap();
+        match p.first_child() {
             Some(next) => {
                 match node {
                     BackendNodeRefMut::Element(n) => {
@@ -213,17 +214,36 @@ impl BackendElement for DomElement {
                         n.apply_pending_node_weak();
                     },
                     BackendNodeRefMut::TextNode(n) => {
-                        n.node = Some(next.dyn_into().expect("no matching prerendered text node found"));
+                        match next.dyn_into::<Text>() {
+                            Ok(next) => {
+                                n.node = Some(next);
+                            },
+                            Err(next) => {
+                                match next.dyn_into::<Comment>() {
+                                    Ok(comment) => {
+                                        let next = DOCUMENT.with(|document| {
+                                            document.create_text_node("")
+                                        });
+                                        p.replace_child(&next, &comment).unwrap();
+                                        n.node = Some(next);
+                                    },
+                                    Err(_) => {
+                                        panic!("no matching prerendered text node found");
+                                    }
+                                }
+                            },
+                        }
                     },
                 }
             },
             None => {
-                panic!("no matching prerendered node found")
+                panic!("no matching prerendered node found");
             }
         }
     }
     fn match_prerendered_next_sibling(&mut self, node: BackendNodeRefMut<Dom>) {
-        match self.node.as_ref().unwrap().next_sibling() {
+        let p = self.node.as_ref().unwrap();
+        match p.next_sibling() {
             Some(next) => {
                 match node {
                     BackendNodeRefMut::Element(n) => {
@@ -231,7 +251,25 @@ impl BackendElement for DomElement {
                         n.apply_pending_node_weak();
                     },
                     BackendNodeRefMut::TextNode(n) => {
-                        n.node = Some(next.dyn_into().expect("no matching prerendered text node found"));
+                        match next.dyn_into::<Text>() {
+                            Ok(next) => {
+                                n.node = Some(next);
+                            },
+                            Err(next) => {
+                                match next.dyn_into::<Comment>() {
+                                    Ok(comment) => {
+                                        let next = DOCUMENT.with(|document| {
+                                            document.create_text_node("")
+                                        });
+                                        p.replace_child(&next, &comment).unwrap();
+                                        n.node = Some(next);
+                                    },
+                                    Err(_) => {
+                                        panic!("no matching prerendered text node found");
+                                    }
+                                }
+                            },
+                        }
                     },
                 }
             },
@@ -274,7 +312,8 @@ impl BackendTextNode for DomTextNode {
         }
     }
     fn match_prerendered_next_sibling(&mut self, node: BackendNodeRefMut<Dom>) {
-        match self.node.as_ref().unwrap().next_sibling() {
+        let p = self.node.as_ref().unwrap();
+        match p.next_sibling() {
             Some(next) => {
                 match node {
                     BackendNodeRefMut::Element(n) => {
@@ -282,7 +321,25 @@ impl BackendTextNode for DomTextNode {
                         n.apply_pending_node_weak();
                     },
                     BackendNodeRefMut::TextNode(n) => {
-                        n.node = Some(next.dyn_into().expect("no matching prerendered text node found"));
+                        match next.dyn_into::<Text>() {
+                            Ok(next) => {
+                                n.node = Some(next);
+                            },
+                            Err(next) => {
+                                match next.dyn_into::<Comment>() {
+                                    Ok(comment) => {
+                                        let next = DOCUMENT.with(|document| {
+                                            document.create_text_node("")
+                                        });
+                                        p.replace_child(&next, &comment).unwrap();
+                                        n.node = Some(next);
+                                    },
+                                    Err(_) => {
+                                        panic!("no matching prerendered text node found");
+                                    }
+                                }
+                            },
+                        }
                     },
                 }
             },

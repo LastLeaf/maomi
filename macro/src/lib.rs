@@ -94,8 +94,7 @@ impl ToTokens for TemplateDefinition {
             let sr = __owner.shadow_root_rc().clone();
             let __is_update = if let ComponentTemplateOperation::Update = __operation { true } else { false };
             let __update_to = if __is_update { Some(&sr) } else { None };
-            let mut __prerendered_data = if let ComponentTemplateOperation::InitPrerendered(d) = __operation { Some(d) } else { None };
-            let ret: Vec<NodeRc<_>> = shadow_root_fn(__owner, __update_to, &mut __prerendered_data);
+            let ret: Vec<NodeRc<_>> = shadow_root_fn(__owner, __update_to);
             if __is_update { None } else { Some(ret) }
         };
         let template_trait_fn_body = quote! {

@@ -50,7 +50,7 @@ fn create_dom_context() -> maomi::Context<maomi::backend::Dom> {
     })
 }
 
-fn create_dom_context_with_prerender<C: Component<maomi::backend::Dom>>(html: &str, prerendered_data: Box<[u8]>) -> maomi::Context<maomi::backend::Dom> {
+fn create_dom_context_with_prerender<'a, C: PrerenderableComponent<'a, maomi::backend::Dom>>(html: &'a str, prerendered_data: &'a [u8]) -> maomi::Context<maomi::backend::Dom> {
     init_logger();
     DOCUMENT.with(|document| {
         WRAPPER.with(|wrapper| {
@@ -58,8 +58,8 @@ fn create_dom_context_with_prerender<C: Component<maomi::backend::Dom>>(html: &s
             wrapper.append_child(&placeholder).unwrap();
             placeholder.set_outer_html(html);
             let child_nodes = wrapper.child_nodes();
-            child_nodes.get(child_nodes.length() - 1).unwrap().dyn_into::<web_sys::Element>().unwrap().set_id("placeholder");
-            maomi::Context::new_prerendered::<C>(maomi::backend::Dom::new_prerendering("placeholder"), prerendered_data)
+            child_nodes.get(child_nodes.length() - 1).unwrap().dyn_into::<web_sys::Element>().unwrap().set_id("placeholder-prerendered");
+            maomi::Context::new_prerendered::<C>(maomi::backend::Dom::new_prerendering("placeholder-prerendered"), prerendered_data)
         })
     })
 }
@@ -382,9 +382,8 @@ template!(tmpl<B: Backend> for<B> DomPrerendering<B> {
         };
     }
 });
-#[derive(Serialize, Deserialize)]
 struct DomPrerendering<B: Backend> {
-    #[serde(skip)] ctx: ComponentContext<B, Self>,
+    ctx: ComponentContext<B, Self>,
     attr: String,
     text: String,
 }
@@ -397,8 +396,17 @@ impl<B: Backend> Component<B> for DomPrerendering<B> {
         }
     }
     fn attached(&mut self) {
-        self.attr = "ATTR".into();
         self.text = "TEXT".into();
+        self.ctx.update();
+    }
+}
+impl<B: Backend> PrerenderableComponent<'_, B> for DomPrerendering<B> {
+    type PrerenderedData = String;
+    fn get_prerendered_data(&self) -> std::pin::Pin<Box<dyn futures::Future<Output = Self::PrerenderedData>>> {
+        Box::pin(futures::future::ready("PRERENDER".into()))
+    }
+    fn apply_prerendered_data(&mut self, data: &Self::PrerenderedData) {
+        self.attr = data.clone();
         self.ctx.update();
     }
 }
@@ -410,7 +418,6 @@ struct DomPrerenderingChild<B: Backend> {
     child_attr: String,
     _pd: PhantomData<B>,
 }
-#[serializable_component]
 impl<B: Backend> Component<B> for DomPrerenderingChild<B> {
     fn new(_ctx: ComponentContext<B, Self>) -> Self {
         Self {
@@ -422,26 +429,23 @@ impl<B: Backend> Component<B> for DomPrerenderingChild<B> {
 #[wasm_bindgen_test]
 fn dom_prerendering() {
     // prerender in empty backend
-    let mut context = maomi::context::Context::new(maomi::backend::Empty::new());
-    let root_component = context.new_root_component::<DomPrerendering<maomi::backend::Empty>>();
-    context.set_root_component(root_component);
+    let (context, prerendered_data) = maomi::context::Context::prerender::<DomPrerendering<maomi::backend::Empty>>(maomi::backend::Empty::new());
     let root_component = context.root_component::<DomPrerendering<maomi::backend::Empty>>().unwrap();
     let root_component = root_component.borrow();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
-    let prerendered_data = context.get_prerendered_data();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div data-attr="ATTR"><span>TEXT</span></div><maomi-dom-prerendering-child>ATTR</maomi-dom-prerendering-child></maomi>"#);
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div data-attr="PRERENDER"><span><!----></span></div><maomi-dom-prerendering-child>PRERENDER</maomi-dom-prerendering-child></maomi>"#);
     // put into dom
-    let context = create_dom_context_with_prerender::<DomPrerendering<maomi::backend::Dom>>(std::str::from_utf8(&html.into_boxed_slice()).unwrap(), prerendered_data.into_boxed_slice());
+    let context = create_dom_context_with_prerender::<DomPrerendering<maomi::backend::Dom>>(std::str::from_utf8(&html.into_boxed_slice()).unwrap(), &prerendered_data);
     let root_component = context.root_component::<DomPrerendering<maomi::backend::Dom>>().unwrap();
     // go with prerender
     {
         let mut root_component = root_component.borrow_mut();
-        assert_eq!(root_component.backend_element().inner_html(), r#"<div data-attr="ATTR"><span>TEXT</span></div><maomi-dom-prerendering-child>ATTR</maomi-dom-prerendering-child>"#);
+        assert_eq!(root_component.backend_element().inner_html(), r#"<div data-attr="PRERENDER"><span>TEXT</span></div><maomi-dom-prerendering-child>PRERENDER</maomi-dom-prerendering-child>"#);
         {
             let child = root_component.marked_component::<DomPrerenderingChild<_>>("child").unwrap();
             let child = child.borrow_mut_with(&mut root_component);
-            assert_eq!(child.backend_element().outer_html(), r#"<maomi-dom-prerendering-child>ATTR</maomi-dom-prerendering-child>"#);
+            assert_eq!(child.backend_element().outer_html(), r#"<maomi-dom-prerendering-child>PRERENDER</maomi-dom-prerendering-child>"#);
         }
     }
     // event handling and modify text
