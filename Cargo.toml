@@ -5,3 +5,6 @@ members = [
     "lazy-observer",
     "me-cell",
 ]
+
+[profile.release]
+opt-level = "s"

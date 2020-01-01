@@ -2,6 +2,11 @@
 name = "maomi-macro"
 version = "0.1.0"
 authors = ["LastLeaf <bqfu@163.com>"]
+license = "MIT"
+description = "A rust wasm framework for building pages with components (helper macros)"
+homepage = "https://github.com/LastLeaf/maomi"
+documentation = "https://github.com/LastLeaf/maomi"
+repository = "https://github.com/LastLeaf/maomi"
 edition = "2018"
 
 [lib]
