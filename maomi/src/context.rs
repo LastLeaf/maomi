@@ -28,7 +28,7 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn new_prerendered<'a, C: 'static + PrerenderableComponent<'a, B>>(backend: B, prerendered_data: &'a [u8]) -> Context<B> {
+    pub fn new_prerendered<'a, 'b: 'a, C: 'static + PrerenderableComponent<'a, B>>(backend: B, prerendered_data: &'b [u8]) -> Context<B> {
         let backend = Rc::new(backend);
         if !backend.is_prerendering() {
             panic!("the backend is not in prerendering progress");
