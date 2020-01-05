@@ -50,7 +50,7 @@ fn create_dom_context() -> maomi::Context<maomi::backend::Dom> {
     })
 }
 
-fn create_dom_context_with_prerender<'a, C: PrerenderableComponent<'a, maomi::backend::Dom>>(html: &'a str, prerendered_data: &'a [u8]) -> maomi::Context<maomi::backend::Dom> {
+fn create_dom_context_with_prerender<C: PrerenderableComponent<maomi::backend::Dom>>(html: &str, prerendered_data: &[u8]) -> maomi::Context<maomi::backend::Dom> {
     init_logger();
     DOCUMENT.with(|document| {
         WRAPPER.with(|wrapper| {
@@ -400,7 +400,7 @@ impl<B: Backend> Component<B> for DomPrerendering<B> {
         self.ctx.update();
     }
 }
-impl<B: Backend> PrerenderableComponent<'_, B> for DomPrerendering<B> {
+impl<B: Backend> PrerenderableComponent<B> for DomPrerendering<B> {
     type PrerenderedData = String;
     fn get_prerendered_data(&self) -> std::pin::Pin<Box<dyn futures::Future<Output = Self::PrerenderedData>>> {
         Box::pin(futures::future::ready("PRERENDER".into()))

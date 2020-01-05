@@ -28,8 +28,8 @@ pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
 }
 downcast_rs::impl_downcast!(Component<B> where B: Backend);
 
-pub trait PrerenderableComponent<'a, B: Backend>: Component<B> {
-    type PrerenderedData: serde::Serialize + serde::Deserialize<'a>;
+pub trait PrerenderableComponent<B: Backend>: Component<B> {
+    type PrerenderedData: 'static + serde::Serialize + for<'de> serde::Deserialize<'de>;
     fn get_prerendered_data(&self) -> Pin<Box<dyn Future<Output = Self::PrerenderedData>>>;
     fn apply_prerendered_data(&mut self, _data: &Self::PrerenderedData);
 }

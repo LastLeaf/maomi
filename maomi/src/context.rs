@@ -28,7 +28,7 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn new_prerendered<'a, 'b: 'a, C: 'static + PrerenderableComponent<'a, B>>(backend: B, prerendered_data: &'b [u8]) -> Context<B> {
+    pub fn new_prerendered<C: PrerenderableComponent<B>>(backend: B, prerendered_data: &[u8]) -> Context<B> {
         let backend = Rc::new(backend);
         if !backend.is_prerendering() {
             panic!("the backend is not in prerendering progress");
@@ -37,12 +37,12 @@ impl<B: Backend> Context<B> {
             VirtualNode::new_empty(backend.clone())
         );
         let scheduler = Rc::new(Scheduler::new());
-        let prerendered_data: C::PrerenderedData = bincode::deserialize(&prerendered_data).unwrap();
+        let prerendered_data: C::PrerenderedData = bincode::deserialize_from(prerendered_data).unwrap();
         let root = create_component::<_, _, C>(&mut group_holder.borrow_mut(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         backend.set_root_node(&root.borrow().backend_element());
         {
             let mut root = root.borrow_mut();
-            <C as PrerenderableComponent<'_, B>>::apply_prerendered_data(&mut root, &prerendered_data);
+            <C as PrerenderableComponent<B>>::apply_prerendered_data(&mut root, &prerendered_data);
             root.apply_updates();
             match_prerendered_tree(root.as_node().duplicate(), &backend);
             backend.end_prerendering();
@@ -57,7 +57,7 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn prerender<'a, C: 'static + PrerenderableComponent<'a, B>>(backend: B) -> (Context<B>, Vec<u8>) {
+    pub fn prerender<C: PrerenderableComponent<B>>(backend: B) -> (Context<B>, Vec<u8>) {
         let backend = Rc::new(backend);
         if backend.is_prerendering() {
             panic!("the backend is already in prerendering progress");
@@ -69,8 +69,8 @@ impl<B: Backend> Context<B> {
         let root = create_component::<_, _, C>(&mut group_holder.borrow_mut(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         let prerendered_data = {
             let mut root = root.borrow_mut();
-            let prerendered_data = block_on(<C as PrerenderableComponent<'_, B>>::get_prerendered_data(&mut root));
-            <C as PrerenderableComponent<'_, B>>::apply_prerendered_data(&mut root, &prerendered_data);
+            let prerendered_data = block_on(<C as PrerenderableComponent<B>>::get_prerendered_data(&mut root));
+            <C as PrerenderableComponent<B>>::apply_prerendered_data(&mut root, &prerendered_data);
             root.apply_updates();
             prerendered_data
         };
