@@ -1,9 +1,9 @@
 [package]
-name = "maomi-macro"
+name = "maomi-skin"
 version = "0.1.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"
-description = "A rust wasm framework for building pages with components (helper macros)"
+description = "A rust wasm framework for building pages with components (css preprocessor)"
 homepage = "https://github.com/LastLeaf/maomi"
 documentation = "https://github.com/LastLeaf/maomi"
 repository = "https://github.com/LastLeaf/maomi"
@@ -16,3 +16,4 @@ proc-macro = true
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "1.0", features = ["full"] }
+cssparser = "0.27"

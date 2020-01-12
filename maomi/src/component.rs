@@ -49,6 +49,9 @@ pub trait ComponentTemplate<B: Backend>: 'static {
         };
         Some(f())
     }
+    fn template_skin() -> &'static str where Self: Sized {
+        ""
+    }
 }
 
 #[derive(Clone)]

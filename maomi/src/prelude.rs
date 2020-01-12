@@ -1,5 +1,24 @@
 pub use maomi_macro::*;
+pub use maomi_skin::*;
 pub use super::{Component, PrerenderableComponent, ComponentTemplate, ComponentTemplateOperation, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*};
+
+pub fn __prepend_class_prefix<T: ToString>(s: T, prefix: &'static str) -> String {
+    use std::fmt::Write;
+    let s = s.to_string();
+    let slices = s.split_whitespace();
+    let mut ret = String::new();
+    for slice in slices {
+        if ret.len() > 0 {
+            ret += " ";
+        }
+        if &slice[0..1] == "~" {
+            ret.write_fmt(format_args!("{}", &slice[1..])).unwrap();
+        } else {
+            ret.write_fmt(format_args!("{}{}", prefix, slice)).unwrap();
+        }
+    }
+    ret
+}
 
 fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
     struct SampleData {

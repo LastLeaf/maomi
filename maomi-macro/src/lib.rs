@@ -54,6 +54,7 @@ struct TemplateDefinition {
     name: Path,
     generics: Option<Generics>,
     template_generics: Option<Generics>,
+    skin: Option<Ident>,
     root: template::TemplateShadowRoot,
 }
 impl Parse for TemplateDefinition {
@@ -73,6 +74,13 @@ impl Parse for TemplateDefinition {
             None
         };
         let name = input.parse()?;
+        let lookahead = input.lookahead1();
+        let skin: Option<Ident> = if lookahead.peek(Token![~]) {
+            input.parse::<Token![~]>()?;
+            Some(input.parse()?)
+        } else {
+            None
+        };
         let root = match format.to_string().as_str() {
             "xml" => xml_template::parse_template(input)?,
             "tmpl" => simple_template::parse_template(input)?,
@@ -82,19 +90,31 @@ impl Parse for TemplateDefinition {
             name,
             generics,
             template_generics,
+            skin,
             root,
         })
     }
 }
 impl ToTokens for TemplateDefinition {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let Self { name, generics, template_generics, root } = self;
+        let Self { name, generics, template_generics, skin, root } = self;
+        let skin_body = match skin {
+            Some(x) => quote! { #x },
+            None => quote! { "" },
+        };
+        let skin_prefix = match skin {
+            Some(x) => {
+                let x = LitStr::new(&(x.to_string() + "-"), proc_macro2::Span::call_site());
+                quote! { #x }
+            },
+            None => quote! { "" },
+        };
         let template_fn_body = quote! {
             let shadow_root_fn = #root;
             let sr = __owner.shadow_root_rc().clone();
             let __is_update = if let ComponentTemplateOperation::Update = __operation { true } else { false };
             let __update_to = if __is_update { Some(&sr) } else { None };
-            let ret: Vec<NodeRc<_>> = shadow_root_fn(__owner, __update_to);
+            let ret: Vec<NodeRc<_>> = shadow_root_fn(__owner, __update_to, #skin_prefix);
             if __is_update { None } else { Some(ret) }
         };
         let template_trait_fn_body = quote! {
@@ -112,6 +132,9 @@ impl ToTokens for TemplateDefinition {
                 impl #generics ComponentTemplate #template_generics for #name {
                     fn template(__owner: &mut ComponentNodeRefMut #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> where Self: Sized {
                         #template_trait_fn_body
+                    }
+                    fn template_skin() -> &'static str {
+                        #skin_body
                     }
                 }
             });
@@ -134,6 +157,9 @@ impl ToTokens for TemplateDefinition {
                 impl #combined_generics ComponentTemplate<B> for #name {
                     fn template(__owner: &mut ComponentNodeRefMut<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> where Self: Sized {
                         #template_trait_fn_body
+                    }
+                    fn template_skin() -> &'static str {
+                        #skin_body
                     }
                 }
             });

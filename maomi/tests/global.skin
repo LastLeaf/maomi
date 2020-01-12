@@ -1,0 +1,4 @@
+@set global-size: 1px 0px;
+.global {
+    color: blue;
+}

@@ -5,9 +5,8 @@ use syn::export::Span;
 use super::template::*;
 use super::template::Attribute as TemplateAttribute;
 
-const SYSTEM_ATTRIBUTES: [&'static str; 3] = [
+const SYSTEM_ATTRIBUTES: [&'static str; 2] = [
     "id",
-    "class",
     "style",
 ];
 const SYSTEM_EVENTS: [&'static str; 20] = [
@@ -130,6 +129,8 @@ fn parse_children(input: ParseStream, is_component: bool, is_virtual: bool) -> R
                     input.parse::<Token![;]>()?;
                     if name_str == "mark" {
                         props.push(TemplateAttribute::Mark { value: TemplateValue::from(expr) });
+                    } else if name_str == "class" {
+                        props.push(TemplateAttribute::ClassProp { value: TemplateValue::from(expr) });
                     } else if is_component && SYSTEM_ATTRIBUTES.iter().position(|s| s == &name_str).is_none() {
                         props.push(TemplateAttribute::Prop { name, value: TemplateValue::from(expr) });
                     } else {

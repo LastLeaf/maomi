@@ -43,7 +43,7 @@ fn create_new_component() {
 
 template!(xml<B: Backend> for<B> ParentComponent<B> {
     <span>
-        <HelloWorld style="display: block" a="Hello world">
+        <HelloWorld class="hello" a="Hello world">
             " | "
             <HelloWorld a={&self.s} />
         </HelloWorld>
@@ -73,17 +73,17 @@ fn parent_component() {
     let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><span><maomi-hello-world style="display: block"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent!</div></maomi-hello-world></div></maomi-hello-world></span></maomi>"#);
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><span><maomi-hello-world class="hello"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent!</div></maomi-hello-world></div></maomi-hello-world></span></maomi>"#);
     root_component.s = "from parent again!".into();
     root_component.force_apply_updates();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><span><maomi-hello-world style="display: block"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent again!</div></maomi-hello-world></div></maomi-hello-world></span></maomi>"#);
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><span><maomi-hello-world class="hello"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent again!</div></maomi-hello-world></div></maomi-hello-world></span></maomi>"#);
     root_component.s = "from parent again and again!".into();
     root_component.force_apply_updates();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><span><maomi-hello-world style="display: block"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent again and again!</div></maomi-hello-world></div></maomi-hello-world></span></maomi>"#);
+    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><span><maomi-hello-world class="hello"><div style="display: inline">Hello world | <maomi-hello-world><div style="display: inline">from parent again and again!</div></maomi-hello-world></div></maomi-hello-world></span></maomi>"#);
 }
 
 template!(xml<D: Backend> for<D> TemplateIf<D> {

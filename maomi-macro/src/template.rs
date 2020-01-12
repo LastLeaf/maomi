@@ -35,6 +35,7 @@ impl From<Expr> for TemplateValue {
 #[derive(Clone)]
 pub(crate) enum Attribute {
     Mark { value: TemplateValue },
+    ClassProp { value: TemplateValue },
     Common { name: LitStr, value: TemplateValue },
     Prop { name: Ident, value: TemplateValue },
     SystemEv { name: Ident, value: TemplateValue },
@@ -44,6 +45,7 @@ impl Attribute {
     fn is_dynamic(&self) -> bool {
         match self {
             Attribute::Mark { value, .. } => value.is_dynamic,
+            Attribute::ClassProp { value, .. } => value.is_dynamic,
             Attribute::Common { value, .. } => value.is_dynamic,
             Attribute::Prop { value, .. } => value.is_dynamic,
             Attribute::SystemEv { value, .. } => value.is_dynamic,
@@ -94,6 +96,9 @@ impl ToTokens for TemplateNode {
                     let content = match attribute {
                         Attribute::Mark { value } => quote! {
                             node.set_mark(#value);
+                        },
+                        Attribute::ClassProp { value } => quote! {
+                            node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix))
                         },
                         Attribute::Common { name, value } => quote! {
                             node.set_attribute(#name, #value)
@@ -340,6 +345,9 @@ impl ToTokens for TemplateNode {
                         Attribute::Mark { value } => quote! {
                             node.as_node().set_mark(#value);
                         },
+                        Attribute::ClassProp { value } => quote! {
+                            node.as_node().set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
+                        },
                         Attribute::Common { name, value } => quote! {
                             node.as_node().set_attribute(#name, #value);
                         },
@@ -431,7 +439,7 @@ impl ToTokens for TemplateShadowRoot {
         let TemplateShadowRoot { children } = self;
         let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
         tokens.append_all(quote! {
-            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&VirtualNodeRc<_>>| {
+            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&VirtualNodeRc<_>>, __template_skin_prefix: &'static str| {
                 // shadow root node logic
                 let __node = __update_to.map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
                 let __children = __node.as_ref().map(|node| { node.children() });

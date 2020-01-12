@@ -2,6 +2,7 @@
 members = [
     "maomi",
     "maomi-macro",
+    "maomi-skin",
     "lazy-observer",
     "me-cell",
 ]
