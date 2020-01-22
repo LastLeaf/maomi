@@ -225,17 +225,26 @@ fn parse_template_in(input: ParseStream) -> Result<TemplateNode> {
     Ok(TemplateNode::VirtualNode(TemplateVirtualNode::InSlot { name, children }))
 }
 
+fn ident_to_string(ident: &Ident) -> String {
+    let ret = ident.to_string();
+    if ret.starts_with("r#") {
+        ret[2..].into()
+    } else {
+        ret
+    }
+}
+
 fn parse_dashed_name(input: ParseStream) -> Result<Ident> {
     let name: Ident = input.parse()?;
     let span = name.span();
-    let mut s = name.to_string();
+    let mut s = ident_to_string(&name);
     loop {
         let lookahead = input.lookahead1();
         if lookahead.peek(Token![-]) {
             input.parse::<Token![-]>()?;
             let name: Ident = input.parse()?;
             s += "_";
-            s += &name.to_string();
+            s += &ident_to_string(&name);
         } else {
             break
         }

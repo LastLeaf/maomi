@@ -5,6 +5,8 @@ members = [
     "maomi-skin",
     "lazy-observer",
     "me-cell",
+    "examples/hello-world",
+    "examples/event-handling",
 ]
 
 [profile.release]

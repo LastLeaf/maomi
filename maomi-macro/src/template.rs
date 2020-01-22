@@ -98,10 +98,10 @@ impl ToTokens for TemplateNode {
                             node.set_mark(#value);
                         },
                         Attribute::ClassProp { value } => quote! {
-                            node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix))
+                            node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
                         },
                         Attribute::Common { name, value } => quote! {
-                            node.set_attribute(#name, #value)
+                            node.set_attribute(#name, #value);
                         },
                         Attribute::SystemEv { name, value } => quote! {
                             node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {

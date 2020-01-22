@@ -2,23 +2,22 @@
 
 `maomi` is a MVVM-like framework for web development. Write your code in rust and compile to WebAssembly!
 
-**Still in very early development. Do not use it in productional stage.**
+**Still in early development. Do not use it in productional stage.**
 
 ## Features
 
-* Targeting WebAssembly, with rust static checking!
+* Targeting WebAssembly, with powerful rust static checking!
 * Declarative UI updates (MVVM-like)
-* Server-side rendering (if needed)
+* Optional server-side rendering
 
-## Sample Code
+## Guide & Sample Code
 
 ### Declare a Component
 
 ```rust
 template!(xml for HelloWorld {
-    <div style="display: inline">
+    <div>
         {&self.a}
-        <slot />
     </div>
 });
 struct HelloWorld {
@@ -33,16 +32,22 @@ impl<B: Backend> Component<B> for HelloWorld {
 }
 ```
 
-### Create a DOM Context
+### Make a Placeholder in HTML Page
 
 ```html
 <div id="placeholder"> THE COMPONENT WILL BE PLACED HERE </div>
 ```
 
+### Bootstrap a context
+
 ```rust
-let context = maomi::Context::new(maomi::backend::Dom::new("placeholder"));
+let mut context = maomi::Context::new(maomi::backend::Dom::new("placeholder"));
+let root_component = context.new_root_component::<HelloWorld>();
+context.set_root_component(root_component);
 ```
 
 ### Compile it
 
-Make sure your code is also WebAssembly-ready, and compile it with `wasm-pack build` .
+Make sure your code is also WebAssembly-ready, and compile it with `wasm-pack build` , then `webpack` .
+
+**More full examples at [examples](./examples)**
