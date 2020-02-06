@@ -755,6 +755,15 @@ impl<'a, B: Backend> ComponentNodeRef<'a, B> {
         self.shadow_root.borrow_with(self).to_html(s)?;
         write!(s, "</{}>", self.tag_name)
     }
+    pub fn to_html_with_id<T: std::io::Write>(&self, s: &mut T, id: &str) -> std::io::Result<()> {
+        write!(s, r#"<{} id="{}""#, self.tag_name, escape::escape_html(id))?;
+        for (name, value) in self.attributes.iter() {
+            write!(s, r#" {}="{}""#, name, escape::escape_html(value))?;
+        }
+        write!(s, ">")?;
+        self.shadow_root.borrow_with(self).to_html(s)?;
+        write!(s, "</{}>", self.tag_name)
+    }
     fn debug_fmt(&self, f: &mut fmt::Formatter<'_>, level: u32) -> fmt::Result {
         for _ in 0..level {
             write!(f, "  ")?;
