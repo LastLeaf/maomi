@@ -457,18 +457,22 @@ impl Dom {
         let cb = Closure::wrap(Box::new(move |event: Event| {
             let element: &Element = &event.target().unwrap().dyn_into().unwrap();
             let dom_event = DomEvent { event };
-            ELEMENT_MAP.with(|element_map| {
+            let node_weak: Option<NodeWeak<Dom>> = ELEMENT_MAP.with(|element_map| {
                 let inner_id = js_sys::Reflect::get_u32(&element, ELEMENT_INNER_ID_MAGIC).unwrap().as_f64();
                 if let Some(inner_id) = inner_id {
                     let inner_id = inner_id as usize;
-                    match element_map.borrow().get(&inner_id) {
-                        None => { },
-                        Some(node_weak) => {
-                            f(node_weak, dom_event);
-                        }
-                    }
+                    let e = element_map.borrow();
+                    e.get(&inner_id).cloned()
+                } else {
+                    None
                 }
             });
+            match node_weak {
+                None => { },
+                Some(node_weak) => {
+                    f(&node_weak, dom_event);
+                }
+            }
         }) as Box<dyn FnMut(Event)>);
         let mut el = EventListener::new();
         el.handle_event(cb.as_ref().unchecked_ref());

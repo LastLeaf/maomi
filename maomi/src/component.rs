@@ -96,6 +96,12 @@ impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
             f(&mut rc.borrow_mut());
         });
     }
+    pub fn tick_with_component_rc<F: 'static + FnOnce(ComponentRc<B, C>)>(&self, f: F) {
+        let rc = self.node_weak.upgrade().unwrap();
+        self.scheduler.add_task(move || {
+            f(rc);
+        });
+    }
 }
 
 #[derive(Clone)]

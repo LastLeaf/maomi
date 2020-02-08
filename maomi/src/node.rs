@@ -34,7 +34,7 @@ pub(crate) fn create_component<'a, B: Backend, T: ElementRefMut<'a, B>, C: 'stat
 ) -> ComponentNodeRc<B> {
     let backend = n.backend().clone();
     let shadow_root = VirtualNodeRc {
-        c: Rc::new(n.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, "shadow-root", VirtualNodeProperty::ShadowRoot, vec![], owner.clone())))
+        c: Rc::new(n.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, scheduler.clone(), "shadow-root", VirtualNodeProperty::ShadowRoot, vec![], owner.clone())))
     };
     shadow_root.borrow_mut_with(n).initialize(shadow_root.downgrade());
     let backend = n.backend().clone();
@@ -113,6 +113,7 @@ macro_rules! define_tree_getter {
 
 pub struct NativeNode<B: Backend> {
     pub(crate) backend: Rc<B>,
+    pub(crate) scheduler: Rc<Scheduler>,
     pub(crate) backend_element: B::BackendElement,
     pub(crate) attached: bool,
     pub(crate) self_weak: Option<NativeNodeWeak<B>>,
@@ -130,10 +131,11 @@ impl<B: Backend> NativeNode<B> {
     pub fn composed_children(&self) -> Vec<NodeRc<B>> {
         self.children.clone()
     }
-    pub(crate) fn new_with_children(backend: Rc<B>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    pub(crate) fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
         NativeNode {
             backend,
+            scheduler,
             backend_element,
             attached: false,
             self_weak: None,
@@ -259,6 +261,9 @@ impl<'a, B: Backend> Drop for NativeNodeRefMut<'a, B> {
         unsafe {
             ManuallyDrop::drop(&mut self.c);
         }
+        if self.is_root {
+            self.scheduler.run_tasks();
+        }
     }
 }
 impl<B: Backend> fmt::Debug for NativeNode<B> {
@@ -283,6 +288,7 @@ pub enum VirtualNodeProperty<B: Backend> {
 
 pub struct VirtualNode<B: Backend> {
     pub(crate) backend: Rc<B>,
+    pub(crate) scheduler: Rc<Scheduler>,
     pub(crate) attached: bool,
     pub(crate) self_weak: Option<VirtualNodeWeak<B>>,
     pub(crate) tag_name: &'static str,
@@ -300,10 +306,10 @@ impl<B: Backend> VirtualNode<B> {
             _ => self.children.clone(),
         }
     }
-    pub(crate) fn new_empty(backend: Rc<B>) -> Self {
-        Self::new_with_children(backend, "", VirtualNodeProperty::None, vec![], None)
+    pub(crate) fn new_empty(backend: Rc<B>, scheduler: Rc<Scheduler>) -> Self {
+        Self::new_with_children(backend, scheduler, "", VirtualNodeProperty::None, vec![], None)
     }
-    fn new_with_children(backend: Rc<B>, tag_name: &'static str, property: VirtualNodeProperty<B>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, property: VirtualNodeProperty<B>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         if let VirtualNodeProperty::Slot(_, c) = &property {
             if children.len() > 0 || c.len() > 0 {
                 panic!("Slot cannot contain any child")
@@ -311,6 +317,7 @@ impl<B: Backend> VirtualNode<B> {
         }
         VirtualNode {
             backend,
+            scheduler,
             attached: false,
             self_weak: None,
             tag_name,
@@ -571,6 +578,9 @@ impl<'a, B: Backend> Drop for VirtualNodeRefMut<'a, B> {
         unsafe {
             ManuallyDrop::drop(&mut self.c);
         }
+        if self.is_root {
+            self.scheduler.run_tasks();
+        }
     }
 }
 impl<B: Backend> fmt::Debug for VirtualNode<B> {
@@ -581,9 +591,9 @@ impl<B: Backend> fmt::Debug for VirtualNode<B> {
 
 pub struct ComponentNode<B: Backend> {
     pub(crate) backend: Rc<B>,
+    pub(crate) scheduler: Rc<Scheduler>,
     pub(crate) backend_element: B::BackendElement,
     pub(crate) need_update: Rc<RefCell<Vec<Box<dyn 'static + FnOnce(&mut ComponentNodeRefMut<B>)>>>>,
-    pub(crate) scheduler: Rc<Scheduler>,
     pub(crate) mark: Cow<'static, str>,
     pub(crate) marks_cache: RefCell<HashMap<Cow<'static, str>, NodeRc<B>>>,
     pub(crate) marks_cache_dirty: Cell<bool>,
@@ -817,18 +827,20 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     }
     pub fn new_native_node(&mut self, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>) -> NativeNodeRc<B> {
         let backend = self.backend().clone();
+        let scheduler = self.scheduler.clone();
         let owner = self.self_weak.clone();
         let n = NativeNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(NativeNode::new_with_children(backend, tag_name, attributes, children, owner)))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(NativeNode::new_with_children(backend, scheduler, tag_name, attributes, children, owner)))
         };
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
     }
     pub fn new_virtual_node(&mut self, tag_name: &'static str, property: VirtualNodeProperty<B>, children: Vec<NodeRc<B>>) -> VirtualNodeRc<B> {
         let backend = self.backend().clone();
+        let scheduler = self.scheduler.clone();
         let owner = self.self_weak.clone();
         let n = VirtualNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, tag_name, property, children, owner)))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(VirtualNode::new_with_children(backend, scheduler, tag_name, property, children, owner)))
         };
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
@@ -838,9 +850,10 @@ impl<'a, B: Backend> ComponentNodeRefMut<'a, B> {
     }
     pub fn new_text_node<T: ToString>(&mut self, text_content: T) -> TextNodeRc<B> {
         let backend = self.backend().clone();
+        let scheduler = self.scheduler.clone();
         let owner = self.self_weak.clone();
         let n = TextNodeRc {
-            c: Rc::new(self.as_me_ref_mut_handle().entrance(TextNode::new_with_content(backend, text_content.to_string(), owner)))
+            c: Rc::new(self.as_me_ref_mut_handle().entrance(TextNode::new_with_content(backend, scheduler, text_content.to_string(), owner)))
         };
         n.borrow_mut_with(self).initialize(n.downgrade());
         n
@@ -1037,7 +1050,9 @@ impl<'a, B: Backend> Drop for ComponentNodeRefMut<'a, B> {
         unsafe {
             ManuallyDrop::drop(&mut self.c);
         }
-        self.scheduler.run_tasks();
+        if self.is_root {
+            self.scheduler.run_tasks();
+        }
     }
 }
 impl<B: Backend> fmt::Debug for ComponentNode<B> {
@@ -1048,6 +1063,7 @@ impl<B: Backend> fmt::Debug for ComponentNode<B> {
 
 pub struct TextNode<B: Backend> {
     pub(crate) backend: Rc<B>,
+    pub(crate) scheduler: Rc<Scheduler>,
     pub(crate) backend_element: B::BackendTextNode,
     pub(crate) attached: bool,
     pub(crate) self_weak: Option<TextNodeWeak<B>>,
@@ -1061,9 +1077,9 @@ impl<B: Backend> TextNode<B> {
     fn collect_backend_nodes<'b>(&'b self, v: &'b mut Vec<NodeRc<B>>) {
         v.push(self.rc().into());
     }
-    pub fn new_with_content(backend: Rc<B>, text_content: String, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    pub(crate) fn new_with_content(backend: Rc<B>, scheduler: Rc<Scheduler>, text_content: String, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_text_node(text_content.as_ref());
-        TextNode { backend, backend_element, attached: false, self_weak: None, text_content, owner, parent: None, composed_parent: None }
+        TextNode { backend, scheduler, backend_element, attached: false, self_weak: None, text_content, owner, parent: None, composed_parent: None }
     }
     pub fn text_content(&self) -> &str {
         &self.text_content
@@ -1116,6 +1132,9 @@ impl<'a, B: Backend> Drop for TextNodeRefMut<'a, B> {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::drop(&mut self.c);
+        }
+        if self.is_root {
+            self.scheduler.run_tasks();
         }
     }
 }
@@ -1491,16 +1510,25 @@ macro_rules! some_node_def {
                 $r { c: self.c.borrow() }
             }
             pub fn borrow_mut<'a>(&'a self) -> $rm<'a, B> {
-                $rm { c: ManuallyDrop::new(self.c.borrow_mut()) }
+                $rm {
+                    c: ManuallyDrop::new(self.c.borrow_mut()),
+                    is_root: true,
+                }
             }
             pub fn borrow_with<'a: 'b, 'b, U>(&'b self, source: &'b U) -> $r<'b, B> where U: ElementRef<'a, B> {
                 $r { c: self.c.borrow_with_handle(source.as_me_ref_handle()) }
             }
             pub fn borrow_mut_with<'a: 'b, 'b, U>(&'b self, source: &'b mut U) -> $rm<'b, B> where U: ElementRefMut<'a, B> {
-                $rm { c: ManuallyDrop::new(self.c.borrow_mut_with_handle(source.as_me_ref_mut_handle())) }
+                $rm {
+                    c: ManuallyDrop::new(self.c.borrow_mut_with_handle(source.as_me_ref_mut_handle())),
+                    is_root: false,
+                }
             }
             pub unsafe fn borrow_mut_unsafe_with<'a: 'b, 'b, 'c, U>(&'c self, source: &'b mut U) -> $rm<'c, B> where U: ElementRefMut<'a, B> {
-                $rm { c: ManuallyDrop::new(self.c.borrow_mut_unsafe_with_handle(source.as_me_ref_mut_handle())) }
+                $rm {
+                    c: ManuallyDrop::new(self.c.borrow_mut_unsafe_with_handle(source.as_me_ref_mut_handle())),
+                    is_root: false,
+                }
             }
             pub fn downgrade(&self) -> $weak<B> {
                 $weak { c: Rc::downgrade(&self.c) }
@@ -1578,13 +1606,16 @@ macro_rules! some_node_def {
             }
         }
 
+        #[allow(dead_code)]
         pub struct $rm<'a, B: Backend> {
-            c: ManuallyDrop<MeRefMut<'a, $t<B>>>
+            c: ManuallyDrop<MeRefMut<'a, $t<B>>>,
+            is_root: bool,
         }
         impl<'a, B: Backend> $rm<'a, B> {
             pub fn duplicate<'b>(&'b mut self) -> $rm<'b, B> {
                 $rm {
-                    c: ManuallyDrop::new(self.c.duplicate())
+                    c: ManuallyDrop::new(self.c.duplicate()),
+                    is_root: false,
                 }
             }
             pub fn to_ref<'b>(&'b self) -> $r<'b, B> where 'a: 'b {
