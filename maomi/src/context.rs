@@ -58,7 +58,7 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn prerender<C: PrerenderableComponent<B>>(backend: B) -> (Context<B>, Vec<u8>) {
+    pub fn prerender<C: PrerenderableComponent<B>>(backend: B, args: <C as PrerenderableComponent<B>>::Args) -> (Context<B>, Vec<u8>) {
         let backend = Rc::new(backend);
         if backend.is_prerendering() {
             panic!("the backend is already in prerendering progress");
@@ -71,7 +71,7 @@ impl<B: Backend> Context<B> {
         backend.set_root_node(&root.borrow().backend_element());
         let prerendered_data = {
             let mut root = root.borrow_mut();
-            let prerendered_data = block_on(<C as PrerenderableComponent<B>>::get_prerendered_data(&mut root));
+            let prerendered_data = block_on(<C as PrerenderableComponent<B>>::get_prerendered_data(&mut root, args));
             <C as PrerenderableComponent<B>>::apply_prerendered_data(&mut root, &prerendered_data);
             root.apply_updates();
             prerendered_data
