@@ -58,7 +58,7 @@ impl<B: Backend> Context<B> {
         };
         ret
     }
-    pub fn prerender<C: PrerenderableComponent<B>>(backend: B, args: <C as PrerenderableComponent<B>>::Args) -> (Context<B>, Vec<u8>) {
+    pub fn prerender<C: PrerenderableComponent<B>>(backend: B, args: <C as PrerenderableComponent<B>>::Args) -> (Context<B>, Vec<u8>, <C as PrerenderableComponent<B>>::MetaData) {
         let backend = Rc::new(backend);
         if backend.is_prerendering() {
             panic!("the backend is already in prerendering progress");
@@ -69,12 +69,12 @@ impl<B: Backend> Context<B> {
         );
         let root = create_component::<_, _, C>(&mut group_holder.borrow_mut(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         backend.set_root_node(&root.borrow().backend_element());
-        let prerendered_data = {
+        let (prerendered_data, meta_data) = {
             let mut root = root.borrow_mut();
-            let prerendered_data = block_on(<C as PrerenderableComponent<B>>::get_prerendered_data(&mut root, args));
+            let (prerendered_data, meta_data) = block_on(<C as PrerenderableComponent<B>>::get_prerendered_data(&mut root, args));
             <C as PrerenderableComponent<B>>::apply_prerendered_data(&mut root, &prerendered_data);
             root.apply_updates();
-            prerendered_data
+            (prerendered_data, meta_data)
         };
         let root = root.into_node();
         let ret = Self {
@@ -83,7 +83,7 @@ impl<B: Backend> Context<B> {
             backend,
             scheduler,
         };
-        (ret, bincode::serialize(&prerendered_data).unwrap())
+        (ret, bincode::serialize(&prerendered_data).unwrap(), meta_data)
     }
     pub fn backend(&self) -> &B {
         &self.backend
