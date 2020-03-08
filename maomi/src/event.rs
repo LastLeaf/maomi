@@ -3,11 +3,11 @@ use std::rc::Rc;
 use super::{backend::Backend, node::{NodeRefMut, ComponentNodeRefMut}, Component, ComponentRefMut, Property};
 
 #[derive(Default)]
-pub struct Ev<B: Backend, T> {
+pub struct Ev<B: Backend, T: ?Sized> {
     handler: Option<Rc<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>>>,
 }
 
-impl<B: Backend, T> Ev<B, T> {
+impl<B: Backend, T: ?Sized> Ev<B, T> {
     pub fn new() -> Self {
         Self {
             handler: None,
@@ -26,18 +26,18 @@ impl<B: Backend, T> Ev<B, T> {
     }
 }
 
-impl<B: Backend, T> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>> for Ev<B, T> {
+impl<B: Backend, T: ?Sized> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>> for Ev<B, T> {
     fn update(&mut self, v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>) -> bool {
         self.handler = Some(Rc::new(v));
         false
     }
 }
 
-pub struct Event<B: Backend, T> {
+pub struct Event<B: Backend, T: ?Sized> {
     handler: Option<Rc<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>>>,
 }
 
-impl<B: Backend, T> Event<B, T> {
+impl<B: Backend, T: ?Sized> Event<B, T> {
     pub fn trigger<C: Component<B>>(self, mut target: ComponentRefMut<B, C>, data: &T) {
         if let Some(handler) = self.handler {
             if let Some(parent) = target.owner() {
@@ -49,11 +49,11 @@ impl<B: Backend, T> Event<B, T> {
 }
 
 #[derive(Default)]
-pub struct SystemEv<B: Backend, T> {
+pub struct SystemEv<B: Backend, T: ?Sized> {
     handler: Option<Rc<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>>>,
 }
 
-impl<B: Backend, T> SystemEv<B, T> {
+impl<B: Backend, T: ?Sized> SystemEv<B, T> {
     pub fn new() -> Self {
         Self {
             handler: None,
@@ -72,18 +72,18 @@ impl<B: Backend, T> SystemEv<B, T> {
     }
 }
 
-impl<B: Backend, T> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>> for SystemEv<B, T> {
+impl<B: Backend, T: ?Sized> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>> for SystemEv<B, T> {
     fn update(&mut self, v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>) -> bool {
         self.handler = Some(Rc::new(v));
         false
     }
 }
 
-pub struct SystemEvent<B: Backend, T> {
+pub struct SystemEvent<B: Backend, T: ?Sized> {
     handler: Option<Rc<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNodeRefMut<B>, &'r T)>>>,
 }
 
-impl<B: Backend, T> SystemEvent<B, T> {
+impl<B: Backend, T: ?Sized> SystemEvent<B, T> {
     pub fn trigger(self, mut target: NodeRefMut<B>, data: &T) {
         if let Some(handler) = self.handler {
             if let Some(parent) = target.owner() {

@@ -23,6 +23,9 @@ impl BackendElement for EmptyBackendElement {
     fn set_attribute(&self, _name: &'static str, _value: &str) {
         // empty
     }
+    fn get_attribute(&self, _name: &'static str) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone)]

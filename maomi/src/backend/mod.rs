@@ -45,6 +45,10 @@ pub trait BackendElement {
     fn remove_list(&self, children: Vec<BackendNodeRef<Self::Backend>>);
     fn remove_self(&self);
     fn set_attribute(&self, name: &'static str, value: &str);
+    fn get_attribute(&self, name: &'static str) -> Option<String>;
+    fn get_field(&self, _name: &'static str) -> Option<wasm_bindgen::JsValue> {
+        None
+    }
     fn match_prerendered_first_child(&mut self, _node: BackendNodeRefMut<Self::Backend>) {
         unreachable!()
     }

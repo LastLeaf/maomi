@@ -8,6 +8,7 @@ use futures::prelude::*;
 use futures::task::*;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
+use js_sys::Reflect;
 
 use crate::global_events;
 use crate::global_events::*;
@@ -202,6 +203,23 @@ impl BackendElement for DomElement {
     fn set_attribute(&self, name: &'static str, value: &str) {
         if let Some(node) = self.node.as_ref() {
             node.set_attribute(name, value).unwrap();
+        }
+    }
+    fn get_attribute(&self, name: &'static str) -> Option<String> {
+        if let Some(node) = self.node.as_ref() {
+            node.get_attribute(name)
+        } else {
+            None
+        }
+    }
+    fn get_field(&self, name: &'static str) -> Option<JsValue> {
+        if let Some(node) = self.node.as_ref() {
+            match Reflect::get(node, &JsValue::from(name)) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            }
+        } else {
+            None
         }
     }
     fn match_prerendered_first_child(&mut self, node: BackendNodeRefMut<Dom>) {
