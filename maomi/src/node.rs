@@ -672,6 +672,9 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     pub fn shadow_root_rc(&self) -> &VirtualNodeRc<B> {
         &self.shadow_root
     }
+    pub fn is_type<C: Component<B>>(&self) -> bool {
+        self.component.downcast_ref::<C>().is_some()
+    }
     pub fn as_component<C: Component<B>>(&self) -> &C {
         self.component.downcast_ref::<C>().unwrap()
     }

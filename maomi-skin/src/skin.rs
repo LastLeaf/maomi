@@ -385,6 +385,7 @@ fn parse_common_block<'a, 't: 'a, 'i: 't>(
                 parser.parse_nested_block(|parser| {
                     parse_segment(parser, st.sub_scope(&mut cur_prefix, &mut st.vars.clone()))
                 })?;
+                break;
             },
             _ => {
                 return Err(parser.new_unexpected_token_error(next));

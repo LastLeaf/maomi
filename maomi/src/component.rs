@@ -178,6 +178,15 @@ pub struct ComponentRef<'a, B: Backend, C: Component<B>> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<'a, B: Backend, C: Component<B>> ComponentRef<'a, B, C> {
+    pub fn duplicate<'b>(&'b mut self) -> ComponentRef<'b, B, C> {
+        ComponentRef {
+            n: self.n.duplicate(),
+            phantom_data: PhantomData,
+        }
+    }
+    pub fn check_type(&self) -> bool {
+        self.n.is_type::<C>()
+    }
     pub fn into_node(self) -> ComponentNodeRef<'a, B> {
         self.n
     }
@@ -239,6 +248,15 @@ pub struct ComponentRefMut<'a, B: Backend, C: Component<B>> {
     phantom_data: std::marker::PhantomData<C>,
 }
 impl<'a, B: Backend, C: Component<B>> ComponentRefMut<'a, B, C> {
+    pub fn duplicate<'b>(&'b mut self) -> ComponentRefMut<'b, B, C> {
+        ComponentRefMut {
+            n: self.n.duplicate(),
+            phantom_data: PhantomData,
+        }
+    }
+    pub fn check_type(&self) -> bool {
+        self.n.is_type::<C>()
+    }
     pub fn as_node(&mut self) -> &mut ComponentNodeRefMut<'a, B> {
         &mut self.n
     }
