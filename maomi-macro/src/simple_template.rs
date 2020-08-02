@@ -171,6 +171,7 @@ fn parse_template_if(input: ParseStream) -> Result<TemplateNode> {
     let cond: Expr = input.parse()?;
     let (children, _) = parse_children(input, false, true)?;
     branches.push((Some(cond), children));
+    let mut end_with_none = false;
     loop {
         let lookahead = input.lookahead1();
         if lookahead.peek(Token![else]) {
@@ -184,11 +185,15 @@ fn parse_template_if(input: ParseStream) -> Result<TemplateNode> {
             } else {
                 let (children, _) = parse_children(input, false, true)?;
                 branches.push((None, children));
+                end_with_none = true;
                 break
             }
         } else {
             break
         }
+    }
+    if !end_with_none {
+        branches.push((None, vec![]));
     }
     Ok(TemplateNode::VirtualNode(TemplateVirtualNode::If { branches }))
 }

@@ -101,12 +101,15 @@ impl<B: Backend> Context<B> {
         ret
     }
     pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: ComponentRc<B, C>) {
+        self.set_root_component_node(component_node.as_node().clone())
+    }
+    pub fn set_root_component_node(&mut self, component_node: ComponentNodeRc<B>) {
         if let Some(old_root) = self.root.take() {
             old_root.borrow_mut().set_detached();
         }
-        self.root = Some(component_node.as_node().clone());
+        self.root = Some(component_node.clone());
         self.backend.set_root_node(&self.root.as_ref().unwrap().borrow_mut().backend_element);
-        component_node.as_node().borrow_mut().set_attached();
+        component_node.borrow_mut().set_attached();
     }
 }
 

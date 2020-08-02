@@ -153,6 +153,9 @@ fn parse_template_if(input: ParseStream) -> Result<TemplateNode> {
             return Err(lookahead.error());
         };
         branches.push((cond, children));
+        if is_end {
+            break
+        }
         let lookahead = input.lookahead1();
         if lookahead.peek(Token![<]) {
             if input.peek2(Token![else]) {
@@ -170,6 +173,9 @@ fn parse_template_if(input: ParseStream) -> Result<TemplateNode> {
         } else {
             break
         }
+    }
+    if !is_end {
+        branches.push((None, vec![]));
     }
     Ok(TemplateNode::VirtualNode(TemplateVirtualNode::If { branches }))
 }
