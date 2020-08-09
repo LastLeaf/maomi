@@ -104,7 +104,7 @@ impl ToTokens for TemplateNode {
                             node.set_attribute(#name, #value);
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                            node.global_events_mut().#name.set_handler(Box::new(move |self_ref_mut, e| {
                                 let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
                                 f(self_ref_mut.duplicate().with_type::<Self>(), e)
                             }));
@@ -355,13 +355,13 @@ impl ToTokens for TemplateNode {
                             if Property::update_from(&mut node.#name, #value) { changed = true };
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.as_node().global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                            node.as_node().global_events_mut().#name.set_handler(Box::new(move |self_ref_mut, e| {
                                 let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
                                 f(self_ref_mut.duplicate().with_type::<Self>(), e)
                             }));
                         },
                         Attribute::Ev { name, value } => quote! {
-                            node.#name.set_handler(Box::new(|self_ref_mut, e| {
+                            node.#name.set_handler(Box::new(move |self_ref_mut, e| {
                                 let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
                                 f(self_ref_mut.duplicate().with_type::<Self>(), e)
                             }));
