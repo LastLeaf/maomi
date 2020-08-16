@@ -185,11 +185,9 @@ fn parse_template_for(input: ParseStream) -> Result<TemplateNode> {
     let (index, item) = if lookahead.peek(Ident) {
         (Ident::new("index", Span::call_site()), input.parse::<Ident>()?)
     } else if lookahead.peek(token::Paren) {
-        let content;
-        parenthesized!(content in input);
-        let index = content.parse::<Ident>()?;
-        content.parse::<Token![,]>()?;
-        let item = content.parse::<Ident>()?;
+        let index = input.parse::<Ident>()?;
+        input.parse::<Token![,]>()?;
+        let item = input.parse::<Ident>()?;
         (index, item)
     } else {
         return Err(lookahead.error());

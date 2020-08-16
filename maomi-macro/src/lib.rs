@@ -119,18 +119,18 @@ impl ToTokens for TemplateDefinition {
         };
         let template_trait_fn_body = quote! {
             let rc = __owner.rc();
-            let __owner2 = unsafe { rc.borrow_mut_unsafe_with(__owner) };
-            __owner2.as_component::<#name>().__template(__owner, __operation)
+            let __owner2 = unsafe { rc.deref_mut_unsafe() };
+            unsafe { __owner2.as_component::<#name>().__template(__owner, __operation) }
         };
         if template_generics.is_some() {
             tokens.append_all(quote! {
                 impl #generics #name {
-                    fn __template(&self, __owner: &mut ComponentNodeRefMut #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> {
+                    unsafe fn __template(&self, __owner: &mut ComponentNode #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> {
                         #template_fn_body
                     }
                 }
                 impl #generics ComponentTemplate #template_generics for #name {
-                    fn template(__owner: &mut ComponentNodeRefMut #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> where Self: Sized {
+                    fn template(__owner: &mut ComponentNode #template_generics , __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc #template_generics >> where Self: Sized {
                         #template_trait_fn_body
                     }
                     fn template_skin() -> &'static str {
@@ -150,12 +150,12 @@ impl ToTokens for TemplateDefinition {
             };
             tokens.append_all(quote! {
                 impl #generics #name {
-                    fn __template<B: Backend>(&self, __owner: &mut ComponentNodeRefMut<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> {
+                    unsafe fn __template<B: Backend>(&self, __owner: &mut ComponentNode<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> {
                         #template_fn_body
                     }
                 }
                 impl #combined_generics ComponentTemplate<B> for #name {
-                    fn template(__owner: &mut ComponentNodeRefMut<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> where Self: Sized {
+                    fn template(__owner: &mut ComponentNode<B>, __operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> where Self: Sized {
                         #template_trait_fn_body
                     }
                     fn template_skin() -> &'static str {

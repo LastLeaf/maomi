@@ -1,6 +1,6 @@
 [package]
 name = "maomi-skin"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"
 description = "A rust wasm framework for building pages with components (css preprocessor)"

@@ -24,9 +24,9 @@ fn component_class_prefix() {
     let root_component = context.new_root_component::<SkinStatic>();
     context.set_root_component(root_component);
     let root_component = context.root_component::<SkinStatic>().unwrap();
-    let root_component = root_component.borrow_mut();
+    let mut root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
-    root_component.to_html(&mut html).unwrap();
+    root_component.as_mut().to_html(&mut html).unwrap();
     assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><div class="SKIN_STATIC-a b"></div></maomi>"#);
 }
 

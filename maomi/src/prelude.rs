@@ -20,13 +20,13 @@ pub fn __prepend_class_prefix<T: ToString>(s: T, prefix: &'static str) -> String
     ret
 }
 
-fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
+unsafe fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __update_to: Option<&VirtualNodeRc<B>>) -> Vec<NodeRc<B>> {
     struct SampleData {
         list: Vec<ForSampleData>
     }
     struct ForSampleData {
         id: i32,
-        value: String
+        value: String,
     }
     let data = SampleData {
         list: vec![ForSampleData {
@@ -55,8 +55,8 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
             let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
                 Some(node_rc) => {
                     let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                    let node = unsafe { node_rc.borrow_mut_unsafe_with(__owner) };
-                    let mut node2 = node_rc.borrow_mut_with(__owner);
+                    let node = unsafe { node_rc.deref_mut_unsafe() };
+                    let mut node2 = unsafe { node_rc.deref_mut_unsafe() };
                     let old_keys: &VirtualKeyList<i32> = if let VirtualNodeProperty::List(list) = node.property() {
                         list.downcast_ref::<VirtualKeyList<i32>>().unwrap()
                     } else { unreachable!() };
@@ -86,22 +86,22 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                             },
                             Some(node_rc) => {
                                 let node_rc = if let NodeRc::TextNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                node_rc.borrow_mut_with(__owner).set_text_content(item.value.clone());
+                                unsafe { node_rc.deref_mut_unsafe() }.set_text_content(item.value.clone());
                                 node_rc.clone().into()
                             },
                         }
                     };
 
                     let node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                    let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                    let children = node.as_ref().map(|node| { node.children() });
+                    let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                    let children = node.as_ref().map(|node| { node.children_rc() });
                     let ret_children: Vec<NodeRc<_>> = vec![text_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
                         None => __owner.new_native_node("div", vec![], ret_children),
                         Some(node_rc) => node_rc.clone(),
                     };
                     {
-                        // let mut node = node_rc.borrow_mut_with(__owner);
+                        // let mut node = unsafe { node_rc.borrow_mut_unsafe() };
                         // node.set_attribute("data-xxx", "xxx");
                         // node.global_events_mut().click.set_handler(Box::new(|self_ref_mut, e| {
                         //     // (|mut self_ref_mut: ComponentRefMut<B, EmptyComponent>, e| {
@@ -112,7 +112,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     node_rc.into()
                 };
 
-                // native node logic
+                // component node logic
                 let component_node_sample = |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
 
                     // text node logic
@@ -129,8 +129,8 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     };
 
                     let node_rc = __update_to.map(|node_rc| if let NodeRc::ComponentNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                    let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                    let children = node.as_ref().map(|node| { node.children() });
+                    let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                    let children = node.as_ref().map(|node| { node.children_rc() });
                     let ret_children: Vec<NodeRc<_>> = vec![slot_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })];
                     let node_rc = match node_rc {
                         None => __owner.new_component_node::<EmptyComponent>("maomi-default-component", ret_children),
@@ -149,7 +149,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                 };
 
                 let node_rc = __update_to.map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
+                let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
                 let old_key = match &node {
                     Some(x) => {
                         let index = if let VirtualNodeProperty::Branch(b) = x.property() { b } else { unreachable!() };
@@ -157,19 +157,19 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     },
                     None => None,
                 };
-                let children = node.as_ref().map(|node| { node.children() });
+                let children = node.as_ref().map(|node| { node.children_rc() });
                 if item.value.len() > 0 {
                     const KEY: usize = 0;
-                    let equal = if let Some(old_key) = old_key { *old_key == KEY } else { false };
+                    let __equal = if let Some(old_key) = old_key { *old_key == KEY } else { false };
                     let children: Vec<NodeRc<_>> = vec![native_node_sample(__owner, if let Some(children) = children {
-                        if equal { Some(&children[0]) } else { None }
+                        if __equal { Some(&children[0]) } else { None }
                     } else { None })];
-                    if equal {
+                    if __equal {
                         node_rc.unwrap().clone().into()
                     } else {
                         match node_rc {
                             Some(node_rc) => {
-                                let mut node = node_rc.borrow_mut_with(__owner);
+                                let mut node = unsafe { node_rc.deref_mut_unsafe() };
                                 node.replace_children_list(children);
                                 *node.property_mut() = VirtualNodeProperty::Branch(KEY);
                                 node_rc.clone().into()
@@ -181,16 +181,16 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
                     }
                 } else {
                     const KEY: usize = 1;
-                    let equal = if let Some(old_key) = old_key { *old_key == KEY } else { false };
+                    let __equal = if let Some(old_key) = old_key { *old_key == KEY } else { false };
                     let children: Vec<NodeRc<_>> = vec![component_node_sample(__owner, if let Some(children) = children {
-                        if equal { Some(&children[0]) } else { None }
+                        if __equal { Some(&children[0]) } else { None }
                     } else { None })];
-                    if equal {
+                    if __equal {
                         node_rc.unwrap().clone().into()
                     } else {
                         match node_rc {
                             Some(node_rc) => {
-                                let mut node = node_rc.borrow_mut_with(__owner);
+                                let mut node = unsafe { node_rc.deref_mut_unsafe() };
                                 node.replace_children_list(children);
                                 *node.property_mut() = VirtualNodeProperty::Branch(KEY);
                                 node_rc.clone().into()
@@ -204,8 +204,8 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
             };
 
             let node_rc = __reordered_list.nodes_mut()[index].as_ref().map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-            let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-            let children = node.as_ref().map(|node| { node.children() });
+            let node = node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+            let children = node.as_ref().map(|node| { node.children_rc() });
             let children: Vec<NodeRc<_>> = vec![if_node_sample(__owner, if let Some(children) = children {
                 Some(&children[0])
             } else { None })];
@@ -219,7 +219,7 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
             None => __owner.new_virtual_node("for-list", VirtualNodeProperty::List(__keys), children).into(),
             Some(node_rc) => {
                 let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                let mut node = node_rc.borrow_mut_with(__owner);
+                let mut node = unsafe { node_rc.deref_mut_unsafe() };
                 __reordered_list.apply(&mut node, children);
                 *node.property_mut() = VirtualNodeProperty::List(__keys);
                 node_rc.clone().into()
@@ -228,8 +228,8 @@ fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __upda
     };
 
     // shadow root node logic
-    let node = __update_to.map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-    let children = node.as_ref().map(|node| { node.children() });
+    let node = __update_to.map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+    let children = node.as_ref().map(|node| { node.children_rc() });
     vec![for_node_sample(__owner, if let Some(children) = children { Some(&children[0]) } else { None })]
 }
 
@@ -237,6 +237,6 @@ pub fn __template_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>, __ope
     let sr = __owner.shadow_root_rc().clone();
     let __is_update = if let ComponentTemplateOperation::Update = __operation { true } else { false };
     let __update_to = if __is_update { Some(&sr) } else { None };
-    let ret = __shadow_root_sample(__owner, __update_to);
+    let ret = unsafe { __shadow_root_sample(__owner, __update_to) };
     if __is_update { None } else { Some(ret) }
 }

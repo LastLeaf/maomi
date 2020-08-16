@@ -104,9 +104,9 @@ impl ToTokens for TemplateNode {
                             node.set_attribute(#name, #value);
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.global_events_mut().#name.set_handler(Box::new(move |self_ref_mut, e| {
-                                let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.duplicate().with_type::<Self>(), e)
+                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                                let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
+                                f(self_ref_mut.as_component_mut::<Self>(), e)
                             }));
                         },
                         _ => {
@@ -120,10 +120,10 @@ impl ToTokens for TemplateNode {
                     }
                 }).collect();
                 quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                    |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                         let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                        let __children = __node.as_ref().map(|node| { node.children() });
+                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                        let __children = __node.as_ref().map(|node| { node.children_rc() });
                         let ret_children: Vec<NodeRc<_>> = vec![#(
                             (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                         ),*];
@@ -133,7 +133,7 @@ impl ToTokens for TemplateNode {
                             Some(node_rc) => node_rc.clone(),
                         };
                         {
-                            let mut node = node_rc.borrow_mut_with(__owner);
+                            let mut node = unsafe { node_rc.deref_mut_unsafe() };
                             #(#update_attributes)*
                         }
                         node_rc.into()
@@ -151,7 +151,7 @@ impl ToTokens for TemplateNode {
                             Some(x) => x.clone(),
                         };
                         quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                                 match __update_to {
                                     None => {
                                         __owner.new_virtual_node("slot", VirtualNodeProperty::Slot(#slot_name, vec![]), vec![]).into()
@@ -168,12 +168,12 @@ impl ToTokens for TemplateNode {
                         // in-slot node logic
                         let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
                         quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                                 match __update_to {
                                     None => {
                                         let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                                        let __children = __node.as_ref().map(|node| { node.children() });
+                                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                                        let __children = __node.as_ref().map(|node| { node.children_rc() });
                                         let ret_children: Vec<NodeRc<_>> = vec![#(
                                             (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                                         ),*];
@@ -205,7 +205,7 @@ impl ToTokens for TemplateNode {
                                     } else {
                                         match __node_rc {
                                             Some(node_rc) => {
-                                                let mut node = node_rc.borrow_mut_with(__owner);
+                                                let mut node = unsafe { node_rc.deref_mut_unsafe() };
                                                 node.replace_children_list(children);
                                                 *node.property_mut() = VirtualNodeProperty::Branch(KEY);
                                                 node_rc.clone().into()
@@ -229,9 +229,9 @@ impl ToTokens for TemplateNode {
                         quote! {
 
                             // if node logic
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                                 let __node_rc = __update_to.map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
+                                let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
                                 let __old_key = match &__node {
                                     Some(x) => {
                                         let index = if let VirtualNodeProperty::Branch(b) = x.property() { b } else { unreachable!() };
@@ -239,7 +239,7 @@ impl ToTokens for TemplateNode {
                                     },
                                     None => None,
                                 };
-                                let __children = __node.as_ref().map(|node| { node.children() });
+                                let __children = __node.as_ref().map(|node| { node.children_rc() });
                                 #(#children_branches)else*
                             }
                         }
@@ -262,8 +262,8 @@ impl ToTokens for TemplateNode {
                                     let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
                                         Some(node_rc) => {
                                             let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                            let node = unsafe { node_rc.borrow_mut_unsafe_with(__owner) };
-                                            let mut node2 = node_rc.borrow_mut_with(__owner);
+                                            let node = unsafe { node_rc.deref_mut_unsafe() };
+                                            let mut node2 = unsafe { node_rc.deref_mut_unsafe() };
                                             let old_keys: &VirtualKeyList<#key_ty> = if let VirtualNodeProperty::List(list) = node.property() {
                                                 list.downcast_ref::<VirtualKeyList<#key_ty>>().unwrap()
                                             } else { unreachable!() };
@@ -287,8 +287,8 @@ impl ToTokens for TemplateNode {
                                     let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
                                         Some(node_rc) => {
                                             let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                            let node = unsafe { node_rc.borrow_mut_unsafe_with(__owner) };
-                                            let mut node2 = node_rc.borrow_mut_with(__owner);
+                                            let node = unsafe { node_rc.deref_mut_unsafe() };
+                                            let mut node2 = unsafe { node_rc.deref_mut_unsafe() };
                                             let old_keys: &VirtualKeyList<()> = if let VirtualNodeProperty::List(list) = node.property() {
                                                 list.downcast_ref::<VirtualKeyList<()>>().unwrap()
                                             } else { unreachable!() };
@@ -303,13 +303,13 @@ impl ToTokens for TemplateNode {
                             },
                         };
                         quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
+                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
                                 let (__keys, mut __reordered_list) = #key_list;
 
                                 let children: Vec<_> = (#list).into_iter().enumerate().map(|(#index, #item)| -> NodeRc<_> {
                                     let __node_rc = __reordered_list.nodes_mut()[#index].as_ref().map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                    let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                                    let __children = __node.as_ref().map(|node| { node.children() });
+                                    let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                                    let __children = __node.as_ref().map(|node| { node.children_rc() });
                                     let children: Vec<NodeRc<_>> = vec![#(
                                         (#children)(__owner, if let Some(children) = __children {
                                             Some(&children[#indexes])
@@ -325,7 +325,7 @@ impl ToTokens for TemplateNode {
                                     None => __owner.new_virtual_node("for-list", VirtualNodeProperty::List(__keys), children).into(),
                                     Some(node_rc) => {
                                         let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                        let mut node = node_rc.borrow_mut_with(__owner);
+                                        let mut node = unsafe { node_rc.deref_mut_unsafe() };
                                         __reordered_list.apply(&mut node, children);
                                         *node.property_mut() = VirtualNodeProperty::List(__keys);
                                         node_rc.clone().into()
@@ -355,15 +355,15 @@ impl ToTokens for TemplateNode {
                             if Property::update_from(&mut node.#name, #value) { changed = true };
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.as_node().global_events_mut().#name.set_handler(Box::new(move |self_ref_mut, e| {
-                                let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.duplicate().with_type::<Self>(), e)
+                            node.as_node().global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                                let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
+                                f(self_ref_mut.as_component_mut::<Self>(), e)
                             }));
                         },
                         Attribute::Ev { name, value } => quote! {
-                            node.#name.set_handler(Box::new(move |self_ref_mut, e| {
-                                let f: Box<dyn Fn(ComponentRefMut<B, Self>, _)> = Box::new(#value);
-                                f(self_ref_mut.duplicate().with_type::<Self>(), e)
+                            node.#name.set_handler(Box::new(|self_ref_mut, e| {
+                                let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
+                                f(self_ref_mut.as_component_mut::<Self>(), e)
                             }));
                         },
                     };
@@ -374,10 +374,10 @@ impl ToTokens for TemplateNode {
                     }
                 }).collect();
                 quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                    |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                         let __node_rc = __update_to.map(|node_rc| if let NodeRc::ComponentNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                        let __children = __node.as_ref().map(|node| { node.children() });
+                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                        let __children = __node.as_ref().map(|node| { node.children_rc() });
                         let ret_children: Vec<NodeRc<_>> = vec![#(
                             (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                         ),*];
@@ -388,11 +388,12 @@ impl ToTokens for TemplateNode {
                         };
                         {
                             let mut changed = false;
-                            let mut node = node_rc.borrow_mut_with(__owner).with_type::<#component>();
+                            let mut node = node_rc.deref_mut_unsafe();
                             {
+                                let node = node.as_component_mut::<#component>();
                                 #(#property_apply)*
                             }
-                            if changed { node.force_apply_updates() };
+                            if changed { node.force_apply_updates::<#component>() };
                         }
                         node_rc.into()
                     }
@@ -405,7 +406,7 @@ impl ToTokens for TemplateNode {
                     if x.is_dynamic {
                         quote! {
                             let node_rc = if let NodeRc::TextNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                            node_rc.borrow_mut_with(__owner).set_text_content(#x);
+                            unsafe { node_rc.deref_mut_unsafe() }.set_text_content(#x);
                             node_rc.clone().into()
                         }
                     } else {
@@ -413,7 +414,7 @@ impl ToTokens for TemplateNode {
                     }
                 };
                 quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
+                    |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                         match __update_to {
                             None => {
                                 __owner.new_text_node(#x).into()
@@ -439,10 +440,10 @@ impl ToTokens for TemplateShadowRoot {
         let TemplateShadowRoot { children } = self;
         let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
         tokens.append_all(quote! {
-            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&VirtualNodeRc<_>>, __template_skin_prefix: &'static str| {
+            |__owner: &mut ComponentNode<_>, __update_to: Option<&VirtualNodeRc<_>>, __template_skin_prefix: &'static str| {
                 // shadow root node logic
-                let __node = __update_to.map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                let __children = __node.as_ref().map(|node| { node.children() });
+                let __node = __update_to.map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
+                let __children = __node.as_ref().map(|node| { node.children_rc() });
                 vec![#(
                     (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                 ),*]

@@ -1,3 +1,6 @@
 /target
 Cargo.lock
 **/*.rs.bk
+/pkg
+/dist/*.js
+/dist/*.wasm

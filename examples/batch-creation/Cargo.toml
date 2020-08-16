@@ -1,5 +1,5 @@
 [package]
-name = "maomi-example-event-handling"
+name = "maomi-example-batch-creation"
 version = "0.2.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"

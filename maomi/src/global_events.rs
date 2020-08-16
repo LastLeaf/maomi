@@ -1,14 +1,17 @@
 use super::{backend::*, event::SystemEv};
 
+/// An event without any content
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct CommonEvent { }
 
+/// Position relative to viewport left-top
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct ViewportPosition<T: Clone> {
     pub x: T,
     pub y: T,
 }
 
+/// Mouse button information
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MouseButton {
     Primary,
@@ -23,6 +26,7 @@ impl Default for MouseButton {
     }
 }
 
+/// Decorative keys information
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct DecorationKeys {
     pub alt: bool,
@@ -31,6 +35,7 @@ pub struct DecorationKeys {
     pub shift: bool,
 }
 
+/// An event with mouse information
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct MouseEvent {
     pub pos: ViewportPosition<i32>,
@@ -38,12 +43,14 @@ pub struct MouseEvent {
     pub decoration_keys: DecorationKeys,
 }
 
+/// Touch information
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct Touch {
     pub id: i32,
     pub pos: ViewportPosition<i32>,
 }
 
+/// An event with touch information
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct TouchEvent {
     pub touches: Vec<Touch>,
@@ -51,11 +58,13 @@ pub struct TouchEvent {
     pub decoration_keys: DecorationKeys,
 }
 
+/// Tap information
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct TapEvent {
     pub pos: ViewportPosition<i32>,
 }
 
+/// An event with keyboard information
 #[derive(Default, Clone, PartialEq, Debug)]
 pub struct KeyboardEvent {
     pub key_code: u32,
@@ -63,6 +72,8 @@ pub struct KeyboardEvent {
     pub key: String,
 }
 
+/// Global events list.
+/// Global events can be triggered by backend, and can bubble in shadow tree or composed tree.
 #[derive(Default)]
 pub struct GlobalEvents<B: Backend> {
     pub click: SystemEv<B, MouseEvent>,
@@ -114,71 +125,65 @@ impl<B: Backend> GlobalEvents<B> {
     }
 }
 
+/// Trigger a global event.
+/// In most cases, global events should be triggered by backend.
 #[macro_export]
 macro_rules! trigger_global_event {
-    ($node_ref_mut: expr, $event_name: ident, $data: expr) => {
-        let node_ref_mut: $crate::node::NodeRefMut<_> = $node_ref_mut;
+    ($node_mut: expr, $event_name: ident, $data: expr) => {
+        let node_mut: $crate::node::NodeMut<_> = $node_mut;
         let data = $data;
-        let e = match &node_ref_mut {
-            $crate::node::NodeRefMut::NativeNode(n) => {
+        let e = match &node_mut {
+            $crate::node::NodeMut::NativeNode(n) => {
                 Some(n.global_events.$event_name.new_event())
             },
-            $crate::node::NodeRefMut::VirtualNode(_) => {
+            $crate::node::NodeMut::VirtualNode(_) => {
                 None
             },
-            $crate::node::NodeRefMut::ComponentNode(n) => {
+            $crate::node::NodeMut::ComponentNode(n) => {
                 Some(n.global_events.$event_name.new_event())
             },
-            $crate::node::NodeRefMut::TextNode(_) => {
+            $crate::node::NodeMut::TextNode(_) => {
                 None
             },
         };
         if let Some(e) = e {
-            e.trigger(node_ref_mut, data);
+            e.trigger(node_mut, data);
         }
     }
 }
 
+/// Trigger a global event, and bubble it in shadow tree.
+/// In most cases, global events should be triggered by backend.
 #[macro_export]
 macro_rules! bubble_global_event {
-    ($node_ref_mut: expr, $event_name: ident, $data: expr) => {
-        let mut node_ref_mut: $crate::node::NodeRefMut<_> = $node_ref_mut;
+    ($node_mut: expr, $event_name: ident, $data: expr) => { {
+        use $crate::node::MutIterator;
+        let mut node_mut: $crate::node::NodeMut<_> = $node_mut;
         let data = $data;
         {
-            trigger_global_events!(node_ref_mut.duplicate(), $event_name, data);
+            trigger_global_event!(node_mut.as_mut(), $event_name, data);
         }
-        let mut parent = node_ref_mut.to_ref().parent();
-        loop {
-            match parent.clone() {
-                Some(p) => {
-                    let node_ref_mut = p.borrow_mut_with(&mut node_ref_mut);
-                    parent = node_ref_mut.to_ref().parent();
-                    trigger_global_event!(node_ref_mut, $event_name, data);
-                },
-                None => break
-            }
+        let mut parent = node_mut.ancestors_mut(crate::node::TraversalOrder::ParentLast);
+        while let Some(p) = parent.next() {
+            trigger_global_event!(p, $event_name, data);
         }
-    }
+    } }
 }
 
+/// Trigger a global event, and bubble it in composed tree.
+/// In most cases, global events should be triggered by backend.
 #[macro_export]
 macro_rules! bubble_composed_global_event {
-    ($node_ref_mut: expr, $event_name: ident, $data: expr) => {
-        let mut node_ref_mut: $crate::node::NodeRefMut<_> = $node_ref_mut;
+    ($node_mut: expr, $event_name: ident, $data: expr) => { {
+        use $crate::node::MutIterator;
+        let mut node_mut: $crate::node::NodeMut<_> = $node_mut;
         let data = $data;
         {
-            trigger_global_event!(node_ref_mut.duplicate(), $event_name, data);
+            trigger_global_event!(node_mut.as_mut(), $event_name, data);
         }
-        let mut parent = node_ref_mut.to_ref().composed_parent();
-        loop {
-            match parent.clone() {
-                Some(p) => {
-                    let node_ref_mut = p.borrow_mut_with(&mut node_ref_mut);
-                    parent = node_ref_mut.to_ref().composed_parent();
-                    trigger_global_event!(node_ref_mut, $event_name, data);
-                },
-                None => break
-            }
+        let mut parent = node_mut.composed_ancestors_mut(crate::node::TraversalOrder::ParentLast);
+        while let Some(p) = parent.next() {
+            trigger_global_event!(p, $event_name, data);
         }
-    }
+    } }
 }

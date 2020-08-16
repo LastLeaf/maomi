@@ -358,9 +358,8 @@ fn custom_event() {
     root_component.to_html(&mut html).unwrap();
     assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><!----><maomi-event-child-component></maomi-event-child-component></maomi>"#);
     {
-        let child = root_component.marked_component::<EventChildComponent<_>>("c").unwrap();
-        let child = child.borrow_mut_with(&mut root_component);
-        child.custom_event.new_event().trigger(child, &"fromEv".to_string());
+        let child = root_component.marked_component_node_mut("c").unwrap();
+        child.as_component::<EventChildComponent<_>>().custom_event.new_event().trigger(child, &"fromEv".to_string());
     }
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();

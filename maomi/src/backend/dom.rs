@@ -579,7 +579,8 @@ mod event {
                 backend.set_event_listener_on_root_node($str_name, |node_weak, ev| {
                     if let Some(node_rc) = node_weak.upgrade() {
                         let ev = ev.$convert();
-                        trigger_global_event!(node_rc.borrow_mut(), $name, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        trigger_global_event!(n.as_mut(), $name, &ev);
                     }
                 });
             };
@@ -587,7 +588,8 @@ mod event {
                 backend.set_event_listener_on_root_node($str_name, |node_weak, ev| {
                     if let Some(node_rc) = node_weak.upgrade() {
                         let ev = ev.$convert();
-                        bubble_global_event!(node_rc.borrow_mut(), $name, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_global_event!(n.as_mut(), $name, &ev);
                     }
                 });
             };
@@ -595,7 +597,8 @@ mod event {
                 backend.set_event_listener_on_root_node($str_name, |node_weak, ev| {
                     if let Some(node_rc) = node_weak.upgrade() {
                         let ev = ev.$convert();
-                        bubble_composed_global_event!(node_rc.borrow_mut(), $name, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), $name, &ev);
                     }
                 });
             };
@@ -618,7 +621,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_mouse_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), mouse_down, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), mouse_down, &ev);
                     }
                     if ev.button == MouseButton::Primary {
                         let long_tap_timeout = {
@@ -630,7 +634,8 @@ mod event {
                                     let tap_ev = TapEvent {
                                         pos: current_tap_status.pos.clone(),
                                     };
-                                    bubble_composed_global_event!(n.borrow_mut(), long_tap, &tap_ev);
+                                    let mut n = n.borrow_mut();
+                                    bubble_composed_global_event!(n.as_mut(), long_tap, &tap_ev);
                                 }
                             }, LONG_TAP_TIME_MS)
                         };
@@ -647,7 +652,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_mouse_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), mouse_move, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), mouse_move, &ev);
                     }
                     let mut current_tap_status = current_tap_status.borrow_mut();
                     if current_tap_status.tapping.is_some() {
@@ -658,7 +664,8 @@ mod event {
                                 pos: current_tap_status.pos.clone(),
                             };
                             let n = current_tap_status.tapping.take().unwrap().0;
-                            bubble_composed_global_event!(n.borrow_mut(), cancel_tap, &tap_ev);
+                            let mut n = n.borrow_mut();
+                            bubble_composed_global_event!(n.as_mut(), cancel_tap, &tap_ev);
                         }
                     }
                 }
@@ -670,7 +677,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_mouse_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), mouse_up, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), mouse_up, &ev);
                     }
                     let mut current_tap_status = current_tap_status.borrow_mut();
                     if current_tap_status.tapping.is_some() {
@@ -678,7 +686,8 @@ mod event {
                             pos: current_tap_status.pos.clone(),
                         };
                         let n = current_tap_status.tapping.take().unwrap().0;
-                        bubble_composed_global_event!(n.borrow_mut(), tap, &tap_ev);
+                        let mut n = n.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), tap, &tap_ev);
                     }
                 }
             });
@@ -691,7 +700,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_touch_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), touch_start, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), touch_start, &ev);
                     }
                     if ev.touches.len() > 1 {
                         let mut current_tap_status = current_tap_status.borrow_mut();
@@ -700,7 +710,8 @@ mod event {
                             let tap_ev = TapEvent {
                                 pos: current_tap_status.pos.clone(),
                             };
-                            bubble_composed_global_event!(n.borrow_mut(), cancel_tap, &tap_ev);
+                            let mut n = n.borrow_mut();
+                            bubble_composed_global_event!(n.as_mut(), cancel_tap, &tap_ev);
                         }
                     } else if ev.touches.len() == 1 {
                         let long_tap_timeout = {
@@ -712,7 +723,8 @@ mod event {
                                     let tap_ev = TapEvent {
                                         pos: current_tap_status.pos.clone(),
                                     };
-                                    bubble_composed_global_event!(n.borrow_mut(), long_tap, &tap_ev);
+                                    let mut n = n.borrow_mut();
+                                    bubble_composed_global_event!(n.as_mut(), long_tap, &tap_ev);
                                 }
                             }, LONG_TAP_TIME_MS)
                         };
@@ -729,7 +741,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_touch_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), touch_move, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), touch_move, &ev);
                     }
                     let mut current_tap_status = current_tap_status.borrow_mut();
                     if current_tap_status.tapping.is_some() && ev.touches.len() == 1 {
@@ -740,7 +753,8 @@ mod event {
                                 pos: current_tap_status.pos.clone(),
                             };
                             let n = current_tap_status.tapping.take().unwrap().0;
-                            bubble_composed_global_event!(n.borrow_mut(), cancel_tap, &tap_ev);
+                            let mut n = n.borrow_mut();
+                            bubble_composed_global_event!(n.as_mut(), cancel_tap, &tap_ev);
                         }
                     }
                 }
@@ -752,7 +766,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_touch_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), touch_end, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), touch_end, &ev);
                     }
                     let mut current_tap_status = current_tap_status.borrow_mut();
                     if current_tap_status.tapping.is_some() {
@@ -761,9 +776,11 @@ mod event {
                             pos: current_tap_status.pos.clone(),
                         };
                         if ev.touches.len() > 0 {
-                            bubble_composed_global_event!(n.borrow_mut(), cancel_tap, &tap_ev);
+                            let mut n = n.borrow_mut();
+                            bubble_composed_global_event!(n.as_mut(), cancel_tap, &tap_ev);
                         } else {
-                            bubble_composed_global_event!(n.borrow_mut(), tap, &tap_ev);
+                            let mut n = n.borrow_mut();
+                            bubble_composed_global_event!(n.as_mut(), tap, &tap_ev);
                         }
                     }
                 }
@@ -775,7 +792,8 @@ mod event {
                 if let Some(node_rc) = node_weak.upgrade() {
                     let ev = ev.to_touch_event();
                     {
-                        bubble_composed_global_event!(node_rc.borrow_mut(), touch_cancel, &ev);
+                        let mut n = node_rc.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), touch_cancel, &ev);
                     }
                     let mut current_tap_status = current_tap_status.borrow_mut();
                     if current_tap_status.tapping.is_some() {
@@ -783,7 +801,8 @@ mod event {
                         let tap_ev = TapEvent {
                             pos: current_tap_status.pos.clone(),
                         };
-                        bubble_composed_global_event!(n.borrow_mut(), cancel_tap, &tap_ev);
+                        let mut n = n.borrow_mut();
+                        bubble_composed_global_event!(n.as_mut(), cancel_tap, &tap_ev);
                     }
                 }
             });

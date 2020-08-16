@@ -3,22 +3,34 @@ use std::ops::Range;
 use super::node::*;
 use super::backend::Backend;
 
+/// VirtualNode key management
+/// **Should be done through template engine!**
+#[doc(hidden)]
 pub struct VirtualKeyList<T: PartialEq> {
     keys: Vec<Option<T>>,
 }
 
 impl<T: PartialEq> VirtualKeyList<T> {
+    /// Create a new key list
+    /// **Should be done through template engine!**
+    #[doc(hidden)]
     pub fn new(keys: Vec<Option<T>>) -> Self {
         Self {
             keys: keys
         }
     }
 
+    /// Get the count of keys
+    /// **Should be done through template engine!**
+    #[doc(hidden)]
     pub fn len(&self) -> usize {
         self.keys.len()
     }
 
-    pub fn list_reorder<B: Backend>(&self, old: &Self, node: &mut VirtualNodeRefMut<B>) -> VirtualKeyChanges<B> {
+    /// Reorder keys
+    /// **Should be done through template engine!**
+    #[doc(hidden)]
+    pub fn list_reorder<B: Backend>(&self, old: &Self, node: &mut VirtualNode<B>) -> VirtualKeyChanges<B> {
         let old_keys = &old.keys;
         let new_keys = &self.keys;
         let mut old_i = 0;
@@ -95,13 +107,16 @@ impl<T: PartialEq> VirtualKeyList<T> {
             nodes: index_map.into_iter().map(|x| {
                 match x {
                     None => None,
-                    Some(x) => Some(node.children()[x].clone())
+                    Some(x) => Some(node.children_rc()[x].clone())
                 }
             }).collect()
         }
     }
 }
 
+/// Diff between two key lists
+/// **Should be done through template engine!**
+#[doc(hidden)]
 pub struct VirtualKeyChanges<B: Backend> {
     removes: Vec<(usize, Box<[bool]>)>,
     inserts: Vec<Range<usize>>,
@@ -109,6 +124,9 @@ pub struct VirtualKeyChanges<B: Backend> {
 }
 
 impl<B: Backend> VirtualKeyChanges<B> {
+    /// Generate an empty diff
+    /// **Should be done through template engine!**
+    #[doc(hidden)]
     pub fn new_empty(len: usize) -> Self {
         Self {
             removes: Vec::with_capacity(0),
@@ -116,10 +134,18 @@ impl<B: Backend> VirtualKeyChanges<B> {
             nodes: (0..len).map(|_| None).collect(),
         }
     }
+
+    /// Get the nodes
+    /// **Should be done through template engine!**
+    #[doc(hidden)]
     pub fn nodes_mut(&mut self) -> &mut Vec<Option<NodeRc<B>>> {
         &mut self.nodes
     }
-    pub fn apply(self, node: &mut VirtualNodeRefMut<B>, children: Vec<NodeRc<B>>) {
+
+    /// Apply it
+    /// **Should be done through template engine!**
+    #[doc(hidden)]
+    pub unsafe fn apply(self, node: &mut VirtualNode<B>, children: Vec<NodeRc<B>>) {
         let Self {inserts, removes, nodes: _} = self;
         let mut d = 0;
         for (start, reusable) in removes {

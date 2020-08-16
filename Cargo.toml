@@ -4,9 +4,9 @@ members = [
     "maomi-macro",
     "maomi-skin",
     "lazy-observer",
-    "me-cell",
     "examples/hello-world",
     "examples/event-handling",
+    "examples/batch-creation",
 ]
 
 [profile.release]
