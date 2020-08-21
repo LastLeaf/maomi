@@ -1,3 +1,5 @@
+#![allow(unused_unsafe)]
+
 use std::rc::{Rc, Weak};
 use std::cell::{Ref};
 use std::ops::{Deref, DerefMut};
@@ -83,7 +85,7 @@ impl<B: Backend> VirtualNode<B> {
         }
     }
 
-    pub(super) unsafe fn initialize(&mut self, self_weak: VirtualNodeWeak<B>) {
+    pub(crate) unsafe fn initialize(&mut self, self_weak: VirtualNodeWeak<B>) {
         // set chilren's parent
         self.self_weak = Some(self_weak.clone());
         let self_weak: NodeWeak<B> = self_weak.into();

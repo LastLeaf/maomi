@@ -566,15 +566,6 @@ impl<'a, B: Backend> NodeRef<'a, B> {
         }
     }
 
-    unsafe fn find_next_sibling(&self, include_self: bool) -> Option<NodeRc<B>> {
-        match self {
-            Self::NativeNode(x) => x.find_next_sibling(include_self),
-            Self::VirtualNode(x) => x.find_next_sibling(include_self),
-            Self::ComponentNode(x) => x.find_next_sibling(include_self),
-            Self::TextNode(_) => None,
-        }
-    }
-
     pub fn to_html<T: std::io::Write>(&self, s: &mut T) -> std::io::Result<()> {
         match self {
             Self::NativeNode(x) => x.to_html(s),
@@ -615,15 +606,6 @@ impl<'a, B: Backend> NodeRefMut<'a, B> {
         }
     }
 
-    pub(crate) fn backend(&self) -> Rc<B> {
-        match self {
-            Self::NativeNode(x) => x.backend.clone(),
-            Self::VirtualNode(x) => x.backend.clone(),
-            Self::ComponentNode(x) => x.backend.clone(),
-            Self::TextNode(x) => x.backend.clone(),
-        }
-    }
-
     /// Get the `NodeRc` of the node
     pub fn rc(&self) -> NodeRc<B> {
         match self {
@@ -651,24 +633,6 @@ impl<'a, B: Backend> NodeRefMut<'a, B> {
             Self::VirtualNode(x) => x.owner(),
             Self::ComponentNode(x) => x.owner(),
             Self::TextNode(x) => x.owner(),
-        }
-    }
-
-    pub(super) fn set_parent(&mut self, p: Option<NodeWeak<B>>) {
-        match self {
-            NodeRefMut::NativeNode(x) => x.set_parent(p),
-            NodeRefMut::VirtualNode(x) => x.set_parent(p),
-            NodeRefMut::ComponentNode(x) => x.set_parent(p),
-            NodeRefMut::TextNode(x) => x.set_parent(p),
-        }
-    }
-
-    pub(super) fn set_composed_parent(&mut self, p: Option<NodeWeak<B>>) {
-        match self {
-            NodeRefMut::NativeNode(x) => x.set_composed_parent(p),
-            NodeRefMut::VirtualNode(x) => x.set_composed_parent(p),
-            NodeRefMut::ComponentNode(x) => x.set_composed_parent(p),
-            NodeRefMut::TextNode(x) => x.set_composed_parent(p),
         }
     }
 }

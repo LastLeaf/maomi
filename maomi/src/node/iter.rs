@@ -20,7 +20,9 @@ pub enum TraversalOrder {
 }
 
 pub struct SingleNodeIter<'b, B: Backend, N: 'b> {
+    #[allow(dead_code)]
     source: Node<'b, B>,
+    #[allow(dead_code)]
     node: Option<NodeRc<B>>,
     node_ref: Option<N>,
 }
@@ -56,7 +58,9 @@ impl<'b, B: Backend, N: 'b> Iterator for SingleNodeIter<'b, B, N> {
 }
 
 pub struct SingleNodeIterMut<'b, B: Backend, N: 'b> {
+    #[allow(dead_code)]
     source: NodeMut<'b, B>,
+    #[allow(dead_code)]
     node: Option<NodeRc<B>>,
     node_ref: Option<N>,
 }
@@ -92,10 +96,10 @@ impl<'b, B: Backend, N: 'b> Iterator for SingleNodeIterMut<'b, B, N> {
 }
 
 pub struct AncestorIter<'b, B: Backend> {
+    #[allow(dead_code)]
     source: Node<'b, B>,
     nodes: Vec<NodeRc<B>>,
     index: usize,
-    range: TraversalRange,
 }
 
 impl<'b, B: Backend> AncestorIter<'b, B> {
@@ -124,7 +128,6 @@ impl<'b, B: Backend> AncestorIter<'b, B> {
             source,
             nodes,
             index: 0,
-            range,
         }
     }
 }
@@ -144,10 +147,10 @@ impl<'b, B: Backend> Iterator for AncestorIter<'b, B> {
 }
 
 pub struct AncestorIterMut<'b, B: Backend> {
+    #[allow(dead_code)]
     source: NodeMut<'b, B>,
     nodes: Vec<NodeRc<B>>,
     index: usize,
-    range: TraversalRange,
 }
 
 impl<'b, B: Backend> AncestorIterMut<'b, B> {
@@ -179,7 +182,6 @@ impl<'b, B: Backend> AncestorIterMut<'b, B> {
             source,
             nodes,
             index: 0,
-            range,
         }
     }
 }
@@ -199,6 +201,7 @@ impl<'b, 'c, B: Backend> MutIterator<'c> for AncestorIterMut<'b, B> {
 }
 
 pub struct ChildIter<'b, B: Backend> {
+    #[allow(dead_code)]
     source: Node<'b, B>,
     index: usize,
     nodes: Vec<NodeRc<B>>,
@@ -232,6 +235,7 @@ impl<'b, B: Backend> Iterator for ChildIter<'b, B> {
 }
 
 pub struct ChildIterMut<'b, B: Backend> {
+    #[allow(dead_code)]
     source: NodeMut<'b, B>,
     index: usize,
     nodes: Vec<NodeRc<B>>,
@@ -265,6 +269,7 @@ impl<'b, 'c, B: Backend> MutIterator<'c> for ChildIterMut<'b, B> {
 }
 
 pub struct DfsIter<'b, B: Backend> {
+    #[allow(dead_code)]
     source: Node<'b, B>,
     cur: Vec<(Vec<NodeRc<B>>, usize)>,
     range: TraversalRange,
@@ -330,6 +335,7 @@ impl<'b, B: Backend> Iterator for DfsIter<'b, B> {
 }
 
 pub struct DfsIterMut<'b, B: Backend> {
+    #[allow(dead_code)]
     source: NodeMut<'b, B>,
     cur: Vec<(Vec<NodeRc<B>>, usize)>,
     range: TraversalRange,

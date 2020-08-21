@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use maomi::prelude::*;
 use maomi::context::Context;
 use maomi::backend::Empty;
@@ -316,23 +315,23 @@ template!(xml<B: Backend> for<B> EventParentComponent<B> {
     <EventChildComponent<B>
         mark = "c"
         @custom_event = {
-            |mut self_ref_mut, data: &String| {
-                self_ref_mut.event_detail = data.clone();
-                self_ref_mut.force_apply_updates();
+            |this, data: &String| {
+                this.event_detail = data.clone();
+                this.ctx.update();
             }
         }
     >
     </EventChildComponent>
 });
 struct EventParentComponent<B: Backend> {
+    ctx: ComponentContext<B, Self>,
     event_detail: String,
-    _pd: PhantomData<B>,
 }
 impl<B: Backend> Component<B> for EventParentComponent<B> {
-    fn new(_ctx: ComponentContext<B, Self>) -> Self {
+    fn new(ctx: ComponentContext<B, Self>) -> Self {
         Self {
+            ctx,
             event_detail: "".into(),
-            _pd: PhantomData,
         }
     }
 }
@@ -353,14 +352,17 @@ fn custom_event() {
     let root_component = context.new_root_component::<EventParentComponent<Empty>>();
     context.set_root_component(root_component);
     let root_component = context.root_component::<EventParentComponent<Empty>>().unwrap();
-    let mut root_component = root_component.borrow_mut();
-    let mut html: Vec<u8> = vec![];
-    root_component.to_html(&mut html).unwrap();
-    assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><!----><maomi-event-child-component></maomi-event-child-component></maomi>"#);
     {
-        let child = root_component.marked_component_node_mut("c").unwrap();
-        child.as_component::<EventChildComponent<_>>().custom_event.new_event().trigger(child, &"fromEv".to_string());
+        let mut root_component = root_component.borrow_mut();
+        let mut html: Vec<u8> = vec![];
+        root_component.to_html(&mut html).unwrap();
+        assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi><!----><maomi-event-child-component></maomi-event-child-component></maomi>"#);
+        {
+            let child = root_component.marked_component_node_mut("c").unwrap();
+            child.as_component::<EventChildComponent<_>>().custom_event.new_event().trigger(child, &"fromEv".to_string());
+        }
     }
+    let root_component = root_component.borrow_mut();
     let mut html: Vec<u8> = vec![];
     root_component.to_html(&mut html).unwrap();
     assert_eq!(std::str::from_utf8(&html).unwrap(), r#"<maomi>fromEv<maomi-event-child-component></maomi-event-child-component></maomi>"#);

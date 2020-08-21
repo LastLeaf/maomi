@@ -1,6 +1,6 @@
 [package]
 name = "lazy-observer"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"
 description = "Observe data change lazily, for building data stores and data observers (a helper crate for maomi)"

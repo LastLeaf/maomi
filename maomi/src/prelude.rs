@@ -1,3 +1,5 @@
+#![allow(unused_unsafe)]
+
 pub use maomi_macro::*;
 pub use maomi_skin::*;
 pub use super::{Component, PrerenderableComponent, ComponentTemplate, ComponentTemplateOperation, EmptyComponent, ComponentContext, ComponentRef, ComponentRefMut, Property, Ev, backend::Backend, node::*, virtual_key::*};
@@ -169,7 +171,7 @@ unsafe fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>,
                     } else {
                         match node_rc {
                             Some(node_rc) => {
-                                let mut node = unsafe { node_rc.deref_mut_unsafe() };
+                                let node = unsafe { node_rc.deref_mut_unsafe() };
                                 node.replace_children_list(children);
                                 *node.property_mut() = VirtualNodeProperty::Branch(KEY);
                                 node_rc.clone().into()
@@ -190,7 +192,7 @@ unsafe fn __shadow_root_sample<B: Backend>(__owner: &mut ComponentNodeRefMut<B>,
                     } else {
                         match node_rc {
                             Some(node_rc) => {
-                                let mut node = unsafe { node_rc.deref_mut_unsafe() };
+                                let node = unsafe { node_rc.deref_mut_unsafe() };
                                 node.replace_children_list(children);
                                 *node.property_mut() = VirtualNodeProperty::Branch(KEY);
                                 node_rc.clone().into()

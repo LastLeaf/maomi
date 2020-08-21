@@ -95,16 +95,16 @@ impl ToTokens for TemplateNode {
                 let update_attributes: Vec<TokenStream2> = attributes.iter().map(|attribute| {
                     let content = match attribute {
                         Attribute::Mark { value } => quote! {
-                            node.set_mark(#value);
+                            __node.set_mark(#value);
                         },
                         Attribute::ClassProp { value } => quote! {
-                            node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
+                            __node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
                         },
                         Attribute::Common { name, value } => quote! {
-                            node.set_attribute(#name, #value);
+                            __node.set_attribute(#name, #value);
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                            __node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
                                 let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
                                 f(self_ref_mut.as_component_mut::<Self>(), e)
                             }));
@@ -116,7 +116,7 @@ impl ToTokens for TemplateNode {
                     if attribute.is_dynamic() {
                         quote! { #content }
                     } else {
-                        quote! { if is_init { #content } }
+                        quote! { if __is_init { #content } }
                     }
                 }).collect();
                 quote! {
@@ -127,16 +127,16 @@ impl ToTokens for TemplateNode {
                         let ret_children: Vec<NodeRc<_>> = vec![#(
                             (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                         ),*];
-                        let is_init = __node_rc.is_none();
-                        let node_rc = match __node_rc {
+                        let __is_init = __node_rc.is_none();
+                        let __node_rc = match __node_rc {
                             None => __owner.new_native_node(#tag_name, vec![], ret_children),
                             Some(node_rc) => node_rc.clone(),
                         };
                         {
-                            let mut node = unsafe { node_rc.deref_mut_unsafe() };
+                            let mut __node = unsafe { __node_rc.deref_mut_unsafe() };
                             #(#update_attributes)*
                         }
-                        node_rc.into()
+                        __node_rc.into()
                     }
                 }
             },
@@ -343,34 +343,40 @@ impl ToTokens for TemplateNode {
                 let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
                     let content = match attribute {
                         Attribute::Mark { value } => quote! {
-                            node.as_node().set_mark(#value);
+                            __node.set_mark(#value);
                         },
                         Attribute::ClassProp { value } => quote! {
-                            node.as_node().set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
+                            __node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
                         },
                         Attribute::Common { name, value } => quote! {
-                            node.as_node().set_attribute(#name, #value);
+                            __node.set_attribute(#name, #value);
                         },
                         Attribute::Prop { name, value } => quote! {
-                            if Property::update_from(&mut node.#name, #value) { changed = true };
+                            {
+                                let __node = __node.as_component_mut::<#component>();
+                                if Property::update_from(&mut __node.#name, #value) { __changed = true };
+                            }
                         },
                         Attribute::SystemEv { name, value } => quote! {
-                            node.as_node().global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
+                            __node.global_events_mut().#name.set_handler(Box::new(|__self, e| {
                                 let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
-                                f(self_ref_mut.as_component_mut::<Self>(), e)
+                                f(__self.as_component_mut::<Self>(), e)
                             }));
                         },
                         Attribute::Ev { name, value } => quote! {
-                            node.#name.set_handler(Box::new(|self_ref_mut, e| {
-                                let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
-                                f(self_ref_mut.as_component_mut::<Self>(), e)
-                            }));
+                            {
+                                let __node = __node.as_component_mut::<#component>();
+                                __node.#name.set_handler(Box::new(|__self, e| {
+                                    let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
+                                    f(__self.as_component_mut::<Self>(), e)
+                                }));
+                            }
                         },
                     };
                     if attribute.is_dynamic() {
                         quote! { #content }
                     } else {
-                        quote! { if is_init { #content } }
+                        quote! { if __is_init { #content } }
                     }
                 }).collect();
                 quote! {
@@ -381,21 +387,20 @@ impl ToTokens for TemplateNode {
                         let ret_children: Vec<NodeRc<_>> = vec![#(
                             (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
                         ),*];
-                        let is_init = __node_rc.is_none();
-                        let node_rc = match __node_rc {
+                        let __is_init = __node_rc.is_none();
+                        let __node_rc = match __node_rc {
                             None => __owner.new_component_node::<#component>(#tag_name, ret_children),
                             Some(node_rc) => node_rc.clone(),
                         };
                         {
-                            let mut changed = false;
-                            let mut node = node_rc.deref_mut_unsafe();
+                            let mut __changed = false;
+                            let mut __node = __node_rc.deref_mut_unsafe();
                             {
-                                let node = node.as_component_mut::<#component>();
                                 #(#property_apply)*
                             }
-                            if changed { node.force_apply_updates::<#component>() };
+                            if __changed { __node.force_apply_updates::<#component>() };
                         }
-                        node_rc.into()
+                        __node_rc.into()
                     }
                 }
             },

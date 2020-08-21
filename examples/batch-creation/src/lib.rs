@@ -1,4 +1,3 @@
-#[macro_use] extern crate log;
 use wasm_bindgen::prelude::*;
 use maomi::prelude::*;
 use maomi::{Context, backend::Dom};

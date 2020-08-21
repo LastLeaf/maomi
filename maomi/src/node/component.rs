@@ -116,10 +116,6 @@ impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
         }
     }
 
-    pub(super) fn update_with_manually_apply(&self) {
-        self.add_updater_if_needed(true);
-    }
-
     /// Schedule a shadow tree update.
     /// The update process cannot start until other tree manipulation process (including other updates) is finished.
     pub fn update(&self) {

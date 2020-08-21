@@ -17,14 +17,20 @@ pub struct Context<B: Backend> {
 }
 
 impl<B: Backend> Context<B> {
+    fn new_group_holder(backend: Rc<B>, scheduler: Rc<Scheduler>) -> VirtualNodeRc<B> {
+        let group_holder = VirtualNodeRc::new_with_me_cell_group(
+            VirtualNode::new_empty(backend.clone(), scheduler.clone())
+        );
+        unsafe { group_holder.borrow_mut().initialize(group_holder.downgrade()) };
+        group_holder
+    }
+
     /// Create a new rendering area
     pub fn new(backend: B) -> Context<B> {
         let backend = Rc::new(backend);
         let scheduler = Rc::new(Scheduler::new());
         let ret = Self {
-            group_holder: VirtualNodeRc::new_with_me_cell_group(
-                VirtualNode::new_empty(backend.clone(), scheduler.clone())
-            ),
+            group_holder: Self::new_group_holder(backend.clone(), scheduler.clone()),
             root: None,
             backend,
             scheduler,
@@ -39,9 +45,7 @@ impl<B: Backend> Context<B> {
             panic!("the backend is not in prerendering progress");
         }
         let scheduler = Rc::new(Scheduler::new());
-        let group_holder = VirtualNodeRc::new_with_me_cell_group(
-            VirtualNode::new_empty(backend.clone(), scheduler.clone())
-        );
+        let group_holder = Self::new_group_holder(backend.clone(), scheduler.clone());
         let prerendered_data: C::PrerenderedData = bincode::deserialize_from(prerendered_data).unwrap();
         let root = create_component::<_, C>(&mut group_holder.borrow_mut().into(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         backend.set_root_node(&root.borrow().backend_element());
@@ -71,9 +75,7 @@ impl<B: Backend> Context<B> {
             panic!("the backend is already in prerendering progress");
         }
         let scheduler = Rc::new(Scheduler::new());
-        let group_holder = VirtualNodeRc::new_with_me_cell_group(
-            VirtualNode::new_empty(backend.clone(), scheduler.clone())
-        );
+        let group_holder = Self::new_group_holder(backend.clone(), scheduler.clone());
         let root = create_component::<_, C>(&mut group_holder.borrow_mut().into(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
         backend.set_root_node(&root.borrow().backend_element());
         let (prerendered_data, meta_data) = {

@@ -24,7 +24,7 @@ pub struct ComponentNode<B: Backend> {
     pub(crate) marks_cache_dirty: Cell<bool>,
     pub(crate) tag_name: &'static str,
     pub(crate) attributes: Vec<(&'static str, String)>,
-    pub(crate) component: Box<dyn Component<B>>,
+    pub(crate) component: Option<Box<dyn Component<B>>>,
     pub(crate) attached: bool,
     pub(crate) self_weak: Option<ComponentNodeWeak<B>>,
     pub(crate) shadow_root: VirtualNodeRc<B>,
@@ -55,17 +55,9 @@ impl<B: 'static + Backend> ComponentNodeWeak<B> {
 impl<'a, B: 'static + Backend> ComponentNode<B> {
     define_tree_getter!(node);
 
-    pub(crate) fn inner_component_mut(&self) -> &Box<dyn Component<B>> {
-        &self.component
-    }
-
     /// Get the backend element
     pub fn backend_element(&self) -> &B::BackendElement {
         &self.backend_element
-    }
-
-    pub(crate) fn scheduler(&self) -> &Rc<Scheduler> {
-        &self.scheduler
     }
 
     /// Get the children nodes list in composed tree
@@ -80,7 +72,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     pub(super) fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, shadow_root: VirtualNodeRc<B>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
         let backend_element = backend.create_element(tag_name);
         let need_update = Rc::new(RefCell::new(vec![]));
-        let component = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        let component = None;
         ComponentNode {
             backend,
             backend_element,
@@ -111,18 +103,17 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
         self.self_weak = Some(self_weak.clone());
         let ctx = ComponentContext::new(self_weak.clone().into(), self.need_update.clone(), self.scheduler.clone());
         let comp = Box::new(<C as Component<B>>::new(ctx));
-        let uninit = std::mem::replace(&mut self.component, comp);
-        std::mem::forget(uninit);
+        self.component = Some(comp);
         // set chilren's parent
         let self_weak: NodeWeak<B> = self_weak.into();
         for child in self.children.clone() {
-            unsafe { child.deref_mut_unsafe() }.set_parent(Some(self_weak.clone()));
+            child.deref_mut_unsafe().set_parent(Some(self_weak.clone()));
         }
         {
             // initialize shadow root
             let shadow_root_content = <C as ComponentTemplate<B>>::template(self, ComponentTemplateOperation::Init);
             let shadow_root = self.shadow_root.clone();
-            let mut shadow_root = shadow_root.deref_mut_unsafe();
+            let shadow_root = shadow_root.deref_mut_unsafe();
             shadow_root.set_composed_parent(Some(self_weak.clone()));
             if let Some(shadow_root_content) = shadow_root_content {
                 shadow_root.replace_children_list(shadow_root_content);
@@ -134,7 +125,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
             self.backend_element.append_list(backend_children.iter().map(|x| x.backend_node().unwrap()).collect());
         }
         self.check_slots_update();
-        self.component.created();
+        self.component.as_mut().unwrap().created();
     }
 
     /// Get an attribute
@@ -173,17 +164,17 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
 
     /// Check the type of the component
     pub fn is_type<C: Component<B>>(&self) -> bool {
-        self.component.downcast_ref::<C>().is_some()
+        self.component.as_ref().unwrap().downcast_ref::<C>().is_some()
     }
 
     /// Get the inner `Component` reference
     pub fn as_component<C: Component<B>>(&self) -> &C {
-        self.component.downcast_ref::<C>().unwrap()
+        self.component.as_ref().unwrap().downcast_ref::<C>().unwrap()
     }
 
     /// Get the inner `Component` mutable reference
     pub fn as_component_mut<C: Component<B>>(&mut self) -> &mut C {
-        self.component.downcast_mut::<C>().unwrap()
+        self.component.as_mut().unwrap().downcast_mut::<C>().unwrap()
     }
 
     /// Get the inner `Component` reference
@@ -397,12 +388,12 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
         let shadow_root = VirtualNodeRc {
             c: Rc::new(another_me_cell.another(VirtualNode::new_with_children(backend, scheduler.clone(), "shadow-root", VirtualNodeProperty::ShadowRoot, vec![], owner.clone())))
         };
-        unsafe { shadow_root.deref_mut_unsafe() }.initialize(shadow_root.downgrade());
+        shadow_root.deref_mut_unsafe().initialize(shadow_root.downgrade());
         let backend = n.as_ref().backend().clone();
         let ret = ComponentNodeRc {
             c: Rc::new(another_me_cell.another(ComponentNode::new_with_children(backend, scheduler, tag_name, shadow_root.clone(), children, owner)))
         };
-        unsafe { ret.deref_mut_unsafe() }.initialize::<C>(ret.downgrade());
+        ret.deref_mut_unsafe().initialize::<C>(ret.downgrade());
         ret
     }
 
@@ -429,7 +420,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
             if *name == "" && !main_slot_changed {
                 continue
             }
-            let mut slot = slot.deref_mut_unsafe();
+            let slot = slot.deref_mut_unsafe();
             if let VirtualNodeProperty::Slot(_, c) = &mut slot.property {
                 c.truncate(0);
             } else {
@@ -442,7 +433,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
             if *name == "" && !main_slot_changed {
                 continue
             }
-            let mut slot = slot.deref_mut_unsafe();
+            let slot = slot.deref_mut_unsafe();
             if let VirtualNodeProperty::Slot(_, c) = &mut slot.property {
                 c.truncate(0);
             } else {
@@ -458,7 +449,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
                         let slot_weak = slot.deref_unsafe().self_weak.clone().map(|x| x.into());
                         child.set_composed_parent(slot_weak);
                         {
-                            let mut slot = slot.deref_mut_unsafe();
+                            let slot = slot.deref_mut_unsafe();
                             if let VirtualNodeProperty::Slot(_, c) = &mut slot.property {
                                 c.push(child_node_rc);
                             } else {
@@ -589,7 +580,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     }
 
     pub(crate) fn set_attached(&mut self) {
-        self.component.attached();
+        self.component.as_mut().unwrap().attached();
         let mut children = self.composed_children_mut();
         while let Some(mut child) = children.next() {
             child.set_attached();
@@ -597,7 +588,7 @@ impl<'a, B: 'static + Backend> ComponentNode<B> {
     }
 
     pub(crate) fn set_detached(&mut self) {
-        self.component.detached();
+        self.component.as_mut().unwrap().detached();
         let mut children = self.composed_children_mut();
         while let Some(mut child) = children.next() {
             child.set_detached();

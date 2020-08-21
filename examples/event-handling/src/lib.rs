@@ -7,7 +7,7 @@ template!(xml<B: Backend> for<B> EventHandling<B> {
     <input
         r#type="button"
         value={ self.title }
-        @click={ |mut s, _| s.tap() }
+        @click={ |s, _| s.tap() }
     ></input>
 });
 
