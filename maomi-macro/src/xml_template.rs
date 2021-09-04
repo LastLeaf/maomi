@@ -1,4 +1,4 @@
-use syn::export::Span;
+use proc_macro2::Span;
 use syn::parse::*;
 use syn::*;
 
