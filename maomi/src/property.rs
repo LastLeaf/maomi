@@ -1,13 +1,16 @@
-use std::hash::*;
-use std::ops::*;
+use std::borrow;
 use std::cmp::*;
 use std::fmt;
-use std::borrow;
+use std::hash::*;
+use std::ops::*;
 
 pub trait Property<T> {
     fn update(&mut self, v: T) -> bool;
     #[inline]
-    fn update_from<I: Into<T>>(&mut self, v: I) -> bool where I: ?Sized {
+    fn update_from<I: Into<T>>(&mut self, v: I) -> bool
+    where
+        I: ?Sized,
+    {
         self.update(v.into())
     }
 }
@@ -16,7 +19,7 @@ impl<T: PartialEq> Property<T> for T {
     #[inline]
     fn update(&mut self, v: T) -> bool {
         if *self == v {
-            return false
+            return false;
         }
         *self = v;
         true
@@ -25,7 +28,7 @@ impl<T: PartialEq> Property<T> for T {
 
 #[derive(PartialEq)]
 pub struct Prop<T: PartialEq> {
-    data: T
+    data: T,
 }
 
 impl<T: PartialEq> Prop<T> {
@@ -39,7 +42,7 @@ impl<T: PartialEq> Property<T> for Prop<T> {
     #[inline]
     fn update(&mut self, v: T) -> bool {
         if self.data == v {
-            return false
+            return false;
         }
         self.data = v;
         true
@@ -176,16 +179,20 @@ impl<T: PartialEq> AsMut<T> for Prop<T> {
 
 impl<T: Default + PartialEq> Default for Prop<T> {
     fn default() -> Prop<T> {
-        Self { data: Default::default() }
+        Self {
+            data: Default::default(),
+        }
     }
 }
 
-impl<T: Copy + PartialEq> Copy for Prop<T> { }
+impl<T: Copy + PartialEq> Copy for Prop<T> {}
 
 impl<T: Clone + PartialEq> Clone for Prop<T> {
     #[inline]
     fn clone(&self) -> Prop<T> {
-        Self { data: (**self).clone() }
+        Self {
+            data: (**self).clone(),
+        }
     }
 }
 

@@ -28,14 +28,19 @@ pub struct SingleNodeIter<'b, B: Backend, N: 'b> {
 }
 
 impl<'b, B: Backend, N: 'b> SingleNodeIter<'b, B, N> {
-    pub(super) fn parent(source: Node<'b, B>, range: TraversalRange) -> SingleNodeIter<'b, B, Node<'b, B>> {
+    pub(super) fn parent(
+        source: Node<'b, B>,
+        range: TraversalRange,
+    ) -> SingleNodeIter<'b, B, Node<'b, B>> {
         let node = match range {
             TraversalRange::Shadow => source.parent_rc(),
             TraversalRange::Composed => source.composed_parent_rc(),
         };
         SingleNodeIter {
             source,
-            node_ref: node.as_ref().map(|x| unsafe { x.deref_unsafe_with_lifetime() }),
+            node_ref: node
+                .as_ref()
+                .map(|x| unsafe { x.deref_unsafe_with_lifetime() }),
             node,
         }
     }
@@ -44,7 +49,9 @@ impl<'b, B: Backend, N: 'b> SingleNodeIter<'b, B, N> {
         let node = source.owner_rc();
         SingleNodeIter {
             source,
-            node_ref: node.as_ref().map(|x| unsafe { x.deref_unsafe_with_lifetime() }),
+            node_ref: node
+                .as_ref()
+                .map(|x| unsafe { x.deref_unsafe_with_lifetime() }),
             node: node.map(|x| x.into()),
         }
     }
@@ -66,23 +73,32 @@ pub struct SingleNodeIterMut<'b, B: Backend, N: 'b> {
 }
 
 impl<'b, B: Backend, N: 'b> SingleNodeIterMut<'b, B, N> {
-    pub(super) fn parent(source: NodeMut<'b, B>, range: TraversalRange) -> SingleNodeIterMut<'b, B, NodeMut<'b, B>> {
+    pub(super) fn parent(
+        source: NodeMut<'b, B>,
+        range: TraversalRange,
+    ) -> SingleNodeIterMut<'b, B, NodeMut<'b, B>> {
         let mut node = match range {
             TraversalRange::Shadow => source.as_ref().parent_rc(),
             TraversalRange::Composed => source.as_ref().composed_parent_rc(),
         };
         SingleNodeIterMut {
             source,
-            node_ref: node.as_mut().map(|x| unsafe { x.deref_mut_unsafe_with_lifetime() }),
+            node_ref: node
+                .as_mut()
+                .map(|x| unsafe { x.deref_mut_unsafe_with_lifetime() }),
             node,
         }
     }
 
-    pub(super) fn owner(source: NodeMut<'b, B>) -> SingleNodeIterMut<'b, B, &'b mut ComponentNode<B>> {
+    pub(super) fn owner(
+        source: NodeMut<'b, B>,
+    ) -> SingleNodeIterMut<'b, B, &'b mut ComponentNode<B>> {
         let mut node = source.as_ref().owner_rc();
         SingleNodeIterMut {
             source,
-            node_ref: node.as_mut().map(|x| unsafe { x.deref_mut_unsafe_with_lifetime() }),
+            node_ref: node
+                .as_mut()
+                .map(|x| unsafe { x.deref_mut_unsafe_with_lifetime() }),
             node: node.map(|x| x.into()),
         }
     }
@@ -117,8 +133,8 @@ impl<'b, B: Backend> AncestorIter<'b, B> {
                     cur_node = n.clone();
                     nodes.push(n);
                     cur = unsafe { cur_node.deref_unsafe() };
-                },
-                None => break
+                }
+                None => break,
             }
         }
         if order == TraversalOrder::ParentFirst {
@@ -142,7 +158,7 @@ impl<'b, B: Backend> Iterator for AncestorIter<'b, B> {
         } else {
             None
         };
-        return ret
+        return ret;
     }
 }
 
@@ -154,7 +170,11 @@ pub struct AncestorIterMut<'b, B: Backend> {
 }
 
 impl<'b, B: Backend> AncestorIterMut<'b, B> {
-    pub(super) fn new(mut source: NodeMut<'b, B>, range: TraversalRange, order: TraversalOrder) -> Self {
+    pub(super) fn new(
+        mut source: NodeMut<'b, B>,
+        range: TraversalRange,
+        order: TraversalOrder,
+    ) -> Self {
         let mut nodes = vec![];
         {
             let mut cur = source.as_mut();
@@ -170,8 +190,8 @@ impl<'b, B: Backend> AncestorIterMut<'b, B> {
                         cur_node = n.clone();
                         nodes.push(n);
                         cur = unsafe { cur_node.deref_mut_unsafe() };
-                    },
-                    None => break
+                    }
+                    None => break,
                 }
             }
         }
@@ -196,7 +216,7 @@ impl<'b, 'c, B: Backend> MutIterator<'c> for AncestorIterMut<'b, B> {
         } else {
             None
         };
-        return ret
+        return ret;
     }
 }
 
@@ -294,7 +314,12 @@ impl<'b, B: Backend> DfsIter<'b, B> {
 impl<'b, B: Backend> Iterator for DfsIter<'b, B> {
     type Item = Node<'b, B>;
     fn next(&mut self) -> Option<Self::Item> {
-        let Self { ref mut cur, range, order, .. } = self;
+        let Self {
+            ref mut cur,
+            range,
+            order,
+            ..
+        } = self;
         let ret = {
             if let Some((nodes, index)) = cur.pop() {
                 match nodes.get(index).cloned() {
@@ -312,7 +337,7 @@ impl<'b, B: Backend> Iterator for DfsIter<'b, B> {
                             TraversalOrder::ParentFirst => x,
                             TraversalOrder::ParentLast => return self.next(),
                         }
-                    },
+                    }
                     None => {
                         if let Some((x, ref mut index)) = cur.last_mut() {
                             let i = *index;
@@ -324,7 +349,7 @@ impl<'b, B: Backend> Iterator for DfsIter<'b, B> {
                         } else {
                             return None;
                         }
-                    },
+                    }
                 }
             } else {
                 return None;
@@ -343,7 +368,11 @@ pub struct DfsIterMut<'b, B: Backend> {
 }
 
 impl<'b, B: Backend> DfsIterMut<'b, B> {
-    pub(super) fn new(source: NodeMut<'b, B>, range: TraversalRange, order: TraversalOrder) -> Self {
+    pub(super) fn new(
+        source: NodeMut<'b, B>,
+        range: TraversalRange,
+        order: TraversalOrder,
+    ) -> Self {
         let nodes = match range {
             TraversalRange::Shadow => source.as_ref().children_rc().into_owned(),
             TraversalRange::Composed => source.as_ref().composed_children_rc().into_owned(),
@@ -360,7 +389,12 @@ impl<'b, B: Backend> DfsIterMut<'b, B> {
 impl<'b, 'c, B: Backend> MutIterator<'c> for DfsIterMut<'b, B> {
     type Item = NodeMut<'c, B>;
     fn next(&'c mut self) -> Option<Self::Item> {
-        let Self { ref mut cur, range, order, .. } = self;
+        let Self {
+            ref mut cur,
+            range,
+            order,
+            ..
+        } = self;
         let ret = {
             if let Some((nodes, index)) = cur.pop() {
                 match nodes.get(index).cloned() {
@@ -378,7 +412,7 @@ impl<'b, 'c, B: Backend> MutIterator<'c> for DfsIterMut<'b, B> {
                             TraversalOrder::ParentFirst => x,
                             TraversalOrder::ParentLast => return self.next(),
                         }
-                    },
+                    }
                     None => {
                         cur.pop();
                         if let Some((x, ref mut index)) = cur.last_mut() {
@@ -391,7 +425,7 @@ impl<'b, 'c, B: Backend> MutIterator<'c> for DfsIterMut<'b, B> {
                         } else {
                             return None;
                         }
-                    },
+                    }
                 }
             } else {
                 return None;

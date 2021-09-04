@@ -1,12 +1,12 @@
 #![allow(unused_unsafe)]
 
-use std::rc::{Rc, Weak};
-use std::cell::{Ref};
-use std::ops::{Deref, DerefMut};
-use std::fmt;
 use std::any::Any;
-use std::mem::ManuallyDrop;
 use std::borrow::Cow;
+use std::cell::Ref;
+use std::fmt;
+use std::mem::ManuallyDrop;
+use std::ops::{Deref, DerefMut};
+use std::rc::{Rc, Weak};
 
 use super::*;
 use crate::backend::*;
@@ -62,10 +62,24 @@ impl<B: Backend> VirtualNode<B> {
     }
 
     pub(crate) fn new_empty(backend: Rc<B>, scheduler: Rc<Scheduler>) -> Self {
-        Self::new_with_children(backend, scheduler, "", VirtualNodeProperty::None, vec![], None)
+        Self::new_with_children(
+            backend,
+            scheduler,
+            "",
+            VirtualNodeProperty::None,
+            vec![],
+            None,
+        )
     }
 
-    pub(super) fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, property: VirtualNodeProperty<B>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    pub(super) fn new_with_children(
+        backend: Rc<B>,
+        scheduler: Rc<Scheduler>,
+        tag_name: &'static str,
+        property: VirtualNodeProperty<B>,
+        children: Vec<NodeRc<B>>,
+        owner: Option<ComponentNodeWeak<B>>,
+    ) -> Self {
         if let VirtualNodeProperty::Slot(_, c) = &property {
             if children.len() > 0 || c.len() > 0 {
                 panic!("Slot cannot contain any child")
@@ -129,8 +143,8 @@ impl<B: Backend> VirtualNode<B> {
                 NodeRc::NativeNode(x) => Some(x.clone().into()),
                 NodeRc::VirtualNode(x) => unsafe { x.deref_unsafe() }.find_backend_parent(),
                 NodeRc::ComponentNode(x) => Some(x.clone().into()),
-                _ => unreachable!()
-            }
+                _ => unreachable!(),
+            },
         }
     }
 
@@ -178,11 +192,20 @@ impl<B: Backend> VirtualNode<B> {
             }
             let before = self.find_next_sibling(false);
             let before = before.as_ref().map(|x| x.deref_unsafe());
-            let backend_children: Vec<_> = backend_children.iter().map(|x| x.deref_unsafe()).collect();
-            let backend_children: Vec<_> = backend_children.iter().map(|x| {
-                x.backend_node().unwrap()
-            }).collect();
-            self.owner().next().unwrap().backend_element.insert_list_before(backend_children, before.as_ref().map(|x| x.backend_node().unwrap()));
+            let backend_children: Vec<_> =
+                backend_children.iter().map(|x| x.deref_unsafe()).collect();
+            let backend_children: Vec<_> = backend_children
+                .iter()
+                .map(|x| x.backend_node().unwrap())
+                .collect();
+            self.owner()
+                .next()
+                .unwrap()
+                .backend_element
+                .insert_list_before(
+                    backend_children,
+                    before.as_ref().map(|x| x.backend_node().unwrap()),
+                );
         } else {
             panic!("Cannot set shadow root content on non-shadowRoot node")
         }
@@ -215,11 +238,16 @@ impl<B: Backend> VirtualNode<B> {
                 for n in list.iter() {
                     unsafe { n.deref_unsafe() }.collect_backend_nodes(&mut backend_children);
                 }
-                let backend_children: Vec<_> = backend_children.iter().map(|x| x.deref_unsafe()).collect();
-                let backend_children: Vec<_> = backend_children.iter().map(|x| {
-                    x.backend_node().unwrap()
-                }).collect();
-                unsafe { p.deref_unsafe() }.backend_element().unwrap().remove_list(backend_children);
+                let backend_children: Vec<_> =
+                    backend_children.iter().map(|x| x.deref_unsafe()).collect();
+                let backend_children: Vec<_> = backend_children
+                    .iter()
+                    .map(|x| x.backend_node().unwrap())
+                    .collect();
+                unsafe { p.deref_unsafe() }
+                    .backend_element()
+                    .unwrap()
+                    .remove_list(backend_children);
                 // insert new backend children
                 let mut backend_children = vec![];
                 for n in self.children.iter() {
@@ -227,11 +255,19 @@ impl<B: Backend> VirtualNode<B> {
                 }
                 let before = self.find_next_sibling(false);
                 let before = before.as_ref().map(|x| unsafe { x.deref_unsafe() });
-                let backend_children: Vec<_> = backend_children.iter().map(|x| x.deref_unsafe()).collect();
-                let backend_children: Vec<_> = backend_children.iter().map(|x| {
-                    x.backend_node().unwrap()
-                }).collect();
-                unsafe { p.deref_unsafe() }.backend_element().unwrap().insert_list_before(backend_children, before.as_ref().map(|x| x.backend_node().unwrap()));
+                let backend_children: Vec<_> =
+                    backend_children.iter().map(|x| x.deref_unsafe()).collect();
+                let backend_children: Vec<_> = backend_children
+                    .iter()
+                    .map(|x| x.backend_node().unwrap())
+                    .collect();
+                unsafe { p.deref_unsafe() }
+                    .backend_element()
+                    .unwrap()
+                    .insert_list_before(
+                        backend_children,
+                        before.as_ref().map(|x| x.backend_node().unwrap()),
+                    );
             }
         }
         // call detached and attached
@@ -271,11 +307,16 @@ impl<B: Backend> VirtualNode<B> {
                         unsafe { n.deref_unsafe() }.collect_backend_nodes(&mut backend_children);
                     }
                 }
-                let backend_children: Vec<_> = backend_children.iter().map(|x| x.deref_unsafe()).collect();
-                let backend_children: Vec<_> = backend_children.iter().map(|x| {
-                   x.backend_node().unwrap()
-                }).collect();
-                unsafe { p.deref_unsafe() }.backend_element().unwrap().remove_list(backend_children);
+                let backend_children: Vec<_> =
+                    backend_children.iter().map(|x| x.deref_unsafe()).collect();
+                let backend_children: Vec<_> = backend_children
+                    .iter()
+                    .map(|x| x.backend_node().unwrap())
+                    .collect();
+                unsafe { p.deref_unsafe() }
+                    .backend_element()
+                    .unwrap()
+                    .remove_list(backend_children);
             }
         }
         // call detached if it really needs to be detached
@@ -309,17 +350,23 @@ impl<B: Backend> VirtualNode<B> {
                     unsafe { n.deref_unsafe() }.collect_backend_nodes(&mut backend_children);
                 }
                 let before = match self.children.get(pos) {
-                    Some(x) => {
-                        unsafe { x.deref_unsafe() }.find_next_sibling(true)
-                    },
+                    Some(x) => unsafe { x.deref_unsafe() }.find_next_sibling(true),
                     None => None,
                 };
                 let before = before.as_ref().map(|x| unsafe { x.deref_unsafe() });
-                let backend_children: Vec<_> = backend_children.iter().map(|x| x.deref_unsafe()).collect();
-                let backend_children: Vec<_> = backend_children.iter().map(|x| {
-                    x.backend_node().unwrap()
-                }).collect();
-                unsafe { b.deref_unsafe() }.backend_element().unwrap().insert_list_before(backend_children, before.as_ref().map(|x| x.backend_node().unwrap()));
+                let backend_children: Vec<_> =
+                    backend_children.iter().map(|x| x.deref_unsafe()).collect();
+                let backend_children: Vec<_> = backend_children
+                    .iter()
+                    .map(|x| x.backend_node().unwrap())
+                    .collect();
+                unsafe { b.deref_unsafe() }
+                    .backend_element()
+                    .unwrap()
+                    .insert_list_before(
+                        backend_children,
+                        before.as_ref().map(|x| x.backend_node().unwrap()),
+                    );
             }
         }
         // set children
@@ -362,4 +409,10 @@ impl<B: Backend> fmt::Debug for VirtualNode<B> {
     }
 }
 
-some_node_def!(VirtualNode, VirtualNodeRc, VirtualNodeWeak, VirtualNodeRef, VirtualNodeRefMut);
+some_node_def!(
+    VirtualNode,
+    VirtualNodeRc,
+    VirtualNodeWeak,
+    VirtualNodeRef,
+    VirtualNodeRefMut
+);

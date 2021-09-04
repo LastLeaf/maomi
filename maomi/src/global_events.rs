@@ -2,7 +2,7 @@ use super::{backend::*, event::SystemEv};
 
 /// An event without any content
 #[derive(Default, Clone, PartialEq, Debug)]
-pub struct CommonEvent { }
+pub struct CommonEvent {}
 
 /// Position relative to viewport left-top
 #[derive(Default, Clone, PartialEq, Debug)]
@@ -133,30 +133,24 @@ macro_rules! trigger_global_event {
         let node_mut: $crate::node::NodeMut<_> = $node_mut;
         let data = $data;
         let e = match &node_mut {
-            $crate::node::NodeMut::NativeNode(n) => {
-                Some(n.global_events.$event_name.new_event())
-            },
-            $crate::node::NodeMut::VirtualNode(_) => {
-                None
-            },
+            $crate::node::NodeMut::NativeNode(n) => Some(n.global_events.$event_name.new_event()),
+            $crate::node::NodeMut::VirtualNode(_) => None,
             $crate::node::NodeMut::ComponentNode(n) => {
                 Some(n.global_events.$event_name.new_event())
-            },
-            $crate::node::NodeMut::TextNode(_) => {
-                None
-            },
+            }
+            $crate::node::NodeMut::TextNode(_) => None,
         };
         if let Some(e) = e {
             e.trigger(node_mut, data);
         }
-    }
+    };
 }
 
 /// Trigger a global event, and bubble it in shadow tree.
 /// In most cases, global events should be triggered by backend.
 #[macro_export]
 macro_rules! bubble_global_event {
-    ($node_mut: expr, $event_name: ident, $data: expr) => { {
+    ($node_mut: expr, $event_name: ident, $data: expr) => {{
         use $crate::node::MutIterator;
         let mut node_mut: $crate::node::NodeMut<_> = $node_mut;
         let data = $data;
@@ -167,14 +161,14 @@ macro_rules! bubble_global_event {
         while let Some(p) = parent.next() {
             trigger_global_event!(p, $event_name, data);
         }
-    } }
+    }};
 }
 
 /// Trigger a global event, and bubble it in composed tree.
 /// In most cases, global events should be triggered by backend.
 #[macro_export]
 macro_rules! bubble_composed_global_event {
-    ($node_mut: expr, $event_name: ident, $data: expr) => { {
+    ($node_mut: expr, $event_name: ident, $data: expr) => {{
         use $crate::node::MutIterator;
         let mut node_mut: $crate::node::NodeMut<_> = $node_mut;
         let data = $data;
@@ -185,5 +179,5 @@ macro_rules! bubble_composed_global_event {
         while let Some(p) = parent.next() {
             trigger_global_event!(p, $event_name, data);
         }
-    } }
+    }};
 }

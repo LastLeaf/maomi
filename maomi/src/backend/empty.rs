@@ -1,8 +1,8 @@
-use crate::node::NodeWeak;
 use super::*;
+use crate::node::NodeWeak;
 
 #[derive(Clone)]
-pub struct EmptyBackendElement { }
+pub struct EmptyBackendElement {}
 impl BackendElement for EmptyBackendElement {
     type Backend = Empty;
     fn bind_node_weak(&mut self, _node_weak: NodeWeak<Empty>) {
@@ -11,7 +11,11 @@ impl BackendElement for EmptyBackendElement {
     fn append_list(&self, _children: Vec<BackendNodeRef<Empty>>) {
         // empty
     }
-    fn insert_list_before<'a>(&'a self, _children: Vec<BackendNodeRef<Empty>>, _before: Option<BackendNodeRef<'a, Empty>>) {
+    fn insert_list_before<'a>(
+        &'a self,
+        _children: Vec<BackendNodeRef<Empty>>,
+        _before: Option<BackendNodeRef<'a, Empty>>,
+    ) {
         // empty
     }
     fn remove_list(&self, _children: Vec<BackendNodeRef<Empty>>) {
@@ -29,7 +33,7 @@ impl BackendElement for EmptyBackendElement {
 }
 
 #[derive(Clone)]
-pub struct EmptyBackendTextNode { }
+pub struct EmptyBackendTextNode {}
 impl BackendTextNode for EmptyBackendTextNode {
     type Backend = Empty;
     fn set_text_content(&self, _text_content: &str) {
@@ -40,10 +44,10 @@ impl BackendTextNode for EmptyBackendTextNode {
     }
 }
 
-pub struct Empty { }
+pub struct Empty {}
 impl Empty {
     pub fn new() -> Self {
-        Self { }
+        Self {}
     }
 }
 
@@ -54,9 +58,9 @@ impl super::Backend for Empty {
         // empty
     }
     fn create_element(&self, _tag_name: &'static str) -> EmptyBackendElement {
-        EmptyBackendElement { }
+        EmptyBackendElement {}
     }
     fn create_text_node(&self, _text_content: &str) -> EmptyBackendTextNode {
-        EmptyBackendTextNode { }
+        EmptyBackendTextNode {}
     }
 }

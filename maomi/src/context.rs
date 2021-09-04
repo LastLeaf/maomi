@@ -1,12 +1,12 @@
+use futures::executor::block_on;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
-use futures::executor::block_on;
 
-use super::{Component, PrerenderableComponent, ComponentRc};
 use super::backend::*;
 use super::node::*;
-use super::prerender::{match_prerendered_tree};
+use super::prerender::match_prerendered_tree;
+use super::{Component, ComponentRc, PrerenderableComponent};
 
 /// A rendering area
 pub struct Context<B: Backend> {
@@ -18,10 +18,15 @@ pub struct Context<B: Backend> {
 
 impl<B: Backend> Context<B> {
     fn new_group_holder(backend: Rc<B>, scheduler: Rc<Scheduler>) -> VirtualNodeRc<B> {
-        let group_holder = VirtualNodeRc::new_with_me_cell_group(
-            VirtualNode::new_empty(backend.clone(), scheduler.clone())
-        );
-        unsafe { group_holder.borrow_mut().initialize(group_holder.downgrade()) };
+        let group_holder = VirtualNodeRc::new_with_me_cell_group(VirtualNode::new_empty(
+            backend.clone(),
+            scheduler.clone(),
+        ));
+        unsafe {
+            group_holder
+                .borrow_mut()
+                .initialize(group_holder.downgrade())
+        };
         group_holder
     }
 
@@ -39,15 +44,26 @@ impl<B: Backend> Context<B> {
     }
 
     /// Create a new rendering area with prerendered data
-    pub fn new_prerendered<C: PrerenderableComponent<B>>(backend: B, prerendered_data: &[u8]) -> Context<B> {
+    pub fn new_prerendered<C: PrerenderableComponent<B>>(
+        backend: B,
+        prerendered_data: &[u8],
+    ) -> Context<B> {
         let backend = Rc::new(backend);
         if !backend.is_prerendering() {
             panic!("the backend is not in prerendering progress");
         }
         let scheduler = Rc::new(Scheduler::new());
         let group_holder = Self::new_group_holder(backend.clone(), scheduler.clone());
-        let prerendered_data: C::PrerenderedData = bincode::deserialize_from(prerendered_data).unwrap();
-        let root = create_component::<_, C>(&mut group_holder.borrow_mut().into(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
+        let prerendered_data: C::PrerenderedData =
+            bincode::deserialize_from(prerendered_data).unwrap();
+        let root = create_component::<_, C>(
+            &mut group_holder.borrow_mut().into(),
+            scheduler.clone(),
+            "maomi",
+            vec![],
+            None,
+        )
+        .with_type::<C>();
         backend.set_root_node(&root.borrow().backend_element());
         {
             let mut root = root.borrow_mut();
@@ -69,18 +85,34 @@ impl<B: Backend> Context<B> {
 
     /// Create a new rendering area and do the prerendering.
     /// It returns the new context (in which `to_html` is useful on the root component), prerendered data, and meta data.
-    pub fn prerender<C: PrerenderableComponent<B>>(backend: B, args: <C as PrerenderableComponent<B>>::Args) -> (Context<B>, Vec<u8>, <C as PrerenderableComponent<B>>::MetaData) {
+    pub fn prerender<C: PrerenderableComponent<B>>(
+        backend: B,
+        args: <C as PrerenderableComponent<B>>::Args,
+    ) -> (
+        Context<B>,
+        Vec<u8>,
+        <C as PrerenderableComponent<B>>::MetaData,
+    ) {
         let backend = Rc::new(backend);
         if backend.is_prerendering() {
             panic!("the backend is already in prerendering progress");
         }
         let scheduler = Rc::new(Scheduler::new());
         let group_holder = Self::new_group_holder(backend.clone(), scheduler.clone());
-        let root = create_component::<_, C>(&mut group_holder.borrow_mut().into(), scheduler.clone(), "maomi", vec![], None).with_type::<C>();
+        let root = create_component::<_, C>(
+            &mut group_holder.borrow_mut().into(),
+            scheduler.clone(),
+            "maomi",
+            vec![],
+            None,
+        )
+        .with_type::<C>();
         backend.set_root_node(&root.borrow().backend_element());
         let (prerendered_data, meta_data) = {
             let mut root = root.borrow_mut();
-            let (prerendered_data, meta_data) = block_on(<C as PrerenderableComponent<B>>::get_prerendered_data(&mut root, args));
+            let (prerendered_data, meta_data) = block_on(
+                <C as PrerenderableComponent<B>>::get_prerendered_data(&mut root, args),
+            );
             <C as PrerenderableComponent<B>>::apply_prerendered_data(&mut root, &prerendered_data);
             root.apply_updates();
             (prerendered_data, meta_data)
@@ -92,7 +124,11 @@ impl<B: Backend> Context<B> {
             backend,
             scheduler,
         };
-        (ret, bincode::serialize(&prerendered_data).unwrap(), meta_data)
+        (
+            ret,
+            bincode::serialize(&prerendered_data).unwrap(),
+            meta_data,
+        )
     }
 
     /// Get the backend
@@ -102,9 +138,7 @@ impl<B: Backend> Context<B> {
 
     /// Get the root component with specified type
     pub fn root_component<C: 'static + Component<B>>(&self) -> Option<ComponentRc<B, C>> {
-        self.root.clone().map(|x| {
-            x.with_type::<C>()
-        })
+        self.root.clone().map(|x| x.with_type::<C>())
     }
 
     /// Get the root component
@@ -114,12 +148,22 @@ impl<B: Backend> Context<B> {
 
     /// Create a new root component
     pub fn new_root_component<C: 'static + Component<B>>(&mut self) -> ComponentRc<B, C> {
-        let ret = create_component::<_, C>(&mut self.group_holder.borrow_mut().into(), self.scheduler.clone(), "maomi", vec![], None).with_type::<C>();
+        let ret = create_component::<_, C>(
+            &mut self.group_holder.borrow_mut().into(),
+            self.scheduler.clone(),
+            "maomi",
+            vec![],
+            None,
+        )
+        .with_type::<C>();
         ret
     }
 
     /// Set the root component
-    pub fn set_root_component<C: 'static + Component<B>>(&mut self, component_node: ComponentRc<B, C>) {
+    pub fn set_root_component<C: 'static + Component<B>>(
+        &mut self,
+        component_node: ComponentRc<B, C>,
+    ) {
         self.set_root_component_node(component_node.as_node().clone())
     }
 
@@ -129,7 +173,8 @@ impl<B: Backend> Context<B> {
             old_root.borrow_mut().set_detached();
         }
         self.root = Some(component_node.clone());
-        self.backend.set_root_node(&self.root.as_ref().unwrap().borrow_mut().backend_element);
+        self.backend
+            .set_root_node(&self.root.as_ref().unwrap().borrow_mut().backend_element);
         component_node.borrow_mut().set_attached();
     }
 }
@@ -141,7 +186,7 @@ pub(crate) struct Scheduler {
 impl Scheduler {
     fn new() -> Self {
         Self {
-            pending_tasks: RefCell::new(VecDeque::new())
+            pending_tasks: RefCell::new(VecDeque::new()),
         }
     }
 

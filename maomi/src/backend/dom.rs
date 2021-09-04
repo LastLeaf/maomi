@@ -1,19 +1,19 @@
-use std::ops::Deref;
-use std::rc::Rc;
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
-use std::pin::Pin;
-use web_sys::*;
 use futures::prelude::*;
 use futures::task::*;
+use js_sys::Reflect;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::pin::Pin;
+use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use js_sys::Reflect;
+use web_sys::*;
 
+use super::*;
 use crate::global_events;
 use crate::global_events::*;
-use crate::node::{NodeWeak};
-use super::*;
+use crate::node::NodeWeak;
 
 const ELEMENT_INNER_ID_MAGIC: u32 = 1234567890;
 
@@ -34,7 +34,13 @@ impl Drop for TimeoutHandler {
 }
 pub fn set_timeout<F: 'static + FnOnce()>(cb: F, timeout: i32) -> TimeoutHandler {
     let cb_wrapper = Closure::once(Box::new(cb) as Box<dyn FnOnce()>);
-    let id = window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(cb_wrapper.as_ref().unchecked_ref(), timeout).unwrap();
+    let id = window()
+        .unwrap()
+        .set_timeout_with_callback_and_timeout_and_arguments_0(
+            cb_wrapper.as_ref().unchecked_ref(),
+            timeout,
+        )
+        .unwrap();
     TimeoutHandler {
         _cb: cb_wrapper,
         id,
@@ -63,16 +69,19 @@ impl Timeout {
         let done2 = done.clone();
         let waker = Rc::new(Cell::new(None));
         let waker2 = waker.clone();
-        let timeout_handler = set_timeout(move || {
-            done2.set(true);
-            match waker2.take() {
-                Some(waker) => {
-                    let waker: Waker = waker;
-                    waker.wake();
-                },
-                None => { }
-            }
-        }, timeout);
+        let timeout_handler = set_timeout(
+            move || {
+                done2.set(true);
+                match waker2.take() {
+                    Some(waker) => {
+                        let waker: Waker = waker;
+                        waker.wake();
+                    }
+                    None => {}
+                }
+            },
+            timeout,
+        );
         Self {
             _timeout_handler: Some(timeout_handler),
             done,
@@ -97,19 +106,24 @@ impl DomElement {
             node: if prerendering {
                 None
             } else {
-                DOCUMENT.with(|document| {
-                    Some(document.create_element(tag_name).unwrap())
-                })
+                DOCUMENT.with(|document| Some(document.create_element(tag_name).unwrap()))
             },
             inner_id,
             pending_node_weak: None,
         }
     }
     pub fn dom_node(&self) -> &Element {
-        self.node.as_ref().expect("Dom node cannot be accessed while prerendering")
+        self.node
+            .as_ref()
+            .expect("Dom node cannot be accessed while prerendering")
     }
     fn add_node_to_hash_map(&self, node_weak: NodeWeak<Dom>) {
-        js_sys::Reflect::set_u32(self.node.as_ref().unwrap(), ELEMENT_INNER_ID_MAGIC, &JsValue::from_f64(self.inner_id as f64)).unwrap();
+        js_sys::Reflect::set_u32(
+            self.node.as_ref().unwrap(),
+            ELEMENT_INNER_ID_MAGIC,
+            &JsValue::from_f64(self.inner_id as f64),
+        )
+        .unwrap();
         ELEMENT_MAP.with(|element_map| {
             element_map.borrow_mut().insert(self.inner_id, node_weak);
         });
@@ -158,7 +172,11 @@ impl BackendElement for DomElement {
             })
         }
     }
-    fn insert_list_before<'a>(&'a self, children: Vec<BackendNodeRef<Dom>>, before: Option<BackendNodeRef<'a, Dom>>) {
+    fn insert_list_before<'a>(
+        &'a self,
+        children: Vec<BackendNodeRef<Dom>>,
+        before: Option<BackendNodeRef<'a, Dom>>,
+    ) {
         if let Some(node) = self.node.as_ref() {
             DOCUMENT.with(|document| {
                 let frag = document.create_document_fragment();
@@ -169,13 +187,17 @@ impl BackendElement for DomElement {
                     };
                     frag.append_child(dom_node).unwrap();
                 }
-                node.insert_before(&frag, before.as_ref().map(|x| {
-                    let n: &Node = match x {
-                        BackendNodeRef::Element(x) => x.dom_node(),
-                        BackendNodeRef::TextNode(x) => x.dom_node(),
-                    };
-                    n
-                })).unwrap();
+                node.insert_before(
+                    &frag,
+                    before.as_ref().map(|x| {
+                        let n: &Node = match x {
+                            BackendNodeRef::Element(x) => x.dom_node(),
+                            BackendNodeRef::TextNode(x) => x.dom_node(),
+                        };
+                        n
+                    }),
+                )
+                .unwrap();
             })
         }
     }
@@ -195,8 +217,8 @@ impl BackendElement for DomElement {
             match node.parent_node() {
                 Some(p) => {
                     p.remove_child(self).unwrap();
-                },
-                None => { },
+                }
+                None => {}
             }
         }
     }
@@ -225,34 +247,29 @@ impl BackendElement for DomElement {
     fn match_prerendered_first_child(&mut self, node: BackendNodeRefMut<Dom>) {
         let p = self.node.as_ref().unwrap();
         match p.first_child() {
-            Some(next) => {
-                match node {
-                    BackendNodeRefMut::Element(n) => {
-                        n.node = Some(next.dyn_into().expect("no matching prerendered element found"));
-                        n.apply_pending_node_weak();
-                    },
-                    BackendNodeRefMut::TextNode(n) => {
-                        match next.dyn_into::<Text>() {
-                            Ok(next) => {
-                                n.node = Some(next);
-                            },
-                            Err(next) => {
-                                match next.dyn_into::<Comment>() {
-                                    Ok(comment) => {
-                                        let next = DOCUMENT.with(|document| {
-                                            document.create_text_node("")
-                                        });
-                                        p.replace_child(&next, &comment).unwrap();
-                                        n.node = Some(next);
-                                    },
-                                    Err(_) => {
-                                        panic!("no matching prerendered text node found");
-                                    }
-                                }
-                            },
+            Some(next) => match node {
+                BackendNodeRefMut::Element(n) => {
+                    n.node = Some(
+                        next.dyn_into()
+                            .expect("no matching prerendered element found"),
+                    );
+                    n.apply_pending_node_weak();
+                }
+                BackendNodeRefMut::TextNode(n) => match next.dyn_into::<Text>() {
+                    Ok(next) => {
+                        n.node = Some(next);
+                    }
+                    Err(next) => match next.dyn_into::<Comment>() {
+                        Ok(comment) => {
+                            let next = DOCUMENT.with(|document| document.create_text_node(""));
+                            p.replace_child(&next, &comment).unwrap();
+                            n.node = Some(next);
+                        }
+                        Err(_) => {
+                            panic!("no matching prerendered text node found");
                         }
                     },
-                }
+                },
             },
             None => {
                 panic!("no matching prerendered node found");
@@ -262,34 +279,29 @@ impl BackendElement for DomElement {
     fn match_prerendered_next_sibling(&mut self, node: BackendNodeRefMut<Dom>) {
         let p = self.node.as_ref().unwrap();
         match p.next_sibling() {
-            Some(next) => {
-                match node {
-                    BackendNodeRefMut::Element(n) => {
-                        n.node = Some(next.dyn_into().expect("no matching prerendered element found"));
-                        n.apply_pending_node_weak();
-                    },
-                    BackendNodeRefMut::TextNode(n) => {
-                        match next.dyn_into::<Text>() {
-                            Ok(next) => {
-                                n.node = Some(next);
-                            },
-                            Err(next) => {
-                                match next.dyn_into::<Comment>() {
-                                    Ok(comment) => {
-                                        let next = DOCUMENT.with(|document| {
-                                            document.create_text_node("")
-                                        });
-                                        p.replace_child(&next, &comment).unwrap();
-                                        n.node = Some(next);
-                                    },
-                                    Err(_) => {
-                                        panic!("no matching prerendered text node found");
-                                    }
-                                }
-                            },
+            Some(next) => match node {
+                BackendNodeRefMut::Element(n) => {
+                    n.node = Some(
+                        next.dyn_into()
+                            .expect("no matching prerendered element found"),
+                    );
+                    n.apply_pending_node_weak();
+                }
+                BackendNodeRefMut::TextNode(n) => match next.dyn_into::<Text>() {
+                    Ok(next) => {
+                        n.node = Some(next);
+                    }
+                    Err(next) => match next.dyn_into::<Comment>() {
+                        Ok(comment) => {
+                            let next = DOCUMENT.with(|document| document.create_text_node(""));
+                            p.replace_child(&next, &comment).unwrap();
+                            n.node = Some(next);
+                        }
+                        Err(_) => {
+                            panic!("no matching prerendered text node found");
                         }
                     },
-                }
+                },
             },
             None => {
                 panic!("no matching prerendered node found")
@@ -303,7 +315,9 @@ pub struct DomTextNode {
 }
 impl DomTextNode {
     pub fn dom_node(&self) -> &Text {
-        self.node.as_ref().expect("Dom node cannot be accessed while prerendering")
+        self.node
+            .as_ref()
+            .expect("Dom node cannot be accessed while prerendering")
     }
 }
 impl Deref for DomTextNode {
@@ -324,42 +338,37 @@ impl BackendTextNode for DomTextNode {
             match node.parent_node() {
                 Some(p) => {
                     p.remove_child(self).unwrap();
-                },
-                None => { },
+                }
+                None => {}
             }
         }
     }
     fn match_prerendered_next_sibling(&mut self, node: BackendNodeRefMut<Dom>) {
         let p = self.node.as_ref().unwrap();
         match p.next_sibling() {
-            Some(next) => {
-                match node {
-                    BackendNodeRefMut::Element(n) => {
-                        n.node = Some(next.dyn_into().expect("no matching prerendered element found"));
-                        n.apply_pending_node_weak();
-                    },
-                    BackendNodeRefMut::TextNode(n) => {
-                        match next.dyn_into::<Text>() {
-                            Ok(next) => {
-                                n.node = Some(next);
-                            },
-                            Err(next) => {
-                                match next.dyn_into::<Comment>() {
-                                    Ok(comment) => {
-                                        let next = DOCUMENT.with(|document| {
-                                            document.create_text_node("")
-                                        });
-                                        p.replace_child(&next, &comment).unwrap();
-                                        n.node = Some(next);
-                                    },
-                                    Err(_) => {
-                                        panic!("no matching prerendered text node found");
-                                    }
-                                }
-                            },
+            Some(next) => match node {
+                BackendNodeRefMut::Element(n) => {
+                    n.node = Some(
+                        next.dyn_into()
+                            .expect("no matching prerendered element found"),
+                    );
+                    n.apply_pending_node_weak();
+                }
+                BackendNodeRefMut::TextNode(n) => match next.dyn_into::<Text>() {
+                    Ok(next) => {
+                        n.node = Some(next);
+                    }
+                    Err(next) => match next.dyn_into::<Comment>() {
+                        Ok(comment) => {
+                            let next = DOCUMENT.with(|document| document.create_text_node(""));
+                            p.replace_child(&next, &comment).unwrap();
+                            n.node = Some(next);
+                        }
+                        Err(_) => {
+                            panic!("no matching prerendered text node found");
                         }
                     },
-                }
+                },
             },
             None => {
                 panic!("no matching prerendered node found")
@@ -373,7 +382,7 @@ struct DomEvent {
 }
 impl DomEvent {
     fn to_common_event(self) -> global_events::CommonEvent {
-        global_events::CommonEvent { }
+        global_events::CommonEvent {}
     }
     fn to_mouse_event(self) -> global_events::MouseEvent {
         let ev = self.event.dyn_into::<web_sys::MouseEvent>().unwrap();
@@ -386,7 +395,7 @@ impl DomEvent {
                 0 => MouseButton::Primary,
                 1 => MouseButton::Secondary,
                 2 => MouseButton::Auxiliary,
-                _ => MouseButton::Other
+                _ => MouseButton::Other,
             },
             decoration_keys: DecorationKeys {
                 alt: ev.alt_key(),
@@ -408,7 +417,7 @@ impl DomEvent {
                     pos: ViewportPosition {
                         x: touch.client_x(),
                         y: touch.client_y(),
-                    }
+                    },
                 });
             }
             ret
@@ -443,7 +452,9 @@ struct DomEventListener {
 }
 impl Drop for DomEventListener {
     fn drop(&mut self) {
-        self.element.remove_event_listener_with_event_listener_and_bool(self.name, &self.el, true).unwrap();
+        self.element
+            .remove_event_listener_with_event_listener_and_bool(self.name, &self.el, true)
+            .unwrap();
     }
 }
 
@@ -455,28 +466,36 @@ pub struct Dom {
 impl Dom {
     pub fn new(placeholder_id: &str) -> Self {
         Self {
-            root: RefCell::new(DOCUMENT.with(|document| {
-                document.get_element_by_id(placeholder_id).unwrap().into()
-            })),
+            root: RefCell::new(
+                DOCUMENT
+                    .with(|document| document.get_element_by_id(placeholder_id).unwrap().into()),
+            ),
             event_listeners: RefCell::new(vec![]),
             dom_prerendering: Cell::new(false),
         }
     }
     pub fn new_prerendering(placeholder_id: &str) -> Self {
         Self {
-            root: RefCell::new(DOCUMENT.with(|document| {
-                document.get_element_by_id(placeholder_id).unwrap().into()
-            })),
+            root: RefCell::new(
+                DOCUMENT
+                    .with(|document| document.get_element_by_id(placeholder_id).unwrap().into()),
+            ),
             event_listeners: RefCell::new(vec![]),
             dom_prerendering: Cell::new(true),
         }
     }
-    fn set_event_listener_on_root_node<F: 'static + Fn(&NodeWeak<Dom>, DomEvent)>(&self, name: &'static str, f: F) {
+    fn set_event_listener_on_root_node<F: 'static + Fn(&NodeWeak<Dom>, DomEvent)>(
+        &self,
+        name: &'static str,
+        f: F,
+    ) {
         let cb = Closure::wrap(Box::new(move |event: Event| {
             let element: &Element = &event.target().unwrap().dyn_into().unwrap();
             let dom_event = DomEvent { event };
             let node_weak: Option<NodeWeak<Dom>> = ELEMENT_MAP.with(|element_map| {
-                let inner_id = js_sys::Reflect::get_u32(&element, ELEMENT_INNER_ID_MAGIC).unwrap().as_f64();
+                let inner_id = js_sys::Reflect::get_u32(&element, ELEMENT_INNER_ID_MAGIC)
+                    .unwrap()
+                    .as_f64();
                 if let Some(inner_id) = inner_id {
                     let inner_id = inner_id as usize;
                     let e = element_map.borrow();
@@ -486,7 +505,7 @@ impl Dom {
                 }
             });
             match node_weak {
-                None => { },
+                None => {}
                 Some(node_weak) => {
                     f(&node_weak, dom_event);
                 }
@@ -495,7 +514,8 @@ impl Dom {
         let mut el = EventListener::new();
         el.handle_event(cb.as_ref().unchecked_ref());
         let root = self.root.borrow();
-        root.add_event_listener_with_event_listener_and_bool(name, &el, true).unwrap();
+        root.add_event_listener_with_event_listener_and_bool(name, &el, true)
+            .unwrap();
         self.event_listeners.borrow_mut().push(DomEventListener {
             element: root.clone(),
             name,
@@ -513,7 +533,10 @@ impl Backend for Dom {
         }
         {
             let mut root = self.root.borrow_mut();
-            root.parent_node().unwrap().replace_child(root_node.node.as_ref().unwrap(), &root).unwrap();
+            root.parent_node()
+                .unwrap()
+                .replace_child(root_node.node.as_ref().unwrap(), &root)
+                .unwrap();
             *root = root_node.node.as_ref().unwrap().clone();
         }
         self.event_listeners.borrow_mut().clear();
@@ -527,10 +550,8 @@ impl Backend for Dom {
             node: if self.dom_prerendering.get() {
                 None
             } else {
-                DOCUMENT.with(|document| {
-                    Some(document.create_text_node(text_content))
-                })
-            }
+                DOCUMENT.with(|document| Some(document.create_text_node(text_content)))
+            },
         }
     }
     fn is_prerendering(&self) -> bool {
@@ -548,11 +569,11 @@ impl Backend for Dom {
 }
 
 mod event {
-    use std::rc::Rc;
     use std::cell::RefCell;
+    use std::rc::Rc;
 
-    use crate::node::NodeRc;
     use super::*;
+    use crate::node::NodeRc;
 
     const LONG_TAP_TIME_MS: i32 = 2000;
     const CANCEL_TAP_DISTANCE: f32 = 5.;
@@ -610,7 +631,12 @@ mod event {
         reg_event!(trigger, "change", change, to_common_event);
         reg_event!(trigger, "submit", submit, to_common_event);
         reg_event!(trigger, "animationstart", animation_start, to_common_event);
-        reg_event!(trigger, "animationiteration", animation_iteration, to_common_event);
+        reg_event!(
+            trigger,
+            "animationiteration",
+            animation_iteration,
+            to_common_event
+        );
         reg_event!(trigger, "animationend", animation_end, to_common_event);
         reg_event!(trigger, "transitionend", transition_end, to_common_event);
 
@@ -627,17 +653,24 @@ mod event {
                     if ev.button == MouseButton::Primary {
                         let long_tap_timeout = {
                             let current_tap_status = current_tap_status.clone();
-                            set_timeout(move || {
-                                let mut current_tap_status = current_tap_status.borrow_mut();
-                                if current_tap_status.tapping.is_some() {
-                                    let n = current_tap_status.tapping.take().unwrap().0;
-                                    let tap_ev = TapEvent {
-                                        pos: current_tap_status.pos.clone(),
-                                    };
-                                    let mut n = n.borrow_mut();
-                                    bubble_composed_global_event!(n.as_mut(), long_tap, &tap_ev);
-                                }
-                            }, LONG_TAP_TIME_MS)
+                            set_timeout(
+                                move || {
+                                    let mut current_tap_status = current_tap_status.borrow_mut();
+                                    if current_tap_status.tapping.is_some() {
+                                        let n = current_tap_status.tapping.take().unwrap().0;
+                                        let tap_ev = TapEvent {
+                                            pos: current_tap_status.pos.clone(),
+                                        };
+                                        let mut n = n.borrow_mut();
+                                        bubble_composed_global_event!(
+                                            n.as_mut(),
+                                            long_tap,
+                                            &tap_ev
+                                        );
+                                    }
+                                },
+                                LONG_TAP_TIME_MS,
+                            )
                         };
                         let mut current_tap_status = current_tap_status.borrow_mut();
                         current_tap_status.tapping = Some((node_rc, Some(long_tap_timeout)));
@@ -716,17 +749,24 @@ mod event {
                     } else if ev.touches.len() == 1 {
                         let long_tap_timeout = {
                             let current_tap_status = current_tap_status.clone();
-                            set_timeout(move || {
-                                let mut current_tap_status = current_tap_status.borrow_mut();
-                                if current_tap_status.tapping.is_some() {
-                                    let n = current_tap_status.tapping.take().unwrap().0;
-                                    let tap_ev = TapEvent {
-                                        pos: current_tap_status.pos.clone(),
-                                    };
-                                    let mut n = n.borrow_mut();
-                                    bubble_composed_global_event!(n.as_mut(), long_tap, &tap_ev);
-                                }
-                            }, LONG_TAP_TIME_MS)
+                            set_timeout(
+                                move || {
+                                    let mut current_tap_status = current_tap_status.borrow_mut();
+                                    if current_tap_status.tapping.is_some() {
+                                        let n = current_tap_status.tapping.take().unwrap().0;
+                                        let tap_ev = TapEvent {
+                                            pos: current_tap_status.pos.clone(),
+                                        };
+                                        let mut n = n.borrow_mut();
+                                        bubble_composed_global_event!(
+                                            n.as_mut(),
+                                            long_tap,
+                                            &tap_ev
+                                        );
+                                    }
+                                },
+                                LONG_TAP_TIME_MS,
+                            )
                         };
                         let mut current_tap_status = current_tap_status.borrow_mut();
                         current_tap_status.tapping = Some((node_rc, Some(long_tap_timeout)));

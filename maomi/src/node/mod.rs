@@ -1,9 +1,13 @@
 mod me_cell;
 use me_cell::*;
-#[macro_use] mod node_rc;
+#[macro_use]
+mod node_rc;
 pub use node_rc::*;
 mod component;
-pub use component::{Component, PrerenderableComponent, ComponentTemplate, ComponentTemplateOperation, ComponentContext, ComponentRc, ComponentWeak, ComponentRef, ComponentRefMut, EmptyComponent};
+pub use component::{
+    Component, ComponentContext, ComponentRc, ComponentRef, ComponentRefMut, ComponentTemplate,
+    ComponentTemplateOperation, ComponentWeak, EmptyComponent, PrerenderableComponent,
+};
 mod iter_trait;
 pub use iter_trait::*;
 mod iter;

@@ -1,8 +1,8 @@
-use std::rc::{Rc, Weak};
-use std::cell::{Ref};
-use std::ops::{Deref, DerefMut};
+use std::cell::Ref;
 use std::fmt;
 use std::mem::ManuallyDrop;
+use std::ops::{Deref, DerefMut};
+use std::rc::{Rc, Weak};
 
 use super::*;
 use crate::backend::*;
@@ -28,10 +28,25 @@ impl<B: Backend> TextNode<B> {
     pub(super) fn collect_backend_nodes<'b>(&'b self, v: &'b mut Vec<NodeRc<B>>) {
         v.push(self.rc().into());
     }
-    
-    pub(crate) fn new_with_content(backend: Rc<B>, scheduler: Rc<Scheduler>, text_content: String, owner: Option<ComponentNodeWeak<B>>) -> Self {
+
+    pub(crate) fn new_with_content(
+        backend: Rc<B>,
+        scheduler: Rc<Scheduler>,
+        text_content: String,
+        owner: Option<ComponentNodeWeak<B>>,
+    ) -> Self {
         let backend_element = backend.create_text_node(text_content.as_ref());
-        TextNode { backend, scheduler, backend_element, attached: false, self_weak: None, text_content, owner, parent: None, composed_parent: None }
+        TextNode {
+            backend,
+            scheduler,
+            backend_element,
+            attached: false,
+            self_weak: None,
+            text_content,
+            owner,
+            parent: None,
+            composed_parent: None,
+        }
     }
 
     pub(super) fn initialize(&mut self, self_weak: TextNodeWeak<B>) {
@@ -85,4 +100,10 @@ impl<B: Backend> fmt::Debug for TextNode<B> {
     }
 }
 
-some_node_def!(TextNode, TextNodeRc, TextNodeWeak, TextNodeRef, TextNodeRefMut);
+some_node_def!(
+    TextNode,
+    TextNodeRc,
+    TextNodeWeak,
+    TextNodeRef,
+    TextNodeRefMut
+);

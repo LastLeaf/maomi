@@ -1,9 +1,9 @@
-use std::rc::Rc;
-use std::cell::{RefCell, Ref, RefMut, UnsafeCell};
+use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 use std::fmt;
+use std::rc::Rc;
 
 pub struct NodeBorrowError {
-    msg: &'static str
+    msg: &'static str,
 }
 impl fmt::Debug for NodeBorrowError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -48,7 +48,9 @@ impl<T> MeCell<T> {
         let ptr = self.content.get();
         match self.ctx.try_borrow() {
             Ok(r) => Ok(Ref::map(r, |_| unsafe { &*ptr })),
-            Err(_) => Err(NodeBorrowError { msg: "Node has been mutably borrowed" }),
+            Err(_) => Err(NodeBorrowError {
+                msg: "Node has been mutably borrowed",
+            }),
         }
     }
 
@@ -63,7 +65,9 @@ impl<T> MeCell<T> {
         let ptr = self.content.get();
         match self.ctx.try_borrow_mut() {
             Ok(r) => Ok(RefMut::map(r, |_| unsafe { &mut *ptr })),
-            Err(_) => Err(NodeBorrowError { msg: "Node has been borrowed" }),
+            Err(_) => Err(NodeBorrowError {
+                msg: "Node has been borrowed",
+            }),
         }
     }
 

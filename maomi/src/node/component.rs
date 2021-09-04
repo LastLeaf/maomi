@@ -1,36 +1,30 @@
-use std::pin::Pin;
-use std::marker::PhantomData;
-use std::fmt;
-use std::rc::Rc;
-use std::cell::{RefCell};
-use std::ops::{Deref, DerefMut};
 use futures::Future;
+use std::cell::RefCell;
+use std::fmt;
+use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
+use std::rc::Rc;
 
 use super::*;
+use crate::backend::Backend;
 use crate::context::Scheduler;
-use crate::backend::{Backend};
 
 /// A component should implement this trait.
 /// The `new` method is called whenever an instance is creating, with a `ComponentContext` for manipulation.
 pub trait Component<B: Backend>: ComponentTemplate<B> + downcast_rs::Downcast {
-    fn new(_ctx: ComponentContext<B, Self>) -> Self where Self: Sized;
+    fn new(_ctx: ComponentContext<B, Self>) -> Self
+    where
+        Self: Sized;
     /// Called when the component creation process is finished.
-    fn created(&mut self) {
-
-    }
+    fn created(&mut self) {}
     /// Called when the component is changed to `attached` state.
-    fn attached(&mut self) {
-
-    }
+    fn attached(&mut self) {}
     // TODO implement moved
     /// Called when the component is changed to `attached` state.
-    fn moved(&mut self) {
-
-    }
+    fn moved(&mut self) {}
     /// Called when the component is changed off `attached` state.
-    fn detached(&mut self) {
-
-    }
+    fn detached(&mut self) {}
 }
 downcast_rs::impl_downcast!(Component<B> where B: Backend);
 
@@ -52,7 +46,10 @@ pub trait PrerenderableComponent<B: Backend>: Component<B> {
     type Args;
     type PrerenderedData: 'static + serde::Serialize + for<'de> serde::Deserialize<'de>;
     type MetaData;
-    fn get_prerendered_data(&self, args: Self::Args) -> Pin<Box<dyn Future<Output = (Self::PrerenderedData, Self::MetaData)>>>;
+    fn get_prerendered_data(
+        &self,
+        args: Self::Args,
+    ) -> Pin<Box<dyn Future<Output = (Self::PrerenderedData, Self::MetaData)>>>;
     fn apply_prerendered_data(&mut self, _data: &Self::PrerenderedData);
 }
 
@@ -68,16 +65,29 @@ pub enum ComponentTemplateOperation {
 /// **Should be done through template engine!**
 #[doc(hidden)]
 pub trait ComponentTemplate<B: Backend>: 'static {
-    fn template(component: &mut ComponentNode<B>, operation: ComponentTemplateOperation) -> Option<Vec<NodeRc<B>>> where Self: Sized {
+    fn template(
+        component: &mut ComponentNode<B>,
+        operation: ComponentTemplateOperation,
+    ) -> Option<Vec<NodeRc<B>>>
+    where
+        Self: Sized,
+    {
         if let ComponentTemplateOperation::Update = operation {
-            return None
+            return None;
         }
         let mut f = || {
-            vec![unsafe { component.new_virtual_node("slot", VirtualNodeProperty::Slot("", vec![]), vec![]).into() }]
+            vec![unsafe {
+                component
+                    .new_virtual_node("slot", VirtualNodeProperty::Slot("", vec![]), vec![])
+                    .into()
+            }]
         };
         Some(f())
     }
-    fn template_skin() -> &'static str where Self: Sized {
+    fn template_skin() -> &'static str
+    where
+        Self: Sized,
+    {
         ""
     }
 }
@@ -93,7 +103,11 @@ pub struct ComponentContext<B: Backend, C: Component<B>> {
 }
 
 impl<B: Backend, C: Component<B>> ComponentContext<B, C> {
-    pub(crate) fn new(node_weak: ComponentWeak<B, C>, need_update: Rc<RefCell<Vec<Box<dyn 'static + FnOnce(&mut ComponentNode<B>)>>>>, scheduler: Rc<Scheduler>) -> Self {
+    pub(crate) fn new(
+        node_weak: ComponentWeak<B, C>,
+        need_update: Rc<RefCell<Vec<Box<dyn 'static + FnOnce(&mut ComponentNode<B>)>>>>,
+        scheduler: Rc<Scheduler>,
+    ) -> Self {
         Self {
             node_weak,
             need_update,
@@ -200,7 +214,7 @@ impl<B: Backend, C: Component<B>> From<ComponentNodeRc<B>> for ComponentRc<B, C>
     fn from(n: ComponentNodeRc<B>) -> Self {
         Self {
             n,
-            phantom_data: std::marker::PhantomData
+            phantom_data: std::marker::PhantomData,
         }
     }
 }
@@ -225,9 +239,7 @@ impl<B: Backend, C: Component<B>> ComponentWeak<B, C> {
 
     /// Get a `NodeRc` with node type
     pub fn upgrade(&self) -> Option<ComponentRc<B, C>> {
-        self.n.upgrade().map(|x| {
-            x.with_type::<C>()
-        })
+        self.n.upgrade().map(|x| x.with_type::<C>())
     }
 }
 
@@ -235,7 +247,7 @@ impl<B: Backend, C: Component<B>> From<ComponentNodeWeak<B>> for ComponentWeak<B
     fn from(n: ComponentNodeWeak<B>) -> Self {
         Self {
             n,
-            phantom_data: std::marker::PhantomData
+            phantom_data: std::marker::PhantomData,
         }
     }
 }
@@ -333,7 +345,7 @@ impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRef<'a, B>> for Componen
     fn from(n: ComponentNodeRef<'a, B>) -> Self {
         Self {
             n,
-            phantom_data: std::marker::PhantomData
+            phantom_data: std::marker::PhantomData,
         }
     }
 }
@@ -466,11 +478,13 @@ impl<'a, B: Backend, C: Component<B>> DerefMut for ComponentRefMut<'a, B, C> {
     }
 }
 
-impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRefMut<'a, B>> for ComponentRefMut<'a, B, C> {
+impl<'a, B: Backend, C: Component<B>> From<ComponentNodeRefMut<'a, B>>
+    for ComponentRefMut<'a, B, C>
+{
     fn from(n: ComponentNodeRefMut<'a, B>) -> Self {
         Self {
             n,
-            phantom_data: std::marker::PhantomData
+            phantom_data: std::marker::PhantomData,
         }
     }
 }
@@ -482,11 +496,11 @@ impl<'a, B: Backend, C: Component<B>> fmt::Debug for ComponentRefMut<'a, B, C> {
 }
 
 /// The default empty component
-pub struct EmptyComponent { }
+pub struct EmptyComponent {}
 
 impl<B: Backend> Component<B> for EmptyComponent {
     fn new(_ctx: ComponentContext<B, Self>) -> Self {
-        Self { }
+        Self {}
     }
 }
 

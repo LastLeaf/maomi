@@ -41,7 +41,11 @@ pub trait BackendElement {
     type Backend: Backend;
     fn bind_node_weak(&mut self, node_weak: NodeWeak<Self::Backend>);
     fn append_list(&self, children: Vec<BackendNodeRef<Self::Backend>>);
-    fn insert_list_before<'a>(&'a self, children: Vec<BackendNodeRef<Self::Backend>>, before: Option<BackendNodeRef<'a, Self::Backend>>);
+    fn insert_list_before<'a>(
+        &'a self,
+        children: Vec<BackendNodeRef<Self::Backend>>,
+        before: Option<BackendNodeRef<'a, Self::Backend>>,
+    );
     fn remove_list(&self, children: Vec<BackendNodeRef<Self::Backend>>);
     fn remove_self(&self);
     fn set_attribute(&self, name: &'static str, value: &str);

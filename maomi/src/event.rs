@@ -1,6 +1,10 @@
 use std::rc::Rc;
 
-use super::{backend::Backend, node::{NodeMut, ComponentNode}, Property};
+use super::{
+    backend::Backend,
+    node::{ComponentNode, NodeMut},
+    Property,
+};
 
 /// A custom event binding position.
 /// `T` is the argument type provided when triggering.
@@ -12,15 +16,16 @@ pub struct Ev<B: Backend, T: ?Sized> {
 impl<B: Backend, T: ?Sized> Ev<B, T> {
     /// Create a new event binding position
     pub fn new() -> Self {
-        Self {
-            handler: None,
-        }
+        Self { handler: None }
     }
 
     /// Set the handler
     /// **Should be done through template engine!**
     #[doc(hidden)]
-    pub fn set_handler(&mut self, v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>) {
+    pub fn set_handler(
+        &mut self,
+        v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>,
+    ) {
         self.handler = Some(Rc::new(v));
     }
 
@@ -34,13 +39,18 @@ impl<B: Backend, T: ?Sized> Ev<B, T> {
     /// Generate a new event
     pub fn new_event(&self) -> Event<B, T> {
         Event {
-            handler: self.handler.clone()
+            handler: self.handler.clone(),
         }
     }
 }
 
-impl<B: Backend, T: ?Sized> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>> for Ev<B, T> {
-    fn update(&mut self, v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>) -> bool {
+impl<B: Backend, T: ?Sized> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>>
+    for Ev<B, T>
+{
+    fn update(
+        &mut self,
+        v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>,
+    ) -> bool {
         self.handler = Some(Rc::new(v));
         false
     }
@@ -74,15 +84,16 @@ pub struct SystemEv<B: Backend, T: ?Sized> {
 impl<B: Backend, T: ?Sized> SystemEv<B, T> {
     /// Create a new event binding position
     pub fn new() -> Self {
-        Self {
-            handler: None,
-        }
+        Self { handler: None }
     }
 
     /// Set the handler
     /// **Should be done through template engine!**
     #[doc(hidden)]
-    pub fn set_handler(&mut self, v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>) {
+    pub fn set_handler(
+        &mut self,
+        v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>,
+    ) {
         self.handler = Some(Rc::new(v));
     }
 
@@ -96,13 +107,18 @@ impl<B: Backend, T: ?Sized> SystemEv<B, T> {
     /// Generate a new event
     pub fn new_event(&self) -> SystemEvent<B, T> {
         SystemEvent {
-            handler: self.handler.clone()
+            handler: self.handler.clone(),
         }
     }
 }
 
-impl<B: Backend, T: ?Sized> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>> for SystemEv<B, T> {
-    fn update(&mut self, v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>) -> bool {
+impl<B: Backend, T: ?Sized> Property<Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>>
+    for SystemEv<B, T>
+{
+    fn update(
+        &mut self,
+        v: Box<dyn 'static + for<'r> Fn(&'r mut ComponentNode<B>, &'r T)>,
+    ) -> bool {
         self.handler = Some(Rc::new(v));
         false
     }

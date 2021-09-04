@@ -1,9 +1,9 @@
-use std::rc::{Rc, Weak};
-use std::cell::{Ref};
-use std::ops::{Deref, DerefMut};
-use std::fmt;
 use std::borrow::Cow;
+use std::cell::Ref;
+use std::fmt;
 use std::mem::ManuallyDrop;
+use std::ops::{Deref, DerefMut};
+use std::rc::{Rc, Weak};
 
 use super::*;
 use crate::backend::*;
@@ -45,7 +45,14 @@ impl<B: Backend> NativeNode<B> {
         v.push(self.rc().into())
     }
 
-    pub(crate) fn new_with_children(backend: Rc<B>, scheduler: Rc<Scheduler>, tag_name: &'static str, attributes: Vec<(&'static str, String)>, children: Vec<NodeRc<B>>, owner: Option<ComponentNodeWeak<B>>) -> Self {
+    pub(crate) fn new_with_children(
+        backend: Rc<B>,
+        scheduler: Rc<Scheduler>,
+        tag_name: &'static str,
+        attributes: Vec<(&'static str, String)>,
+        children: Vec<NodeRc<B>>,
+        owner: Option<ComponentNodeWeak<B>>,
+    ) -> Self {
         let backend_element = backend.create_element(tag_name);
         NativeNode {
             backend,
@@ -66,7 +73,8 @@ impl<B: Backend> NativeNode<B> {
 
     pub(super) unsafe fn initialize(&mut self, self_weak: NativeNodeWeak<B>) {
         // bind backend element
-        self.backend_element.bind_node_weak(self_weak.clone().into());
+        self.backend_element
+            .bind_node_weak(self_weak.clone().into());
         // set chilren's parent
         self.self_weak = Some(self_weak.clone());
         let self_weak: NodeWeak<B> = self_weak.into();
@@ -78,10 +86,15 @@ impl<B: Backend> NativeNode<B> {
         // insert in backend
         let mut backend_children = vec![];
         for child in self.children.iter() {
-            child.deref_unsafe().collect_backend_nodes(&mut backend_children);
+            child
+                .deref_unsafe()
+                .collect_backend_nodes(&mut backend_children);
         }
         let backend_children: Vec<_> = backend_children.iter().map(|x| x.deref_unsafe()).collect();
-        let backend_children: Vec<_> = backend_children.iter().map(|x| x.backend_node().unwrap()).collect();
+        let backend_children: Vec<_> = backend_children
+            .iter()
+            .map(|x| x.backend_node().unwrap())
+            .collect();
         self.backend_element.append_list(backend_children);
     }
 
@@ -92,7 +105,10 @@ impl<B: Backend> NativeNode<B> {
 
     /// Get an attribute value
     pub fn get_attribute(&self, name: &'static str) -> Option<&str> {
-        self.attributes.iter().find(|x| x.0 == name).map(|x| x.1.as_str())
+        self.attributes
+            .iter()
+            .find(|x| x.0 == name)
+            .map(|x| x.1.as_str())
     }
 
     /// Set an attribute.
@@ -104,9 +120,9 @@ impl<B: Backend> NativeNode<B> {
         match self.attributes.iter_mut().find(|x| x.0 == name) {
             Some(x) => {
                 x.1 = value;
-                return
-            },
-            None => { }
+                return;
+            }
+            None => {}
         }
         self.attributes.push((name, value))
     }
@@ -197,4 +213,10 @@ impl<B: Backend> fmt::Debug for NativeNode<B> {
     }
 }
 
-some_node_def!(NativeNode, NativeNodeRc, NativeNodeWeak, NativeNodeRef, NativeNodeRefMut);
+some_node_def!(
+    NativeNode,
+    NativeNodeRc,
+    NativeNodeWeak,
+    NativeNodeRef,
+    NativeNodeRefMut
+);

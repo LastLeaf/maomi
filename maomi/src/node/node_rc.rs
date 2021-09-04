@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use std::fmt;
 use std::borrow::Cow;
+use std::fmt;
+use std::rc::Rc;
 
 use super::*;
 use crate::backend::*;
@@ -114,7 +114,10 @@ macro_rules! define_tree_getter {
         }
 
         /// Iterate ancestors in composed tree
-        pub fn composed_ancestors_mut<'c>(&'c mut self, order: TraversalOrder) -> AncestorIterMut<'c, B> {
+        pub fn composed_ancestors_mut<'c>(
+            &'c mut self,
+            order: TraversalOrder,
+        ) -> AncestorIterMut<'c, B> {
             AncestorIterMut::new(self.into(), TraversalRange::Composed, order)
         }
 
@@ -144,12 +147,16 @@ macro_rules! define_tree_getter {
 
         /// Get a child node
         pub fn child<'c>(&'c self, index: usize) -> Option<Node<'c, B>> {
-            self.children.get(index).map(|x| unsafe { x.deref_unsafe() })
+            self.children
+                .get(index)
+                .map(|x| unsafe { x.deref_unsafe() })
         }
 
         /// Get a child node
         pub fn child_mut<'c>(&'c mut self, index: usize) -> Option<NodeMut<'c, B>> {
-            self.children.get(index).map(|x| unsafe { x.deref_mut_unsafe() })
+            self.children
+                .get(index)
+                .map(|x| unsafe { x.deref_mut_unsafe() })
         }
 
         /// Iterate child nodes
@@ -172,38 +179,41 @@ macro_rules! define_tree_getter {
             ChildIterMut::new(self.into(), TraversalRange::Composed)
         }
 
-        pub(super) unsafe fn find_next_backend_child(&self, from_index: usize) -> Option<NodeRc<B>> {
+        pub(super) unsafe fn find_next_backend_child(
+            &self,
+            from_index: usize,
+        ) -> Option<NodeRc<B>> {
             let children = self.composed_children().skip(from_index);
             for child in children {
                 match child {
-                    Node::NativeNode(_) => {
-                        return Some(child.rc())
-                    },
-                    Node::VirtualNode(_) => { },
-                    Node::ComponentNode(_) => {
-                        return Some(child.rc())
-                    },
-                    Node::TextNode(_) => {
-                        return Some(child.rc())
-                    },
+                    Node::NativeNode(_) => return Some(child.rc()),
+                    Node::VirtualNode(_) => {}
+                    Node::ComponentNode(_) => return Some(child.rc()),
+                    Node::TextNode(_) => return Some(child.rc()),
                 }
                 match child.find_next_backend_child(0) {
-                    None => { },
-                    Some(x) => {
-                        return Some(x)
-                    },
+                    None => {}
+                    Some(x) => return Some(x),
                 }
             }
             None
         }
 
-        pub(super) unsafe fn find_next_sibling<'b>(&'b self, include_self: bool) -> Option<NodeRc<B>> {
+        pub(super) unsafe fn find_next_sibling<'b>(
+            &'b self,
+            include_self: bool,
+        ) -> Option<NodeRc<B>> {
             match self.composed_parent().next() {
                 None => None,
                 Some(composed_parent) => {
                     let next_child = {
-                        let index = composed_parent.composed_children_rc().iter().position(|x| *x == NodeRc::from(self.rc())).unwrap();
-                        composed_parent.find_next_backend_child(index + if include_self { 0 } else { 1 })
+                        let index = composed_parent
+                            .composed_children_rc()
+                            .iter()
+                            .position(|x| *x == NodeRc::from(self.rc()))
+                            .unwrap();
+                        composed_parent
+                            .find_next_backend_child(index + if include_self { 0 } else { 1 })
                     };
                     match next_child {
                         Some(x) => Some(x),
@@ -211,19 +221,17 @@ macro_rules! define_tree_getter {
                             Node::NativeNode(_) => None,
                             Node::VirtualNode(x) => x.find_next_sibling(false),
                             Node::ComponentNode(_) => None,
-                            _ => unreachable!()
-                        }
+                            _ => unreachable!(),
+                        },
                     }
                 }
             }
         }
     };
 
-    (ref) => {
-    };
+    (ref) => {};
 
-    (ref mut) => {
-    };
+    (ref mut) => {};
 }
 
 /// A ref-counted node
@@ -248,10 +256,34 @@ impl<B: Backend> Clone for NodeRc<B> {
 impl<B: Backend> PartialEq for NodeRc<B> {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            NodeRc::NativeNode(x) => if let NodeRc::NativeNode(y) = other { x == y } else { false },
-            NodeRc::VirtualNode(x) => if let NodeRc::VirtualNode(y) = other { x == y } else { false },
-            NodeRc::ComponentNode(x) => if let NodeRc::ComponentNode(y) = other { x == y } else { false },
-            NodeRc::TextNode(x) => if let NodeRc::TextNode(y) = other { x == y } else { false },
+            NodeRc::NativeNode(x) => {
+                if let NodeRc::NativeNode(y) = other {
+                    x == y
+                } else {
+                    false
+                }
+            }
+            NodeRc::VirtualNode(x) => {
+                if let NodeRc::VirtualNode(y) = other {
+                    x == y
+                } else {
+                    false
+                }
+            }
+            NodeRc::ComponentNode(x) => {
+                if let NodeRc::ComponentNode(y) = other {
+                    x == y
+                } else {
+                    false
+                }
+            }
+            NodeRc::TextNode(x) => {
+                if let NodeRc::TextNode(y) = other {
+                    x == y
+                } else {
+                    false
+                }
+            }
         }
     }
 }
@@ -959,7 +991,10 @@ impl<'a, B: Backend> NodeMut<'a, B> {
     }
 
     /// Iterate ancestors in composed tree
-    pub fn composed_ancestors_mut<'c>(&'c mut self, order: TraversalOrder) -> AncestorIterMut<'c, B> {
+    pub fn composed_ancestors_mut<'c>(
+        &'c mut self,
+        order: TraversalOrder,
+    ) -> AncestorIterMut<'c, B> {
         match self {
             Self::NativeNode(x) => x.composed_ancestors_mut(order),
             Self::VirtualNode(x) => x.composed_ancestors_mut(order),
@@ -1007,7 +1042,7 @@ impl<'a, B: Backend> NodeMut<'a, B> {
             Self::NativeNode(x) => x.set_attached(),
             Self::VirtualNode(x) => x.set_attached(),
             Self::ComponentNode(x) => x.set_attached(),
-            Self::TextNode(_) => { },
+            Self::TextNode(_) => {}
         }
     }
 
@@ -1016,7 +1051,7 @@ impl<'a, B: Backend> NodeMut<'a, B> {
             Self::NativeNode(x) => x.set_detached(),
             Self::VirtualNode(x) => x.set_detached(),
             Self::ComponentNode(x) => x.set_detached(),
-            Self::TextNode(_) => { },
+            Self::TextNode(_) => {}
         }
     }
 }
@@ -1038,14 +1073,14 @@ macro_rules! some_node_def {
     ($t: ident, $rc: ident, $weak: ident, $r: ident, $rm: ident) => {
         /// A `NodeRc` with node type, representing a ref-counted node.
         pub struct $rc<B: Backend> {
-            pub(super) c: Rc<MeCell<$t<B>>>
+            pub(super) c: Rc<MeCell<$t<B>>>,
         }
 
         impl<B: Backend> $rc<B> {
             #[allow(dead_code)]
             pub(crate) fn new_with_me_cell_group(c: $t<B>) -> Self {
                 Self {
-                    c: Rc::new(MeCell::new_group(c))
+                    c: Rc::new(MeCell::new_group(c)),
                 }
             }
 
@@ -1068,20 +1103,24 @@ macro_rules! some_node_def {
             /// Borrow the node mutably.
             /// Panics if any node has been borrowed.
             pub fn borrow_mut<'a>(&'a self) -> $rm<'a, B> {
-                $rm { c: ManuallyDrop::new(MeRefMutOrRaw::Me(self.c.borrow_mut())) }
+                $rm {
+                    c: ManuallyDrop::new(MeRefMutOrRaw::Me(self.c.borrow_mut())),
+                }
             }
 
             /// Borrow the node mutably.
             /// Return `Err` if any node has been borrowed.
             pub fn try_borrow_mut<'a>(&'a self) -> Result<$rm<'a, B>, NodeBorrowError> {
                 self.c.try_borrow_mut().map(|c| $rm {
-                    c: ManuallyDrop::new(MeRefMutOrRaw::Me(c))
+                    c: ManuallyDrop::new(MeRefMutOrRaw::Me(c)),
                 })
             }
 
             /// Get a `NodeWeak` with node type
             pub fn downgrade(&self) -> $weak<B> {
-                $weak { c: Rc::downgrade(&self.c) }
+                $weak {
+                    c: Rc::downgrade(&self.c),
+                }
             }
 
             /// Deref the node unsafely
@@ -1127,15 +1166,13 @@ macro_rules! some_node_def {
 
         /// A `NodeWeak` with node type, representing a weak ref of a ref-counted node.
         pub struct $weak<B: Backend> {
-            pub(super) c: Weak<MeCell<$t<B>>>
+            pub(super) c: Weak<MeCell<$t<B>>>,
         }
 
         impl<B: Backend> $weak<B> {
             /// Get a `NodeRc` with node type
             pub fn upgrade(&self) -> Option<$rc<B>> {
-                self.c.upgrade().map(|x| {
-                    $rc { c: x }
-                })
+                self.c.upgrade().map(|x| $rc { c: x })
             }
         }
 
@@ -1194,12 +1231,15 @@ macro_rules! some_node_def {
 
         impl<'a, B: Backend> $rm<'a, B> {
             /// Get another mutable reference `NodeMut`, borrowing out the current one
-            pub fn as_mut<'b>(&'b mut self) -> $rm<'b, B> where 'a: 'b {
+            pub fn as_mut<'b>(&'b mut self) -> $rm<'b, B>
+            where
+                'a: 'b,
+            {
                 $rm {
                     c: ManuallyDrop::new(MeRefMutOrRaw::Raw(match &mut *self.c {
                         MeRefMutOrRaw::Me(x) => &mut *x,
                         MeRefMutOrRaw::Raw(x) => &mut *x,
-                    }))
+                    })),
                 }
             }
         }
@@ -1260,5 +1300,5 @@ macro_rules! some_node_def {
                 NodeMut::$t(s)
             }
         }
-    }
+    };
 }

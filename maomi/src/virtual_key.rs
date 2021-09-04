@@ -1,7 +1,7 @@
 use std::ops::Range;
 
-use super::node::*;
 use super::backend::Backend;
+use super::node::*;
 
 /// VirtualNode key management
 /// **Should be done through template engine!**
@@ -15,9 +15,7 @@ impl<T: PartialEq> VirtualKeyList<T> {
     /// **Should be done through template engine!**
     #[doc(hidden)]
     pub fn new(keys: Vec<Option<T>>) -> Self {
-        Self {
-            keys: keys
-        }
+        Self { keys: keys }
     }
 
     /// Get the count of keys
@@ -30,7 +28,11 @@ impl<T: PartialEq> VirtualKeyList<T> {
     /// Reorder keys
     /// **Should be done through template engine!**
     #[doc(hidden)]
-    pub fn list_reorder<B: Backend>(&self, old: &Self, node: &mut VirtualNode<B>) -> VirtualKeyChanges<B> {
+    pub fn list_reorder<B: Backend>(
+        &self,
+        old: &Self,
+        node: &mut VirtualNode<B>,
+    ) -> VirtualKeyChanges<B> {
         let old_keys = &old.keys;
         let new_keys = &self.keys;
         let mut old_i = 0;
@@ -53,7 +55,7 @@ impl<T: PartialEq> VirtualKeyList<T> {
         loop {
             if old_i == old_len || new_i == new_len {
                 remove_and_insert(old_i, old_len, new_i, new_len);
-                break
+                break;
             }
             if old_keys[old_i] == new_keys[new_i] {
                 index_map[new_i] = Some(old_i);
@@ -63,23 +65,29 @@ impl<T: PartialEq> VirtualKeyList<T> {
                 let mut c = 1;
                 let mut d = 0;
                 loop {
-                    if old_i + d < old_len && new_i + c < new_len && old_keys[old_i + d] == new_keys[new_i + c] {
+                    if old_i + d < old_len
+                        && new_i + c < new_len
+                        && old_keys[old_i + d] == new_keys[new_i + c]
+                    {
                         remove_and_insert(old_i, old_i + d, new_i, new_i + c);
                         old_i += d;
                         new_i += c;
-                        break
+                        break;
                     }
-                    if old_i + c < old_len && new_i + d < new_len && old_keys[old_i + c] == new_keys[new_i + d] {
+                    if old_i + c < old_len
+                        && new_i + d < new_len
+                        && old_keys[old_i + c] == new_keys[new_i + d]
+                    {
                         remove_and_insert(old_i, old_i + c, new_i, new_i + d);
                         old_i += c;
                         new_i += d;
-                        break
+                        break;
                     }
                     if old_i + c >= old_len && new_i + c >= new_len {
                         d += 1;
                         if d == c {
                             remove_and_insert(old_i, old_len, new_i, new_len);
-                            break
+                            break;
                         }
                         c = d
                     }
@@ -104,12 +112,13 @@ impl<T: PartialEq> VirtualKeyList<T> {
         VirtualKeyChanges {
             removes,
             inserts,
-            nodes: index_map.into_iter().map(|x| {
-                match x {
+            nodes: index_map
+                .into_iter()
+                .map(|x| match x {
                     None => None,
-                    Some(x) => Some(node.children_rc()[x].clone())
-                }
-            }).collect()
+                    Some(x) => Some(node.children_rc()[x].clone()),
+                })
+                .collect(),
         }
     }
 }
@@ -146,7 +155,11 @@ impl<B: Backend> VirtualKeyChanges<B> {
     /// **Should be done through template engine!**
     #[doc(hidden)]
     pub unsafe fn apply(self, node: &mut VirtualNode<B>, children: Vec<NodeRc<B>>) {
-        let Self {inserts, removes, nodes: _} = self;
+        let Self {
+            inserts,
+            removes,
+            nodes: _,
+        } = self;
         let mut d = 0;
         for (start, reusable) in removes {
             node.remove_with_reuse(start - d, &reusable);
