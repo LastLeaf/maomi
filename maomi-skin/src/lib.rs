@@ -2,8 +2,8 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::*;
-use syn::*;
 use syn::parse::*;
+use syn::*;
 
 mod skin;
 
@@ -32,15 +32,16 @@ impl Parse for StyleSheetDefinition {
         let original_style: LitStr = input.parse()?;
         let original_style_str = original_style.value();
         let namespace_str = namespace.as_ref().map(|x: &Ident| x.to_string() + "-");
-        let style = skin::compile(namespace_str.as_ref().map(|x| x.as_str()), original_style_str.as_str());
+        let style = skin::compile(
+            namespace_str.as_ref().map(|x| x.as_str()),
+            original_style_str.as_str(),
+        );
         match style {
-            Ok(style) => {
-                Ok(Self {
-                    visibility,
-                    namespace,
-                    style: LitStr::new(&style, proc_macro2::Span::call_site()),
-                })
-            },
+            Ok(style) => Ok(Self {
+                visibility,
+                namespace,
+                style: LitStr::new(&style, proc_macro2::Span::call_site()),
+            }),
             Err(e) => {
                 let msg = format!("Parse style sheet failed: {:?}", e);
                 Err(syn::Error::new(proc_macro2::Span::call_site(), msg))
@@ -50,11 +51,15 @@ impl Parse for StyleSheetDefinition {
 }
 impl ToTokens for StyleSheetDefinition {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let Self { visibility, namespace, style } = self;
+        let Self {
+            visibility,
+            namespace,
+            style,
+        } = self;
         match namespace {
             Some(namespace) => {
                 tokens.append_all(quote! { #visibility const #namespace: &'static str = #style; });
-            },
+            }
             None => {
                 tokens.append_all(quote! { #style });
             }

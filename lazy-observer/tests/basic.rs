@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use std::cell::RefCell;
 use lazy_observer::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[test]
 fn lazy() {

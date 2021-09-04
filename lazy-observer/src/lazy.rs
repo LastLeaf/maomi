@@ -1,13 +1,13 @@
-use std::hash::*;
-use std::ops::*;
+use std::cell::{Ref, RefCell};
 use std::cmp::*;
 use std::fmt;
+use std::hash::*;
+use std::ops::*;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::cell::{Ref, RefCell};
 
-use super::{notify_updater, exec_updater};
 use super::dirty_marker::DirtyMarker;
+use super::{exec_updater, notify_updater};
 
 pub struct Lazy<T> {
     data: RefCell<Option<T>>,
@@ -20,14 +20,18 @@ impl<T> Lazy<T> {
     pub fn new<F: 'static + Fn() -> T>(updater: F) -> Self {
         let updater = Rc::new(updater);
         let dirty = Rc::pin(DirtyMarker::new(true));
-        Self { data: RefCell::new(None), updater, dirty }
+        Self {
+            data: RefCell::new(None),
+            updater,
+            dirty,
+        }
     }
     #[inline]
     pub fn check_update(&self) {
         if self.dirty.clear_dirty() {
             match self.data.try_borrow_mut() {
                 Ok(mut x) => *x = Some(exec_updater(&self.dirty, &self.updater)),
-                Err(_) => { },
+                Err(_) => {}
             }
         }
     }
@@ -103,7 +107,11 @@ impl<T: Clone> Clone for Lazy<T> {
     fn clone(&self) -> Lazy<T> {
         let updater = self.updater.clone();
         let dirty = Rc::pin(DirtyMarker::new(false));
-        Self { data: RefCell::new(None), updater, dirty }
+        Self {
+            data: RefCell::new(None),
+            updater,
+            dirty,
+        }
     }
 }
 

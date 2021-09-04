@@ -1,13 +1,13 @@
-use std::hash::*;
-use std::ops::*;
+use std::borrow;
 use std::cmp::*;
 use std::fmt;
-use std::borrow;
+use std::hash::*;
+use std::ops::*;
 use std::pin::Pin;
 use std::rc::Rc;
 
-use super::notify_updater;
 use super::dirty_marker::DirtyMarker;
+use super::notify_updater;
 
 pub struct Observable<T> {
     data: T,
@@ -17,7 +17,10 @@ pub struct Observable<T> {
 impl<T> Observable<T> {
     #[inline]
     pub fn new(data: T) -> Self {
-        Self { data, dirty: Rc::pin(DirtyMarker::new(false)) }
+        Self {
+            data,
+            dirty: Rc::pin(DirtyMarker::new(false)),
+        }
     }
 }
 
@@ -160,14 +163,20 @@ impl<T> AsMut<T> for Observable<T> {
 
 impl<T: Default> Default for Observable<T> {
     fn default() -> Observable<T> {
-        Self { data: Default::default(), dirty: Rc::pin(DirtyMarker::new(false)) }
+        Self {
+            data: Default::default(),
+            dirty: Rc::pin(DirtyMarker::new(false)),
+        }
     }
 }
 
 impl<T: Clone> Clone for Observable<T> {
     #[inline]
     fn clone(&self) -> Observable<T> {
-        Self { data: (**self).clone(), dirty: Rc::pin(DirtyMarker::new(false)) }
+        Self {
+            data: (**self).clone(),
+            dirty: Rc::pin(DirtyMarker::new(false)),
+        }
     }
 }
 

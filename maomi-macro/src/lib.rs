@@ -1,14 +1,14 @@
-#![recursion_limit="128"]
+#![recursion_limit = "128"]
 
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::*;
-use syn::*;
 use syn::parse::*;
+use syn::*;
 
-mod template;
 mod simple_template;
+mod template;
 mod xml_template;
 
 #[proc_macro_attribute]
@@ -25,21 +25,25 @@ struct SerializableComopnentDefinition {
 impl Parse for SerializableComopnentDefinition {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut item_impl: ItemImpl = input.parse()?;
-        let ser_item: ImplItem = parse_str(r#"
+        let ser_item: ImplItem = parse_str(
+            r#"
             fn serialize(&self) -> Vec<u8> {
                 component_serializer::serialize(self)
             }
-        "#).unwrap();
-        let de_item: ImplItem = parse_str(r#"
+        "#,
+        )
+        .unwrap();
+        let de_item: ImplItem = parse_str(
+            r#"
             fn deserialize(&mut self, data: &[u8]) {
                 component_serializer::deserialize(self, data)
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         item_impl.items.push(ser_item);
         item_impl.items.push(de_item);
-        Ok(Self {
-            item_impl,
-        })
+        Ok(Self { item_impl })
     }
 }
 impl ToTokens for SerializableComopnentDefinition {
@@ -84,7 +88,7 @@ impl Parse for TemplateDefinition {
         let root = match format.to_string().as_str() {
             "xml" => xml_template::parse_template(input)?,
             "tmpl" => simple_template::parse_template(input)?,
-            _ => return Err(Error::new(format.span(), "unrecognized template format"))
+            _ => return Err(Error::new(format.span(), "unrecognized template format")),
         };
         Ok(Self {
             name,
@@ -97,7 +101,13 @@ impl Parse for TemplateDefinition {
 }
 impl ToTokens for TemplateDefinition {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let Self { name, generics, template_generics, skin, root } = self;
+        let Self {
+            name,
+            generics,
+            template_generics,
+            skin,
+            root,
+        } = self;
         let skin_body = match skin {
             Some(x) => quote! { #x },
             None => quote! { "" },
@@ -106,7 +116,7 @@ impl ToTokens for TemplateDefinition {
             Some(x) => {
                 let x = LitStr::new(&(x.to_string() + "-"), proc_macro2::Span::call_site());
                 quote! { #x }
-            },
+            }
             None => quote! { "" },
         };
         let template_fn_body = quote! {
@@ -143,10 +153,10 @@ impl ToTokens for TemplateDefinition {
                 Some(x) => {
                     let params = &x.params;
                     quote! { <B: Backend, #params> }
-                },
+                }
                 None => {
                     quote! { <B: Backend> }
-                },
+                }
             };
             tokens.append_all(quote! {
                 impl #generics #name {

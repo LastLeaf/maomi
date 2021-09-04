@@ -1,10 +1,10 @@
+use std::cell::{Ref, RefCell};
 use std::ops::*;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::cell::{Ref, RefCell};
 
-use super::{notify_updater, exec_field_updater};
 use super::dirty_marker::DirtyMarker;
+use super::{exec_field_updater, notify_updater};
 
 pub struct LazyField<S, T> {
     data: RefCell<Option<T>>,
@@ -17,14 +17,18 @@ impl<S, T> LazyField<S, T> {
     pub fn new<F: 'static + for<'r> Fn(&'r S) -> T>(updater: F) -> Self {
         let updater = Rc::new(updater);
         let dirty = Rc::pin(DirtyMarker::new(true));
-        Self { data: RefCell::new(None), updater, dirty }
+        Self {
+            data: RefCell::new(None),
+            updater,
+            dirty,
+        }
     }
     #[inline]
     pub fn check_update(&self, s: &S) {
         if self.dirty.clear_dirty() {
             match self.data.try_borrow_mut() {
                 Ok(mut x) => *x = Some(exec_field_updater(&self.dirty, s, &self.updater)),
-                Err(_) => { },
+                Err(_) => {}
             }
         }
     }
@@ -56,6 +60,10 @@ impl<S, T: Clone> Clone for LazyField<S, T> {
     fn clone(&self) -> LazyField<S, T> {
         let updater = self.updater.clone();
         let dirty = Rc::pin(DirtyMarker::new(false));
-        Self { data: RefCell::new(None), updater, dirty }
+        Self {
+            data: RefCell::new(None),
+            updater,
+            dirty,
+        }
     }
 }

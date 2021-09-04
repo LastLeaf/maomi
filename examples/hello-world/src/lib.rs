@@ -1,7 +1,8 @@
-#[macro_use] extern crate log;
-use wasm_bindgen::prelude::*;
+#[macro_use]
+extern crate log;
 use maomi::prelude::*;
-use maomi::{Context, backend::Dom};
+use maomi::{backend::Dom, Context};
+use wasm_bindgen::prelude::*;
 
 // declare the template for a component (XML-like syntax)
 template!(xml for HelloWorld {
@@ -13,16 +14,14 @@ template!(xml for HelloWorld {
 
 // list the data used in this component
 struct HelloWorld {
-    color: &'static str
+    color: &'static str,
 }
 
 // provide life-time methods for this component
 impl<B: Backend> Component<B> for HelloWorld {
     // create a new component instance (required)
     fn new(_ctx: ComponentContext<B, Self>) -> Self {
-        Self {
-            color: "red"
-        }
+        Self { color: "red" }
     }
 }
 

@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream as TokenStream2;
-use syn::*;
 use quote::*;
+use syn::*;
 
 fn is_expr_dynamic(expr: &Expr) -> bool {
     if let Expr::Lit(_) = expr {
@@ -58,15 +58,28 @@ impl Attribute {
 pub(crate) struct TemplateNativeNode {
     pub(crate) tag_name: LitStr,
     pub(crate) attributes: Vec<Attribute>,
-    pub(crate) children: Vec<TemplateNode>
+    pub(crate) children: Vec<TemplateNode>,
 }
 
 #[derive(Clone)]
 pub(crate) enum TemplateVirtualNode {
-    Slot { name: Option<LitStr> },
-    InSlot { name: LitStr, children: Vec<TemplateNode> },
-    If { branches: Vec<(Option<Expr>, Vec<TemplateNode>)> },
-    For { list: Expr, index: Ident, item: Ident, key: Option<(Ident, Path)>, children: Vec<TemplateNode> },
+    Slot {
+        name: Option<LitStr>,
+    },
+    InSlot {
+        name: LitStr,
+        children: Vec<TemplateNode>,
+    },
+    If {
+        branches: Vec<(Option<Expr>, Vec<TemplateNode>)>,
+    },
+    For {
+        list: Expr,
+        index: Ident,
+        item: Ident,
+        key: Option<(Ident, Path)>,
+        children: Vec<TemplateNode>,
+    },
 }
 
 #[derive(Clone)]
@@ -74,7 +87,7 @@ pub(crate) struct TemplateComponent {
     pub(crate) tag_name: LitStr,
     pub(crate) component: Path,
     pub(crate) property_values: Vec<Attribute>,
-    pub(crate) children: Vec<TemplateNode>
+    pub(crate) children: Vec<TemplateNode>,
 }
 
 #[derive(Clone)]
@@ -87,10 +100,13 @@ pub(crate) enum TemplateNode {
 impl ToTokens for TemplateNode {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let node = match self {
-
             TemplateNode::NativeNode(x) => {
                 // native node logic
-                let TemplateNativeNode { tag_name, attributes, children } = x;
+                let TemplateNativeNode {
+                    tag_name,
+                    attributes,
+                    children,
+                } = x;
                 let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
                 let update_attributes: Vec<TokenStream2> = attributes.iter().map(|attribute| {
                     let content = match attribute {
@@ -139,11 +155,10 @@ impl ToTokens for TemplateNode {
                         __node_rc.into()
                     }
                 }
-            },
+            }
 
             TemplateNode::VirtualNode(x) => {
                 match x {
-
                     TemplateVirtualNode::Slot { name } => {
                         // slot node logic
                         let slot_name = match name {
@@ -162,11 +177,12 @@ impl ToTokens for TemplateNode {
                                 }
                             }
                         }
-                    },
+                    }
 
                     TemplateVirtualNode::InSlot { name, children } => {
                         // in-slot node logic
-                        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
+                        let indexes: Vec<usize> =
+                            (0..children.len()).into_iter().map(|x| x).collect();
                         quote! {
                             |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
                                 match __update_to {
@@ -185,7 +201,7 @@ impl ToTokens for TemplateNode {
                                 }
                             }
                         }
-                    },
+                    }
 
                     TemplateVirtualNode::If { branches } => {
                         // if node logic
@@ -243,11 +259,18 @@ impl ToTokens for TemplateNode {
                                 #(#children_branches)else*
                             }
                         }
-                    },
+                    }
 
-                    TemplateVirtualNode::For { list, index, item, key, children } => {
+                    TemplateVirtualNode::For {
+                        list,
+                        index,
+                        item,
+                        key,
+                        children,
+                    } => {
                         // for node logic
-                        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
+                        let indexes: Vec<usize> =
+                            (0..children.len()).into_iter().map(|x| x).collect();
                         let key_list = match key {
                             Some((key_name, key_ty)) => quote! {
                                 {
@@ -333,12 +356,17 @@ impl ToTokens for TemplateNode {
                                 }
                             }
                         }
-                    },
+                    }
                 }
-            },
+            }
 
             TemplateNode::Component(x) => {
-                let TemplateComponent { tag_name, component, property_values, children } = x;
+                let TemplateComponent {
+                    tag_name,
+                    component,
+                    property_values,
+                    children,
+                } = x;
                 let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
                 let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
                     let content = match attribute {
@@ -403,7 +431,7 @@ impl ToTokens for TemplateNode {
                         __node_rc.into()
                     }
                 }
-            },
+            }
 
             TemplateNode::TextNode(x) => {
                 // text node logic
@@ -430,7 +458,7 @@ impl ToTokens for TemplateNode {
                         }
                     }
                 }
-            },
+            }
         };
         tokens.append_all(node);
     }
@@ -438,7 +466,7 @@ impl ToTokens for TemplateNode {
 
 #[derive(Clone)]
 pub(crate) struct TemplateShadowRoot {
-    pub(crate) children: Vec<TemplateNode>
+    pub(crate) children: Vec<TemplateNode>,
 }
 impl ToTokens for TemplateShadowRoot {
     fn to_tokens(&self, tokens: &mut TokenStream2) {

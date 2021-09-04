@@ -1,8 +1,8 @@
+use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::hash::*;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
 
 pub(crate) struct DirtyMarker {
     dirty: Cell<bool>,
@@ -56,7 +56,7 @@ impl PartialEq for DirtyMarker {
     }
 }
 
-impl Eq for DirtyMarker { }
+impl Eq for DirtyMarker {}
 
 impl Hash for DirtyMarker {
     fn hash<H: Hasher>(&self, state: &mut H) {

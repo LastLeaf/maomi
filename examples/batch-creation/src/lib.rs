@@ -1,6 +1,6 @@
-use wasm_bindgen::prelude::*;
 use maomi::prelude::*;
-use maomi::{Context, backend::Dom};
+use maomi::{backend::Dom, Context};
+use wasm_bindgen::prelude::*;
 
 template!(xml for View {
     <slot />
@@ -12,7 +12,7 @@ struct View {
 
 impl<B: Backend> Component<B> for View {
     fn new(_ctx: ComponentContext<B, Self>) -> Self {
-        Self { }
+        Self {}
     }
 }
 
@@ -23,14 +23,12 @@ template!(xml for BatchCreation {
 });
 
 struct BatchCreation {
-    count: u32
+    count: u32,
 }
 
 impl<B: Backend> Component<B> for BatchCreation {
     fn new(_ctx: ComponentContext<B, Self>) -> Self {
-        Self {
-            count: 1000
-        }
+        Self { count: 1000 }
     }
 }
 

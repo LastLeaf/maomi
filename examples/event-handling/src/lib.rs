@@ -1,6 +1,6 @@
-use wasm_bindgen::prelude::*;
 use maomi::prelude::*;
-use maomi::{Context, backend::Dom};
+use maomi::{backend::Dom, Context};
+use wasm_bindgen::prelude::*;
 
 // declare the template for a component (XML-like syntax)
 template!(xml<B: Backend> for<B> EventHandling<B> {
