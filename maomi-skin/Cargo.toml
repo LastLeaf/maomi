@@ -1,19 +1,13 @@
 [package]
 name = "maomi-skin"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"
-description = "A rust wasm framework for building pages with components (css preprocessor)"
+description = "A rust wasm framework for building pages with components"
 homepage = "https://github.com/LastLeaf/maomi"
 documentation = "https://github.com/LastLeaf/maomi"
 repository = "https://github.com/LastLeaf/maomi"
-edition = "2018"
-
-[lib]
-proc-macro = true
+edition = "2021"
 
 [dependencies]
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "1.0", features = ["full"] }
-cssparser = "0.27"
+log = "0.4"

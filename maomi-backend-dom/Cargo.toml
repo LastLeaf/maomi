@@ -1,0 +1,40 @@
+[package]
+name = "maomi-backend-dom"
+version = "0.4.0"
+authors = ["LastLeaf <bqfu@163.com>"]
+license = "MIT"
+description = "A rust wasm framework for building pages with components"
+homepage = "https://github.com/LastLeaf/maomi"
+documentation = "https://github.com/LastLeaf/maomi"
+repository = "https://github.com/LastLeaf/maomi"
+edition = "2021"
+
+[dependencies]
+maomi = { version = "=0.4.0", path = "../maomi" }
+log = "0.4"
+js-sys = "0.3"
+enum_dispatch = "0.3"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "Window",
+  "Document",
+  "HtmlElement",
+  "Node",
+  "NodeList",
+  "Element",
+  "Text",
+  "EventListener",
+  "EventTarget",
+  "Event",
+  "MouseEvent",
+  "TouchEvent",
+  "TouchList",
+  "Touch",
+  "KeyboardEvent",
+]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+console_log = "0.2"

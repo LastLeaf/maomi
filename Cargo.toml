@@ -3,11 +3,9 @@ members = [
     "maomi",
     "maomi-macro",
     "maomi-skin",
-    "lazy-observer",
-    "examples/hello-world",
-    "examples/event-handling",
-    "examples/batch-creation",
+    "maomi-backend-dom",
+    "maomi-dom-template",
 ]
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"
