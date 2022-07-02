@@ -13,7 +13,9 @@ impl DomComponent {
 impl BackendComponent for DomComponent {
     type BaseBackend = crate::DomBackend;
 
-    fn shadow_root() -> <<Self as BackendComponent>::BaseBackend as Backend>::ShadowRoot {
+    fn shadow_root_mut(
+        &mut self,
+    ) -> &mut <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement {
         todo!()
     }
 }
