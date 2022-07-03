@@ -18,4 +18,13 @@ impl BackendComponent for DomComponent {
     ) -> &mut <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement {
         todo!()
     }
+
+    fn into_general_element(
+        self,
+    ) -> <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized,
+    {
+        self.into()
+    }
 }

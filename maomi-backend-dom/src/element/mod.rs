@@ -1,6 +1,6 @@
 use maomi::backend::SupportBackend;
 
-use crate::{DomBackend, DomGeneralElement, DomShadowRoot};
+use crate::{DomBackend, DomGeneralElement};
 
 pub struct DomElement(web_sys::Element);
 

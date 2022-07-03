@@ -19,4 +19,11 @@ impl BackendSlot for DomSlot {
     ) {
         todo!()
     }
+
+    fn into_general_element(self) -> <<Self as BackendSlot>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized,
+    {
+        self.into()
+    }
 }

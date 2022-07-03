@@ -8,7 +8,7 @@ pub trait Backend {
     type TextNode: BackendTextNode<BaseBackend = Self>;
 
     /// Get the root element
-    fn root_mut(&mut self) -> &mut Self::Component;
+    fn root_mut(&mut self) -> &mut Self::GeneralElement;
 }
 
 /// The general type of the elements of the backend
@@ -49,18 +49,19 @@ pub trait BackendGeneralElement:
         >,
     );
 
-    /// Get a child element
-    fn child_mut(
-        &mut self,
-        index: usize,
-    ) -> &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement;
+    /// Get the next sibling
+    ///
+    /// NOTE
+    /// We can simply use iterators but rust GAT is not stable yet,
+    /// and this impl requires the backend being linked-list based.
+    fn next_sibling_mut<'a>(
+        &'a mut self,
+    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>;
 
-    /// Iterate all children
-    fn children_mut<'a, T>(&'a mut self) -> T
-    where
-        T: Iterator<
-            Item = &'a mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
-        >;
+    /// Get the first child
+    fn first_child_mut<'a>(
+        &'a mut self,
+    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>;
 
     /// Try casting to component
     fn as_component_mut(
@@ -98,28 +99,29 @@ pub trait BackendGeneralElement:
 }
 
 /// A component in the backend
-pub trait BackendComponent:
-    Into<<<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement>
-{
+pub trait BackendComponent {
     type BaseBackend: Backend;
 
     /// Get the shadow root element
     fn shadow_root_mut(
         &mut self,
     ) -> &mut <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement;
+
+    /// Wrap the element as a general element
+    fn into_general_element(
+        self,
+    ) -> <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized;
 }
 
 /// A shadow root in the backend
-pub trait BackendShadowRoot:
-    Into<<<Self as BackendShadowRoot>::BaseBackend as Backend>::GeneralElement>
-{
+pub trait BackendShadowRoot {
     type BaseBackend: Backend;
 }
 
 /// A slot in the backend
-pub trait BackendSlot:
-    Into<<<Self as BackendSlot>::BaseBackend as Backend>::GeneralElement>
-{
+pub trait BackendSlot {
     type BaseBackend: Backend;
 
     /// Create a virtual element in the shadow tree
@@ -127,23 +129,40 @@ pub trait BackendSlot:
         &mut self,
         content_element: <<Self as BackendSlot>::BaseBackend as Backend>::GeneralElement,
     );
+
+    /// Wrap the element as a general element
+    fn into_general_element(
+        self,
+    ) -> <<Self as BackendSlot>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized;
 }
 
 /// A virtual element in the backend
-pub trait BackendVirtualElement:
-    Into<<<Self as BackendVirtualElement>::BaseBackend as Backend>::GeneralElement>
-{
+pub trait BackendVirtualElement {
     type BaseBackend: Backend;
+
+    /// Wrap the element as a general element
+    fn into_general_element(
+        self,
+    ) -> <<Self as BackendVirtualElement>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized;
 }
 
 /// A text node in the backend
-pub trait BackendTextNode:
-    Into<<<Self as BackendTextNode>::BaseBackend as Backend>::GeneralElement>
-{
+pub trait BackendTextNode {
     type BaseBackend: Backend;
 
     /// Set the text content
     fn set_text(&mut self, content: &str);
+
+    /// Wrap the element as a general element
+    fn into_general_element(
+        self,
+    ) -> <<Self as BackendTextNode>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized;
 }
 
 /// A trait that indicates a component or a backend implemented element for the backend

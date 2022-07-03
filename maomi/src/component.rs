@@ -1,5 +1,5 @@
 use crate::{
-    backend::{Backend, BackendGeneralElement, SupportBackend},
+    backend::{Backend, BackendComponent, BackendGeneralElement, SupportBackend},
     error::Error,
 };
 
@@ -28,7 +28,7 @@ impl<B: Backend, T: Component<B>> SupportBackend<B> for T {
         Self: Sized,
     {
         let (this, comp) = <Self as Component<B>>::create(parent)?;
-        Ok((this, comp.into()))
+        Ok((this, comp.into_general_element()))
     }
 
     fn apply_updates(

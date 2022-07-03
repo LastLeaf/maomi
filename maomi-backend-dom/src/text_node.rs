@@ -16,4 +16,13 @@ impl BackendTextNode for DomTextNode {
     fn set_text(&mut self, content: &str) {
         todo!()
     }
+
+    fn into_general_element(
+        self,
+    ) -> <<Self as BackendTextNode>::BaseBackend as Backend>::GeneralElement
+    where
+        Self: Sized,
+    {
+        self.into()
+    }
 }

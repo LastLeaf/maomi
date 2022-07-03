@@ -21,7 +21,7 @@ impl TextNode {
             content: String::new(),
             changed: false,
         };
-        Ok((this, elem.into()))
+        Ok((this, elem.into_general_element()))
     }
 
     pub fn apply_updates<B: Backend>(

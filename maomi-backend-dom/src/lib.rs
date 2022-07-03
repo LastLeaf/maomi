@@ -4,6 +4,7 @@ use maomi::backend::*;
 
 pub mod component;
 pub mod element;
+mod tree;
 pub use component::DomComponent;
 pub mod shadow_root;
 pub use shadow_root::DomShadowRoot;
@@ -24,13 +25,13 @@ thread_local! {
 }
 
 pub struct DomBackend {
-    root: DomComponent,
+    tree: tree::ForestTree<DomGeneralElement>,
 }
 
 impl DomBackend {
     pub fn new() -> Self {
         Self {
-            root: DomComponent::new(),
+            tree: tree::ForestTree::new_forest(DomVirtualElement::new().into()),
         }
     }
 }
@@ -44,8 +45,8 @@ impl Backend for DomBackend {
     type TextNode = DomTextNode;
 
     /// Get the root element
-    fn root_mut(&mut self) -> &mut Self::Component {
-        &mut self.root
+    fn root_mut(&mut self) -> &mut Self::GeneralElement {
+        self.tree.as_node_mut()
     }
 }
 
@@ -90,18 +91,17 @@ impl BackendGeneralElement for DomGeneralElement {
         todo!()
     }
 
-    fn child_mut(
-        &mut self,
-        index: usize,
-    ) -> &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement {
+    fn next_sibling_mut<'a>(
+        &'a mut self,
+    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    {
         todo!()
     }
 
-    fn children_mut<'a, T>(&'a mut self) -> T
-    where
-        T: Iterator<
-            Item = &'a mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
-    >{
+    fn first_child_mut<'a>(
+        &'a mut self,
+    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    {
         todo!()
     }
 

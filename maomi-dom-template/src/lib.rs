@@ -79,15 +79,21 @@ impl Component<DomBackend> for HelloWorld {
         {
             let Node { node: _, children } = &mut children.0;
             let elem = backend_element.shadow_root_mut();
+            let mut next_child_elem = elem.first_child_mut();
             {
                 let Node { node: _, children } = &mut children.0;
-                let elem = elem.child_mut(0);
+                let elem = next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
                 {
                     let node = &mut children.0;
-                    let elem = elem.child_mut(0);
-                    node.set_text(&self.hello_text);
-                    node.apply_updates::<DomBackend>(elem)?;
+                    let mut next_child_elem = elem.first_child_mut();
+                    {
+                        let elem =
+                            next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
+                        node.set_text(&self.hello_text);
+                        node.apply_updates::<DomBackend>(elem)?;
+                    }
                 }
+                next_child_elem = elem.next_sibling_mut();
             }
         }
         Ok(())
@@ -97,14 +103,14 @@ impl Component<DomBackend> for HelloWorld {
 #[wasm_bindgen(start)]
 pub fn wasm_main() {
     let mut dom_backend = DomBackend::new();
-    let parent = dom_backend.root_mut().shadow_root_mut();
+    let parent = dom_backend.root_mut();
     let (mut hello_world, elem) =
         <HelloWorld as SupportBackend<DomBackend>>::create(parent).unwrap();
     parent.append_children(Some(elem.into()));
     hello_world.set_property_hello_text("Hello again!");
     <HelloWorld as SupportBackend<DomBackend>>::apply_updates(
         &mut hello_world,
-        parent.child_mut(0),
+        parent.first_child_mut().unwrap(),
     )
     .unwrap();
 }
