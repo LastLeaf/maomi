@@ -3,7 +3,7 @@ use maomi::{
     component::{Component, Node},
     text_node::TextNode,
 };
-use maomi_backend_dom::{element::*, DomBackend};
+use maomi_backend_dom::{element::*, DomBackend, DomComponent};
 use wasm_bindgen::prelude::*;
 
 struct HelloWorld {
@@ -22,38 +22,41 @@ impl HelloWorld {
 }
 
 impl Component<DomBackend> for HelloWorld {
-    fn create(
-        parent: &mut <DomBackend as Backend>::GeneralElement,
-    ) -> Result<(Self, <DomBackend as Backend>::Component), maomi::error::Error>
+    fn create(backend_element: &mut DomComponent) -> Result<Self, maomi::error::Error>
     where
         Self: Sized,
     {
         const HELLO_TEXT: &'static str = "Hello world!";
-        let mut elem = parent.create_component();
-        let parent_elem = elem.shadow_root_mut();
+        let mut parent_elem = backend_element.shadow_root_mut();
         let this = Self {
             template_structure: (
                 {
                     let (node, mut elem) =
-                        <div as SupportBackend<DomBackend>>::create(parent_elem)?;
+                        <div as SupportBackend<DomBackend>>::create(&mut parent_elem)?;
                     let children = (
                         {
-                            let parent_elem = &mut elem;
+                            let mut parent_elem = elem.as_node_mut();
                             let (node, mut elem) =
-                                <div as SupportBackend<DomBackend>>::create(parent_elem)?;
+                                <div as SupportBackend<DomBackend>>::create(&mut parent_elem)?;
                             let children = (
                                 {
-                                    let parent_elem = &mut elem;
+                                    let mut parent_elem = elem.as_node_mut();
                                     let (node, elem) = TextNode::create::<DomBackend>(
-                                        parent_elem,
+                                        &mut parent_elem,
                                         HELLO_TEXT.into(),
                                     )?;
-                                    parent_elem.append_children(Some(elem));
+                                    <DomBackend as Backend>::GeneralElement::append_children(
+                                        &mut parent_elem,
+                                        Some(elem),
+                                    );
                                     node
                                 },
                                 (),
                             );
-                            parent_elem.append_children(Some(elem));
+                            <DomBackend as Backend>::GeneralElement::append_children(
+                                &mut parent_elem,
+                                Some(elem),
+                            );
                             Node { node, children }
                         },
                         (),
@@ -65,7 +68,7 @@ impl Component<DomBackend> for HelloWorld {
             need_update: false,
             hello_text: HELLO_TEXT.into(),
         };
-        Ok((this, elem.into()))
+        Ok(this)
     }
 
     fn apply_updates(
@@ -78,11 +81,11 @@ impl Component<DomBackend> for HelloWorld {
         let children = &mut self.template_structure;
         {
             let Node { node: _, children } = &mut children.0;
-            let elem = backend_element.shadow_root_mut();
+            let mut elem = backend_element.shadow_root_mut();
             let mut next_child_elem = elem.first_child_mut();
             {
                 let Node { node: _, children } = &mut children.0;
-                let elem = next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
+                let mut elem = next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
                 {
                     let node = &mut children.0;
                     let mut next_child_elem = elem.first_child_mut();
@@ -103,14 +106,14 @@ impl Component<DomBackend> for HelloWorld {
 #[wasm_bindgen(start)]
 pub fn wasm_main() {
     let mut dom_backend = DomBackend::new();
-    let parent = dom_backend.root_mut();
+    let mut parent = dom_backend.root_mut();
     let (mut hello_world, elem) =
-        <HelloWorld as SupportBackend<DomBackend>>::create(parent).unwrap();
-    parent.append_children(Some(elem.into()));
+        <HelloWorld as SupportBackend<DomBackend>>::create(&mut parent).unwrap();
+    <DomBackend as Backend>::GeneralElement::append_children(&mut parent, Some(elem.into()));
     hello_world.set_property_hello_text("Hello again!");
     <HelloWorld as SupportBackend<DomBackend>>::apply_updates(
         &mut hello_world,
-        parent.first_child_mut().unwrap(),
+        &mut parent.first_child_mut().unwrap(),
     )
     .unwrap();
 }

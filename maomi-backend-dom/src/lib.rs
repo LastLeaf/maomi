@@ -1,10 +1,12 @@
 use element::DomElement;
 use enum_dispatch::enum_dispatch;
-use maomi::backend::*;
+use maomi::{
+    backend::{tree::*, *},
+    error::Error,
+};
 
 pub mod component;
 pub mod element;
-mod tree;
 pub use component::DomComponent;
 pub mod shadow_root;
 pub use shadow_root::DomShadowRoot;
@@ -44,8 +46,7 @@ impl Backend for DomBackend {
     type Component = DomComponent;
     type TextNode = DomTextNode;
 
-    /// Get the root element
-    fn root_mut(&mut self) -> &mut Self::GeneralElement {
+    fn root_mut(&mut self) -> ForestNodeMut<Self::GeneralElement> {
         self.tree.as_node_mut()
     }
 }
@@ -64,85 +65,193 @@ pub enum DomGeneralElement {
 }
 
 impl DomGeneralElement {
-    fn as_dom_element_mut(&mut self) -> Option<&mut DomElement> {
-        todo!()
+    fn create_dom_element<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        elem: element::DomElement,
+    ) -> ForestTree<DomGeneralElement> {
+        this.new_tree(DomGeneralElement::DomElement(elem))
+    }
+
+    pub fn as_dom_element_mut<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+    ) -> Option<ForestValueMut<'b, DomElement>> {
+        if let DomGeneralElement::DomElement(_) = &mut **this {
+            Some(this.map(|g| {
+                if let DomGeneralElement::DomElement(e) = g {
+                    e
+                } else {
+                    unreachable!()
+                }
+            }))
+        } else {
+            None
+        }
+    }
+
+    pub fn inner_html(this: &ForestNode<Self>) -> String {
+        match &**this {
+            DomGeneralElement::DomText(x) => {
+                return x.inner_html();
+            }
+            DomGeneralElement::DomElement(x) => {
+                return x.inner_html();
+            }
+            DomGeneralElement::Component(_) | DomGeneralElement::ShadowRoot(_) | DomGeneralElement::Slot(_) | DomGeneralElement::VirtualElement(_) => {}
+        }
+        let mut ret = String::new();
+        let mut cur = this.first_child();
+        while let Some(c) = &cur {
+            ret += Self::inner_html(&c).as_str();
+            cur = c.next_sibling();
+        }
+        ret
     }
 }
 
 impl BackendGeneralElement for DomGeneralElement {
     type BaseBackend = DomBackend;
 
-    fn append_children(
-        &mut self,
+    fn append_children<'b>(
+        this: &'b mut ForestNodeMut<Self>,
         children: impl IntoIterator<
-            Item = <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+            Item = ForestTree<
+                <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+            >,
         >,
-    ) {
+    ) where
+        Self: Sized,
+    {
         todo!()
     }
 
-    fn splice_children(
-        &mut self,
+    fn splice_children<'b>(
+        this: &'b mut ForestNodeMut<Self>,
         range: impl std::ops::RangeBounds<usize>,
         children: impl IntoIterator<
-            Item = <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+            Item = ForestTree<
+                <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+            >,
         >,
-    ) {
-        todo!()
-    }
-
-    fn next_sibling_mut<'a>(
-        &'a mut self,
-    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    ) where
+        Self: Sized,
     {
         todo!()
     }
 
-    fn first_child_mut<'a>(
-        &'a mut self,
-    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    fn as_component_mut<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+    ) -> Option<
+        ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component>,
+    >
+    where
+        Self: Sized,
     {
-        todo!()
+        if let DomGeneralElement::Component(_) = &mut **this {
+            Some(this.map(|g| {
+                if let DomGeneralElement::Component(e) = g {
+                    e
+                } else {
+                    unreachable!()
+                }
+            }))
+        } else {
+            None
+        }
     }
 
-    fn as_component_mut(
-        &mut self,
-    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component> {
-        todo!()
+    fn as_slot_mut<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+    ) -> Option<ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot>>
+    where
+        Self: Sized,
+    {
+        if let DomGeneralElement::Slot(_) = &mut **this {
+            Some(this.map(|g| {
+                if let DomGeneralElement::Slot(e) = g {
+                    e
+                } else {
+                    unreachable!()
+                }
+            }))
+        } else {
+            None
+        }
     }
 
-    fn as_slot_mut(
-        &mut self,
-    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot> {
-        todo!()
+    fn as_text_node_mut<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+    ) -> Option<
+        ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::TextNode>,
+    >
+    where
+        Self: Sized,
+    {
+        if let DomGeneralElement::DomText(_) = &mut **this {
+            Some(this.map(|g| {
+                if let DomGeneralElement::DomText(e) = g {
+                    e
+                } else {
+                    unreachable!()
+                }
+            }))
+        } else {
+            None
+        }
     }
 
-    fn as_text_node_mut(
-        &mut self,
-    ) -> Option<&mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::TextNode> {
-        todo!()
+    fn create_component<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        f: impl FnOnce(
+            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component,
+        ) -> Result<(), Error>,
+    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    where
+        Self: Sized,
+    {
+        let mut elem = DomComponent::new(this);
+        f(&mut elem)?;
+        let child = this.new_tree(DomGeneralElement::Component(elem));
+        Ok(child)
     }
 
-    fn create_component(
-        &mut self,
-    ) -> <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component {
-        todo!()
+    fn create_slot<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        f: impl FnOnce(
+            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot,
+        ) -> Result<(), Error>,
+    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    where
+        Self: Sized,
+    {
+        let mut elem = DomSlot::new();
+        f(&mut elem)?;
+        let child = this.new_tree(DomGeneralElement::Slot(elem));
+        Ok(child)
     }
 
-    fn create_slot(&mut self) -> <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot {
-        todo!()
+    fn create_virtual_element<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        f: impl FnOnce(
+            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::VirtualElement,
+        ) -> Result<(), Error>,
+    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    where
+        Self: Sized,
+    {
+        let mut elem = DomVirtualElement::new();
+        f(&mut elem)?;
+        let child = this.new_tree(DomGeneralElement::VirtualElement(elem));
+        Ok(child)
     }
 
-    fn create_virtual_element(
-        &mut self,
-    ) -> <<Self as BackendGeneralElement>::BaseBackend as Backend>::VirtualElement {
-        todo!()
-    }
-
-    fn create_text_node(
-        &mut self,
+    fn create_text_node<'b>(
+        this: &'b mut ForestNodeMut<Self>,
         content: &str,
-    ) -> <<Self as BackendGeneralElement>::BaseBackend as Backend>::TextNode {
-        todo!()
+    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    where
+        Self: Sized,
+    {
+        let child = this.new_tree(DomGeneralElement::DomText(DomTextNode::new(content)));
+        Ok(child)
     }
 }

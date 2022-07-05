@@ -1,8 +1,18 @@
 use maomi::backend::SupportBackend;
 
-use crate::{DomBackend, DomGeneralElement};
+use crate::{tree::*, DomBackend, DomGeneralElement};
 
 pub struct DomElement(web_sys::Element);
+
+impl DomElement {
+    pub fn inner_html(&self) -> String {
+        self.0.inner_html()
+    }
+
+    pub fn outer_html(&self) -> String {
+        self.0.outer_html()
+    }
+}
 
 #[allow(non_camel_case_types)]
 pub struct div {
@@ -25,15 +35,9 @@ impl div {
 }
 
 impl SupportBackend<DomBackend> for div {
-    fn create(
-        _parent: &mut DomGeneralElement,
-    ) -> Result<
-        (
-            Self,
-            <DomBackend as maomi::backend::Backend>::GeneralElement,
-        ),
-        maomi::error::Error,
-    >
+    fn create<'b>(
+        parent: &'b mut ForestNodeMut<DomGeneralElement>,
+    ) -> Result<(div, ForestTree<DomGeneralElement>), maomi::error::Error>
     where
         Self: Sized,
     {
@@ -42,12 +46,15 @@ impl SupportBackend<DomBackend> for div {
             dom_elem: elem.clone(),
             hidden: false,
         };
-        Ok((this, crate::DomGeneralElement::DomElement(DomElement(elem))))
+        Ok((
+            this,
+            crate::DomGeneralElement::create_dom_element(parent, DomElement(elem)),
+        ))
     }
 
-    fn apply_updates(
-        &mut self,
-        _backend_element: &mut <DomBackend as maomi::backend::Backend>::GeneralElement,
+    fn apply_updates<'b>(
+        &'b mut self,
+        _backend_element: &'b mut ForestNodeMut<DomGeneralElement>,
     ) -> Result<(), maomi::error::Error> {
         Ok(())
     }

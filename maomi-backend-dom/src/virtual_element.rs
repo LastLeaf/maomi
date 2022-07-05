@@ -12,13 +12,4 @@ impl DomVirtualElement {
 
 impl BackendVirtualElement for DomVirtualElement {
     type BaseBackend = crate::DomBackend;
-
-    fn into_general_element(
-        self,
-    ) -> <<Self as BackendVirtualElement>::BaseBackend as Backend>::GeneralElement
-    where
-        Self: Sized,
-    {
-        self.into()
-    }
 }

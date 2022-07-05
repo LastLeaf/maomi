@@ -5,7 +5,7 @@ pub struct DomShadowRoot {
 }
 
 impl DomShadowRoot {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {}
     }
 }

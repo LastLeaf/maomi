@@ -1,12 +1,18 @@
 use maomi::backend::*;
 
 pub struct DomTextNode {
-    // TODO
+    dom_elem: web_sys::Text,
 }
 
 impl DomTextNode {
-    fn new() -> Self {
-        Self {}
+    pub(crate) fn new(content: &str) -> Self {
+        Self {
+            dom_elem: crate::DOCUMENT.with(|document| document.create_text_node(content)),
+        }
+    }
+
+    pub fn inner_html(&self) -> String {
+        self.dom_elem.text_content().unwrap_or_default()
     }
 }
 
@@ -14,15 +20,6 @@ impl BackendTextNode for DomTextNode {
     type BaseBackend = crate::DomBackend;
 
     fn set_text(&mut self, content: &str) {
-        todo!()
-    }
-
-    fn into_general_element(
-        self,
-    ) -> <<Self as BackendTextNode>::BaseBackend as Backend>::GeneralElement
-    where
-        Self: Sized,
-    {
-        self.into()
+        self.dom_elem.set_text_content(Some(content));
     }
 }

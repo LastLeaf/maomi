@@ -72,7 +72,7 @@ impl<T> ForestCtx<T> {
 
 // We should guarantee that -
 // at any moment, only one mut ref can be obtained in a single tree
-pub(crate) struct ForestTree<T> {
+pub struct ForestTree<T> {
     ctx: Rc<RefCell<ForestCtx<T>>>,
     joint: bool,
     inner: *mut ForestNodeInner<T>,
@@ -88,7 +88,7 @@ impl<T> Drop for ForestTree<T> {
 }
 
 impl<T> ForestTree<T> {
-    pub(crate) fn new_forest(content: T) -> Self {
+    pub fn new_forest(content: T) -> Self {
         let ctx = ForestCtx {
             buf: vec![],
             freed: vec![],
@@ -97,14 +97,14 @@ impl<T> ForestTree<T> {
         ForestCtx::alloc(&ctx, content)
     }
 
-    pub(crate) fn as_node<'a>(&'a self) -> ForestNode<'a, T> {
+    pub fn as_node<'a>(&'a self) -> ForestNode<'a, T> {
         ForestNode {
             ctx: &self.ctx,
             inner: self.inner as *const _,
         }
     }
 
-    pub(crate) fn as_node_mut<'a>(&'a mut self) -> ForestNodeMut<'a, T> {
+    pub fn as_node_mut<'a>(&'a mut self) -> ForestNodeMut<'a, T> {
         ForestNodeMut {
             ctx: &self.ctx,
             inner: self.inner,
@@ -127,7 +127,7 @@ impl<T: Debug> Debug for ForestTree<T> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct ForestNode<'a, T> {
+pub struct ForestNode<'a, T> {
     ctx: &'a Rc<RefCell<ForestCtx<T>>>,
     inner: *const ForestNodeInner<T>,
 }
@@ -159,7 +159,7 @@ impl<'a, T: Debug> Debug for ForestNode<'a, T> {
 }
 
 impl<'a, T> ForestNode<'a, T> {
-    pub(crate) fn first_child(&self) -> Option<ForestNode<'a, T>> {
+    pub fn first_child(&self) -> Option<ForestNode<'a, T>> {
         let this = unsafe { &*self.inner };
         if this.first_child.is_null() {
             return None;
@@ -170,7 +170,7 @@ impl<'a, T> ForestNode<'a, T> {
         })
     }
 
-    pub(crate) fn next_sibling(&self) -> Option<ForestNode<'a, T>> {
+    pub fn next_sibling(&self) -> Option<ForestNode<'a, T>> {
         let this = unsafe { &*self.inner };
         if this.next_sibling.is_null() {
             return None;
@@ -182,7 +182,7 @@ impl<'a, T> ForestNode<'a, T> {
     }
 }
 
-pub(crate) struct ForestNodeMut<'a, T> {
+pub struct ForestNodeMut<'a, T> {
     ctx: &'a Rc<RefCell<ForestCtx<T>>>,
     inner: *mut ForestNodeInner<T>,
 }
@@ -208,18 +208,27 @@ impl<'a, T: Debug> Debug for ForestNodeMut<'a, T> {
 }
 
 impl<'a, T> ForestNodeMut<'a, T> {
-    pub(crate) fn as_ref<'b>(&'b self) -> ForestNode<'b, T> {
+    pub fn as_ref<'b>(&'b self) -> ForestNode<'b, T> {
         ForestNode {
             ctx: self.ctx,
             inner: self.inner as *const _,
         }
     }
 
-    pub(crate) fn new_tree(&self, content: T) -> ForestTree<T> {
+    pub fn map<'b, U>(
+        &'b mut self,
+        f: impl FnOnce(&'b mut T) -> &'b mut U,
+    ) -> ForestValueMut<'b, U> {
+        ForestValueMut {
+            v: f(&mut unsafe { &mut *self.inner }.content),
+        }
+    }
+
+    pub fn new_tree(&self, content: T) -> ForestTree<T> {
         ForestCtx::alloc(self.ctx, content)
     }
 
-    pub(crate) fn append(&mut self, tree: ForestTree<T>) {
+    pub fn append(&mut self, tree: ForestTree<T>) {
         let child_ptr = tree.join_into(self);
         let parent_ptr = self.inner;
         let parent = unsafe { &mut *parent_ptr };
@@ -236,7 +245,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
         parent.last_child = child_ptr;
     }
 
-    pub(crate) fn insert(&mut self, tree: ForestTree<T>) {
+    pub fn insert(&mut self, tree: ForestTree<T>) {
         let child_ptr = tree.join_into(self);
         let before_ptr = self.inner;
         let before = unsafe { &mut *before_ptr };
@@ -258,7 +267,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
         before.prev_sibling = child_ptr;
     }
 
-    pub(crate) fn detach(&mut self) -> ForestTree<T> {
+    pub fn detach(&mut self) -> ForestTree<T> {
         let child_ptr = self.inner;
         let child = unsafe { &mut *child_ptr };
         let parent_ptr = child.parent;
@@ -290,7 +299,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
         }
     }
 
-    pub(crate) fn first_child<'c>(&'c self) -> Option<ForestNode<'c, T>> {
+    pub fn first_child<'c>(&'c self) -> Option<ForestNode<'c, T>> {
         let this = unsafe { &mut *self.inner };
         if this.first_child.is_null() {
             return None;
@@ -301,7 +310,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
         })
     }
 
-    pub(crate) fn first_child_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
+    pub fn first_child_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
         let this = unsafe { &mut *self.inner };
         if this.first_child.is_null() {
             return None;
@@ -312,7 +321,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
         })
     }
 
-    pub(crate) fn next_sibling<'c>(&'c self) -> Option<ForestNode<'c, T>> {
+    pub fn next_sibling<'c>(&'c self) -> Option<ForestNode<'c, T>> {
         let this = unsafe { &mut *self.inner };
         if this.next_sibling.is_null() {
             return None;
@@ -323,7 +332,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
         })
     }
 
-    pub(crate) fn next_sibling_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
+    pub fn next_sibling_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
         let this = unsafe { &mut *self.inner };
         if this.next_sibling.is_null() {
             return None;
@@ -332,6 +341,55 @@ impl<'a, T> ForestNodeMut<'a, T> {
             ctx: self.ctx,
             inner: this.next_sibling,
         })
+    }
+}
+
+pub struct ForestValue<'a, T> {
+    v: &'a T,
+}
+
+impl<'a, T> Deref for ForestValue<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.v
+    }
+}
+
+impl<'a, T> ForestValue<'a, T> {
+    pub fn map<U>(&'a self, f: impl FnOnce(&'a T) -> &'a U) -> ForestValue<'a, U> {
+        ForestValue { v: f(self.v) }
+    }
+}
+
+pub struct ForestValueMut<'a, T> {
+    v: &'a mut T,
+}
+
+impl<'a, T> Deref for ForestValueMut<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.v
+    }
+}
+
+impl<'a, T> DerefMut for ForestValueMut<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.v
+    }
+}
+
+impl<'a, T> ForestValueMut<'a, T> {
+    pub fn as_ref<'b>(&'b self) -> ForestValue<'b, T> {
+        ForestValue { v: self.v }
+    }
+
+    pub fn map<'b, U>(
+        &'b mut self,
+        f: impl FnOnce(&'b mut T) -> &'b mut U,
+    ) -> ForestValueMut<'b, U> {
+        ForestValueMut { v: f(self.v) }
     }
 }
 
@@ -373,7 +431,10 @@ mod test {
                 n2.append(n4);
             }
             n1.append(n2);
-            assert_eq!(format!("{:?}", n1), r#"ForestNode(1) [ForestNode(2) [ForestNode(3) [], ForestNode(4) []]]"#);
+            assert_eq!(
+                format!("{:?}", n1),
+                r#"ForestNode(1) [ForestNode(2) [ForestNode(3) [], ForestNode(4) []]]"#
+            );
         }
         check_pointers(&mut tree);
     }
@@ -391,10 +452,17 @@ mod test {
                 let n4 = n1.new_tree(4);
                 n2.first_child_mut().unwrap().insert(n4);
                 let n5 = n1.new_tree(5);
-                n2.first_child_mut().unwrap().next_sibling_mut().unwrap().insert(n5);
+                n2.first_child_mut()
+                    .unwrap()
+                    .next_sibling_mut()
+                    .unwrap()
+                    .insert(n5);
             }
             n1.append(n2);
-            assert_eq!(format!("{:?}", n1), r#"ForestNode(1) [ForestNode(2) [ForestNode(4) [], ForestNode(5) [], ForestNode(3) []]]"#);
+            assert_eq!(
+                format!("{:?}", n1),
+                r#"ForestNode(1) [ForestNode(2) [ForestNode(4) [], ForestNode(5) [], ForestNode(3) []]]"#
+            );
         }
         check_pointers(&mut tree);
     }
@@ -415,13 +483,29 @@ mod test {
                 n2.append(n5);
             }
             n1.append(n2);
-            assert_eq!(format!("{:?}", n1), r#"ForestNode(1) [ForestNode(2) [ForestNode(3) [], ForestNode(4) [], ForestNode(5) []]]"#);
-            let n4 = n1.first_child_mut().unwrap().first_child_mut().unwrap().next_sibling_mut().unwrap().detach();
-            assert_eq!(format!("{:?}", n1), r#"ForestNode(1) [ForestNode(2) [ForestNode(3) [], ForestNode(5) []]]"#);
+            assert_eq!(
+                format!("{:?}", n1),
+                r#"ForestNode(1) [ForestNode(2) [ForestNode(3) [], ForestNode(4) [], ForestNode(5) []]]"#
+            );
+            let n4 = n1
+                .first_child_mut()
+                .unwrap()
+                .first_child_mut()
+                .unwrap()
+                .next_sibling_mut()
+                .unwrap()
+                .detach();
+            assert_eq!(
+                format!("{:?}", n1),
+                r#"ForestNode(1) [ForestNode(2) [ForestNode(3) [], ForestNode(5) []]]"#
+            );
             assert_eq!(format!("{:?}", n4), r#"ForestNode(4) []"#);
             let n2 = n1.first_child_mut().unwrap().detach();
             assert_eq!(format!("{:?}", n1), r#"ForestNode(1) []"#);
-            assert_eq!(format!("{:?}", n2), r#"ForestNode(2) [ForestNode(3) [], ForestNode(5) []]"#);
+            assert_eq!(
+                format!("{:?}", n2),
+                r#"ForestNode(2) [ForestNode(3) [], ForestNode(5) []]"#
+            );
         }
         check_pointers(&mut tree);
     }

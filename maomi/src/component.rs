@@ -1,5 +1,5 @@
 use crate::{
-    backend::{Backend, BackendComponent, BackendGeneralElement, SupportBackend},
+    backend::{tree, Backend, BackendGeneralElement, SupportBackend},
     error::Error,
 };
 
@@ -12,7 +12,7 @@ pub struct Node<N, C> {
 /// A component
 pub trait Component<B: Backend> {
     /// Create a component within the specified shadow root
-    fn create(parent: &mut B::GeneralElement) -> Result<(Self, B::Component), Error>
+    fn create(backend_element: &mut B::Component) -> Result<Self, Error>
     where
         Self: Sized;
 
@@ -22,23 +22,26 @@ pub trait Component<B: Backend> {
 
 impl<B: Backend, T: Component<B>> SupportBackend<B> for T {
     fn create(
-        parent: &mut B::GeneralElement,
-    ) -> Result<(Self, <B as Backend>::GeneralElement), Error>
+        parent: &mut tree::ForestNodeMut<B::GeneralElement>,
+    ) -> Result<(Self, tree::ForestTree<B::GeneralElement>), Error>
     where
         Self: Sized,
     {
-        let (this, comp) = <Self as Component<B>>::create(parent)?;
-        Ok((this, comp.into_general_element()))
+        let mut this = None;
+        let elem = B::GeneralElement::create_component(parent, |comp| {
+            this = Some(<Self as Component<B>>::create(comp)?);
+            Ok(())
+        })?;
+        Ok((this.unwrap(), elem))
     }
 
     fn apply_updates(
         &mut self,
-        backend_element: &mut <B as Backend>::GeneralElement,
+        backend_element: &mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<(), Error> {
-        let comp: &mut B::Component = backend_element
-            .as_component_mut()
+        let mut comp = B::GeneralElement::as_component_mut(backend_element)
             .ok_or(Error::TreeNotMatchedError)?;
-        <Self as Component<B>>::apply_updates(self, comp)?;
+        <Self as Component<B>>::apply_updates(self, &mut comp)?;
         Ok(())
     }
 }

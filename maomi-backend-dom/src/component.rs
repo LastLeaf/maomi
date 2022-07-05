@@ -1,30 +1,23 @@
-use maomi::backend::*;
+use maomi::backend::{tree::*, *};
+
+use crate::DomGeneralElement;
 
 pub struct DomComponent {
-    // TODO
+    shadow_root: ForestTree<DomGeneralElement>,
 }
 
 impl DomComponent {
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(parent: &mut ForestNodeMut<DomGeneralElement>) -> Self {
+        Self {
+            shadow_root: parent.new_tree(DomGeneralElement::ShadowRoot(crate::DomShadowRoot::new()))
+        }
     }
 }
 
 impl BackendComponent for DomComponent {
     type BaseBackend = crate::DomBackend;
 
-    fn shadow_root_mut(
-        &mut self,
-    ) -> &mut <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement {
-        todo!()
-    }
-
-    fn into_general_element(
-        self,
-    ) -> <<Self as BackendComponent>::BaseBackend as Backend>::GeneralElement
-    where
-        Self: Sized,
-    {
-        self.into()
+    fn shadow_root_mut(&mut self) -> ForestNodeMut<crate::DomGeneralElement> {
+        self.shadow_root.as_node_mut()
     }
 }

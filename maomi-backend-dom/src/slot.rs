@@ -1,11 +1,11 @@
-use maomi::backend::*;
+use maomi::backend::{tree::*, *};
 
 pub struct DomSlot {
     // TODO
 }
 
 impl DomSlot {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {}
     }
 }
@@ -13,17 +13,7 @@ impl DomSlot {
 impl BackendSlot for DomSlot {
     type BaseBackend = crate::DomBackend;
 
-    fn associate_element(
-        &mut self,
-        content_element: <<Self as BackendSlot>::BaseBackend as Backend>::GeneralElement,
-    ) {
+    fn associate_element(&mut self, content_element: ForestValueMut<crate::DomGeneralElement>) {
         todo!()
-    }
-
-    fn into_general_element(self) -> <<Self as BackendSlot>::BaseBackend as Backend>::GeneralElement
-    where
-        Self: Sized,
-    {
-        self.into()
     }
 }
