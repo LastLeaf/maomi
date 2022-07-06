@@ -1,9 +1,9 @@
 use maomi::{
-    backend::{Backend, BackendComponent, BackendGeneralElement, SupportBackend},
+    backend::{tree::*, Backend, BackendGeneralElement, SupportBackend},
     component::{Component, Node},
     text_node::TextNode,
 };
-use maomi_backend_dom::{element::*, DomBackend, DomComponent};
+use maomi_backend_dom::{element::*, DomBackend};
 use wasm_bindgen::prelude::*;
 
 struct HelloWorld {
@@ -22,12 +22,14 @@ impl HelloWorld {
 }
 
 impl Component<DomBackend> for HelloWorld {
-    fn create(backend_element: &mut DomComponent) -> Result<Self, maomi::error::Error>
+    fn create(
+        backend_element: &mut ForestNodeMut<'_, <DomBackend as Backend>::GeneralElement>,
+    ) -> Result<Self, maomi::error::Error>
     where
         Self: Sized,
     {
         const HELLO_TEXT: &'static str = "Hello world!";
-        let mut parent_elem = backend_element.shadow_root_mut();
+        let mut parent_elem = backend_element;
         let this = Self {
             template_structure: (
                 {
@@ -58,6 +60,7 @@ impl Component<DomBackend> for HelloWorld {
                         },
                         (),
                     );
+                    <DomBackend as Backend>::GeneralElement::append(&mut parent_elem, elem);
                     Node { node, children }
                 },
                 (),
@@ -70,15 +73,15 @@ impl Component<DomBackend> for HelloWorld {
 
     fn apply_updates(
         &mut self,
-        backend_element: &mut <DomBackend as Backend>::Component,
+        backend_element: &mut ForestNodeMut<'_, <DomBackend as Backend>::GeneralElement>,
     ) -> Result<(), maomi::error::Error> {
         if !self.need_update {
             return Ok(());
         }
         let children = &mut self.template_structure;
+        let elem = backend_element;
         {
             let Node { node: _, children } = &mut children.0;
-            let mut elem = backend_element.shadow_root_mut();
             let mut next_child_elem = elem.first_child_mut();
             {
                 let Node { node: _, children } = &mut children.0;

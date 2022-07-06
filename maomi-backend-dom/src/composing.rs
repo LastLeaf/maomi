@@ -1,6 +1,6 @@
 use maomi::backend::tree::*;
 
-use crate::{DomGeneralElement};
+use crate::DomGeneralElement;
 
 pub(crate) enum ChildFrag {
     None,
@@ -20,11 +20,12 @@ impl ChildFrag {
             }
             Self::Single(prev) => {
                 let frag = crate::DOCUMENT.with(|document| document.create_document_fragment());
-                frag.append_child(prev);
-                frag.append_child(&n);
+                frag.append_child(prev).unwrap();
+                frag.append_child(&n).unwrap();
+                *self = Self::Multi(frag);
             }
             Self::Multi(frag) => {
-                frag.append_child(&n);
+                frag.append_child(&n).unwrap();
             }
         }
     }
@@ -43,26 +44,17 @@ pub(crate) fn collect_child_frag<'a>(n: ForestNode<'a, DomGeneralElement>) -> Ch
         match &*n {
             DomGeneralElement::DomElement(x) => {
                 return ret.add(x.dom().clone());
-            },
+            }
             DomGeneralElement::DomText(x) => {
                 return ret.add(x.dom().clone());
-            },
+            }
             DomGeneralElement::VirtualElement(_) => {
                 let mut cur_option = n.first_child();
                 while let Some(cur) = cur_option {
                     rec(cur.clone(), ret);
                     cur_option = cur.next_sibling();
                 }
-            },
-            DomGeneralElement::Component(comp) => {
-                todo!();
-            },
-            DomGeneralElement::ShadowRoot(_) => {
-                unreachable!();
-            },
-            DomGeneralElement::Slot(slot) => {
-                todo!();
-            },
+            }
         }
     }
     let mut ret = ChildFrag::new();
@@ -70,37 +62,25 @@ pub(crate) fn collect_child_frag<'a>(n: ForestNode<'a, DomGeneralElement>) -> Ch
     ret
 }
 
-pub(crate) fn find_nearest_dom_ancestor<'a>(n: ForestNode<'a, DomGeneralElement>) -> Option<web_sys::Node> {
+pub(crate) fn find_nearest_dom_ancestor<'a>(
+    n: ForestNode<'a, DomGeneralElement>,
+) -> Option<web_sys::Node> {
     let mut cur = n;
     loop {
         match &*cur {
             DomGeneralElement::DomElement(x) => {
                 return Some(x.dom().clone());
-            },
+            }
             DomGeneralElement::DomText(x) => {
                 return Some(x.dom().clone());
-            },
+            }
             DomGeneralElement::VirtualElement(_) => {
                 if let Some(x) = cur.parent() {
                     cur = x;
                 } else {
                     break;
                 }
-            },
-            DomGeneralElement::Component(comp) => {
-                // TODO rec into component
-                if let Some(x) = cur.parent() {
-                    cur = x;
-                } else {
-                    break;
-                }
-            },
-            DomGeneralElement::ShadowRoot(_) => {
-                break;
-            },
-            DomGeneralElement::Slot(slot) => {
-                todo!();
-            },
+            }
         }
     }
     return None;
@@ -110,10 +90,10 @@ fn find_first_dom_child<'a>(parent: ForestNode<'a, DomGeneralElement>) -> Option
     match &*parent {
         DomGeneralElement::DomElement(x) => {
             return Some(x.dom().clone());
-        },
+        }
         DomGeneralElement::DomText(x) => {
             return Some(x.dom().clone());
-        },
+        }
         DomGeneralElement::VirtualElement(_) => {
             let mut cur_option = parent.first_child();
             while let Some(cur) = cur_option {
@@ -122,21 +102,14 @@ fn find_first_dom_child<'a>(parent: ForestNode<'a, DomGeneralElement>) -> Option
                 }
                 cur_option = cur.next_sibling();
             }
-        },
-        DomGeneralElement::Component(comp) => {
-            todo!();
-        },
-        DomGeneralElement::ShadowRoot(sr) => {
-            unreachable!();
-        },
-        DomGeneralElement::Slot(slot) => {
-            todo!();
-        },
+        }
     }
     return None;
 }
 
-pub(crate) fn find_next_dom_sibling<'a>(n: ForestNode<'a, DomGeneralElement>) -> Option<web_sys::Node> {
+pub(crate) fn find_next_dom_sibling<'a>(
+    n: ForestNode<'a, DomGeneralElement>,
+) -> Option<web_sys::Node> {
     let mut cur = n;
     loop {
         if let Some(next) = cur.next_sibling() {
@@ -148,20 +121,11 @@ pub(crate) fn find_next_dom_sibling<'a>(n: ForestNode<'a, DomGeneralElement>) ->
             match &*cur {
                 DomGeneralElement::DomElement(_) | DomGeneralElement::DomText(_) => {
                     break;
-                },
+                }
                 DomGeneralElement::VirtualElement(_) => {
                     cur = parent;
                     continue;
-                },
-                DomGeneralElement::Component(comp) => {
-                    todo!();
-                },
-                DomGeneralElement::ShadowRoot(sr) => {
-                    break;
-                },
-                DomGeneralElement::Slot(slot) => {
-                    todo!();
-                },
+                }
             }
         } else {
             break;

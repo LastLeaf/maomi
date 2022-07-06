@@ -5,13 +5,7 @@ use maomi::{
     error::Error,
 };
 
-pub mod component;
 pub mod element;
-pub use component::DomComponent;
-pub mod shadow_root;
-pub use shadow_root::DomShadowRoot;
-pub mod slot;
-pub use slot::DomSlot;
 pub mod virtual_element;
 pub use virtual_element::DomVirtualElement;
 pub mod text_node;
@@ -42,9 +36,6 @@ impl DomBackend {
 impl Backend for DomBackend {
     type GeneralElement = DomGeneralElement;
     type VirtualElement = DomVirtualElement;
-    type ShadowRoot = DomShadowRoot;
-    type Slot = DomSlot;
-    type Component = DomComponent;
     type TextNode = DomTextNode;
 
     fn root_mut(&mut self) -> ForestNodeMut<Self::GeneralElement> {
@@ -57,9 +48,6 @@ pub trait DomGeneralElementTrait {}
 
 #[enum_dispatch(DomGeneralElementTrait)]
 pub enum DomGeneralElement {
-    Component(DomComponent),
-    ShadowRoot(DomShadowRoot),
-    Slot(DomSlot),
     VirtualElement(DomVirtualElement),
     DomText(DomTextNode),
     DomElement(element::DomElement),
@@ -68,9 +56,6 @@ pub enum DomGeneralElement {
 impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Component(_) => write!(f, "[Component]"),
-            Self::ShadowRoot(_) => write!(f, "[ShadowRoot]"),
-            Self::Slot(_) => write!(f, "[Slot]"),
             Self::VirtualElement(_) => write!(f, "[Virtual]"),
             Self::DomText(x) => write!(f, "{:?}", x.dom().text_content().unwrap_or_default()),
             Self::DomElement(x) => write!(f, "{:?}", x),
@@ -110,10 +95,7 @@ impl DomGeneralElement {
             DomGeneralElement::DomElement(x) => {
                 return x.inner_html();
             }
-            DomGeneralElement::Component(_)
-            | DomGeneralElement::ShadowRoot(_)
-            | DomGeneralElement::Slot(_)
-            | DomGeneralElement::VirtualElement(_) => {}
+            DomGeneralElement::VirtualElement(_) => {}
         }
         let mut ret = String::new();
         let mut cur = this.first_child();
@@ -128,36 +110,20 @@ impl DomGeneralElement {
 impl BackendGeneralElement for DomGeneralElement {
     type BaseBackend = DomBackend;
 
-    fn as_component_mut<'b>(
+    fn as_virtual_element_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
     ) -> Option<
-        ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component>,
+        ForestValueMut<
+            'b,
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::VirtualElement,
+        >,
     >
     where
         Self: Sized,
     {
-        if let DomGeneralElement::Component(_) = &mut **this {
+        if let DomGeneralElement::VirtualElement(_) = &mut **this {
             Some(this.map(|g| {
-                if let DomGeneralElement::Component(e) = g {
-                    e
-                } else {
-                    unreachable!()
-                }
-            }))
-        } else {
-            None
-        }
-    }
-
-    fn as_slot_mut<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-    ) -> Option<ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot>>
-    where
-        Self: Sized,
-    {
-        if let DomGeneralElement::Slot(_) = &mut **this {
-            Some(this.map(|g| {
-                if let DomGeneralElement::Slot(e) = g {
+                if let DomGeneralElement::VirtualElement(e) = g {
                     e
                 } else {
                     unreachable!()
@@ -189,47 +155,13 @@ impl BackendGeneralElement for DomGeneralElement {
         }
     }
 
-    fn create_component<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        f: impl FnOnce(
-            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component,
-        ) -> Result<(), Error>,
-    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
-    where
-        Self: Sized,
-    {
-        let mut elem = DomComponent::new(this);
-        f(&mut elem)?;
-        let child = this.new_tree(DomGeneralElement::Component(elem));
-        Ok(child)
-    }
-
-    fn create_slot<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        f: impl FnOnce(
-            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot,
-        ) -> Result<(), Error>,
-    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
-    where
-        Self: Sized,
-    {
-        let mut elem = DomSlot::new();
-        f(&mut elem)?;
-        let child = this.new_tree(DomGeneralElement::Slot(elem));
-        Ok(child)
-    }
-
     fn create_virtual_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        f: impl FnOnce(
-            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::VirtualElement,
-        ) -> Result<(), Error>,
     ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
     where
         Self: Sized,
     {
-        let mut elem = DomVirtualElement::new();
-        f(&mut elem)?;
+        let elem = DomVirtualElement::new();
         let child = this.new_tree(DomGeneralElement::VirtualElement(elem));
         Ok(child)
     }

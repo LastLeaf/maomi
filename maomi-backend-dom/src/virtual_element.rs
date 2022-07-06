@@ -1,7 +1,7 @@
 use maomi::backend::*;
 
 pub struct DomVirtualElement {
-    // TODO
+    // empty
 }
 
 impl DomVirtualElement {

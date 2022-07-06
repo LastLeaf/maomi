@@ -5,9 +5,6 @@ use tree::*;
 /// A backend
 pub trait Backend {
     type GeneralElement: BackendGeneralElement<BaseBackend = Self>;
-    type Component: BackendComponent<BaseBackend = Self>;
-    type ShadowRoot: BackendShadowRoot<BaseBackend = Self>;
-    type Slot: BackendSlot<BaseBackend = Self>;
     type VirtualElement: BackendVirtualElement<BaseBackend = Self>;
     type TextNode: BackendTextNode<BaseBackend = Self>;
 
@@ -29,19 +26,15 @@ pub trait Backend {
 pub trait BackendGeneralElement {
     type BaseBackend: Backend;
 
-    /// Try casting to component
-    fn as_component_mut<'b>(
+    /// Try casting to slot
+    fn as_virtual_element_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
     ) -> Option<
-        ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component>,
+        ForestValueMut<
+            'b,
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::VirtualElement,
+        >,
     >
-    where
-        Self: Sized;
-
-    /// Try casting to slot
-    fn as_slot_mut<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-    ) -> Option<ForestValueMut<'b, <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot>>
     where
         Self: Sized;
 
@@ -54,32 +47,9 @@ pub trait BackendGeneralElement {
     where
         Self: Sized;
 
-    /// Create a component in the shadow tree
-    fn create_component<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        f: impl FnOnce(
-            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Component,
-        ) -> Result<(), Error>,
-    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
-    where
-        Self: Sized;
-
-    /// Create a slot in the shadow tree
-    fn create_slot<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        f: impl FnOnce(
-            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::Slot,
-        ) -> Result<(), Error>,
-    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
-    where
-        Self: Sized;
-
     /// Create a virtual element in the shadow tree
     fn create_virtual_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        f: impl FnOnce(
-            &mut <<Self as BackendGeneralElement>::BaseBackend as Backend>::VirtualElement,
-        ) -> Result<(), Error>,
     ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
     where
         Self: Sized;

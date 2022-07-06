@@ -24,6 +24,8 @@ impl DomElement {
     }
 }
 
+// TODO generate via macro
+
 #[allow(non_camel_case_types)]
 pub struct div {
     dom_elem: web_sys::Element,

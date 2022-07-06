@@ -149,7 +149,10 @@ pub struct ForestNode<'a, T> {
 
 impl<'a, T> Clone for ForestNode<'a, T> {
     fn clone(&self) -> Self {
-        Self { ctx: self.ctx, inner: self.inner }
+        Self {
+            ctx: self.ctx,
+            inner: self.inner,
+        }
     }
 }
 
