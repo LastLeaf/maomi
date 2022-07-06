@@ -45,18 +45,15 @@ impl Component<DomBackend> for HelloWorld {
                                         &mut parent_elem,
                                         HELLO_TEXT.into(),
                                     )?;
-                                    <DomBackend as Backend>::GeneralElement::append_children(
+                                    <DomBackend as Backend>::GeneralElement::append(
                                         &mut parent_elem,
-                                        Some(elem),
+                                        elem,
                                     );
                                     node
                                 },
                                 (),
                             );
-                            <DomBackend as Backend>::GeneralElement::append_children(
-                                &mut parent_elem,
-                                Some(elem),
-                            );
+                            <DomBackend as Backend>::GeneralElement::append(&mut parent_elem, elem);
                             Node { node, children }
                         },
                         (),
@@ -109,7 +106,7 @@ pub fn wasm_main() {
     let mut parent = dom_backend.root_mut();
     let (mut hello_world, elem) =
         <HelloWorld as SupportBackend<DomBackend>>::create(&mut parent).unwrap();
-    <DomBackend as Backend>::GeneralElement::append_children(&mut parent, Some(elem.into()));
+    <DomBackend as Backend>::GeneralElement::append(&mut parent, elem);
     hello_world.set_property_hello_text("Hello again!");
     <HelloWorld as SupportBackend<DomBackend>>::apply_updates(
         &mut hello_world,

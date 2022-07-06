@@ -5,6 +5,10 @@ pub struct DomTextNode {
 }
 
 impl DomTextNode {
+    pub(crate) fn dom(&self) -> &web_sys::Node {
+        &self.dom_elem
+    }
+
     pub(crate) fn new(content: &str) -> Self {
         Self {
             dom_elem: crate::DOCUMENT.with(|document| document.create_text_node(content)),

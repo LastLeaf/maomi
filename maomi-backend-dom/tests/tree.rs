@@ -1,7 +1,9 @@
 use wasm_bindgen_test::*;
 
 use maomi::{
-    backend::{Backend, BackendComponent, BackendGeneralElement, SupportBackend, tree::ForestNodeMut},
+    backend::{
+        tree::ForestNodeMut, Backend, BackendComponent, BackendGeneralElement, SupportBackend,
+    },
     component::{Component, Node},
     text_node::TextNode,
 };
@@ -13,10 +15,7 @@ fn prepare_env(f: impl FnOnce(&mut ForestNodeMut<DomGeneralElement>)) {
     let mut dom_backend = DomBackend::new();
     let mut parent = dom_backend.root_mut();
     let (_, wrapper_elem) = div::create(&mut parent).unwrap();
-    <DomBackend as Backend>::GeneralElement::append_children(
-        &mut parent,
-        Some(wrapper_elem),
-    );
+    <DomBackend as Backend>::GeneralElement::append(&mut parent, wrapper_elem);
     f(&mut parent.first_child_mut().unwrap())
 }
 
@@ -65,21 +64,25 @@ fn manual_tree_building() {
                                             &mut parent_elem,
                                             HELLO_TEXT.into(),
                                         )?;
-                                        <DomBackend as Backend>::GeneralElement::append_children(
+                                        <DomBackend as Backend>::GeneralElement::append(
                                             &mut parent_elem,
-                                            Some(elem),
+                                            elem,
                                         );
                                         node
                                     },
                                     (),
                                 );
-                                <DomBackend as Backend>::GeneralElement::append_children(
+                                <DomBackend as Backend>::GeneralElement::append(
                                     &mut parent_elem,
-                                    Some(elem),
+                                    elem,
                                 );
                                 Node { node, children }
                             },
                             (),
+                        );
+                        <DomBackend as Backend>::GeneralElement::append(
+                            &mut parent_elem,
+                            elem,
                         );
                         Node { node, children }
                     },
@@ -126,9 +129,9 @@ fn manual_tree_building() {
     prepare_env(|mut wrapper| {
         let (mut hello_world, elem) =
             <HelloWorld as SupportBackend<DomBackend>>::create(&mut wrapper).unwrap();
-        <DomBackend as Backend>::GeneralElement::append_children(&mut wrapper, Some(elem.into()));
+        <DomBackend as Backend>::GeneralElement::append(&mut wrapper, elem);
         hello_world.set_property_hello_text("Hello again!");
-        assert_eq!(dom_html(wrapper), "<div></div>");
+        assert_eq!(dom_html(wrapper), "<div>Hello world!</div>");
         <HelloWorld as SupportBackend<DomBackend>>::apply_updates(
             &mut hello_world,
             &mut wrapper.first_child_mut().unwrap(),

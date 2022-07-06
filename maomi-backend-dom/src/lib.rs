@@ -16,6 +16,7 @@ pub mod virtual_element;
 pub use virtual_element::DomVirtualElement;
 pub mod text_node;
 pub use text_node::DomTextNode;
+mod composing;
 
 thread_local! {
     pub(crate) static WINDOW: web_sys::Window = web_sys::window().expect("Cannot init DOM backend outside web page environment");
@@ -64,6 +65,19 @@ pub enum DomGeneralElement {
     DomElement(element::DomElement),
 }
 
+impl std::fmt::Debug for DomGeneralElement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Component(_) => write!(f, "[Component]"),
+            Self::ShadowRoot(_) => write!(f, "[ShadowRoot]"),
+            Self::Slot(_) => write!(f, "[Slot]"),
+            Self::VirtualElement(_) => write!(f, "[Virtual]"),
+            Self::DomText(x) => write!(f, "{:?}", x.dom().text_content().unwrap_or_default()),
+            Self::DomElement(x) => write!(f, "{:?}", x),
+        }
+    }
+}
+
 impl DomGeneralElement {
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
@@ -96,7 +110,10 @@ impl DomGeneralElement {
             DomGeneralElement::DomElement(x) => {
                 return x.inner_html();
             }
-            DomGeneralElement::Component(_) | DomGeneralElement::ShadowRoot(_) | DomGeneralElement::Slot(_) | DomGeneralElement::VirtualElement(_) => {}
+            DomGeneralElement::Component(_)
+            | DomGeneralElement::ShadowRoot(_)
+            | DomGeneralElement::Slot(_)
+            | DomGeneralElement::VirtualElement(_) => {}
         }
         let mut ret = String::new();
         let mut cur = this.first_child();
@@ -110,33 +127,6 @@ impl DomGeneralElement {
 
 impl BackendGeneralElement for DomGeneralElement {
     type BaseBackend = DomBackend;
-
-    fn append_children<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        children: impl IntoIterator<
-            Item = ForestTree<
-                <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
-            >,
-        >,
-    ) where
-        Self: Sized,
-    {
-        todo!()
-    }
-
-    fn splice_children<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        range: impl std::ops::RangeBounds<usize>,
-        children: impl IntoIterator<
-            Item = ForestTree<
-                <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
-            >,
-        >,
-    ) where
-        Self: Sized,
-    {
-        todo!()
-    }
 
     fn as_component_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
@@ -253,5 +243,43 @@ impl BackendGeneralElement for DomGeneralElement {
     {
         let child = this.new_tree(DomGeneralElement::DomText(DomTextNode::new(content)));
         Ok(child)
+    }
+
+    fn append<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        child: ForestTree<
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+        >,
+    ) where
+        Self: Sized,
+    {
+        this.append(child);
+        let this = this.as_ref();
+        if let Some(parent) = composing::find_nearest_dom_ancestor(this.clone()) {
+            let child = this.last_child().unwrap();
+            let before = composing::find_next_dom_sibling(child.clone());
+            let child_frag = composing::collect_child_frag(child);
+            if let Some(child_frag) = child_frag.dom() {
+                parent.insert_before(child_frag, before.as_ref()).unwrap();
+            }
+        }
+    }
+
+    fn insert<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        sibling: ForestTree<
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+        >,
+    ) where
+        Self: Sized,
+    {
+        this.insert(sibling);
+    }
+
+    fn detach<'b>(this: &'b mut ForestNodeMut<Self>)
+    where
+        Self: Sized,
+    {
+        this.detach();
     }
 }

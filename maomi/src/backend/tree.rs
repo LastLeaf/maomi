@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{RefCell, UnsafeCell},
     fmt::Debug,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
@@ -8,26 +8,33 @@ use std::{
     rc::Rc,
 };
 
-struct ForestCtx<T> {
-    buf: Vec<ManuallyDrop<Pin<Box<ForestNodeInner<T>>>>>,
-    freed: Vec<usize>,
+struct ForestRel<T> {
+    buf_index: usize,
+    parent: *const UnsafeCell<ForestRel<T>>,
+    prev_sibling: *const UnsafeCell<ForestRel<T>>,
+    next_sibling: *const UnsafeCell<ForestRel<T>>,
+    first_child: *const UnsafeCell<ForestRel<T>>,
+    last_child: *const UnsafeCell<ForestRel<T>>,
+    content: T,
 }
 
-struct ForestNodeInner<T> {
-    buf_index: usize,
-    parent: *mut ForestNodeInner<T>,
-    prev_sibling: *mut ForestNodeInner<T>,
-    next_sibling: *mut ForestNodeInner<T>,
-    first_child: *mut ForestNodeInner<T>,
-    last_child: *mut ForestNodeInner<T>,
-    content: T,
+impl<T> ForestRel<T> {
+    #[inline(always)]
+    unsafe fn wrap(this: &*const UnsafeCell<ForestRel<T>>) -> &mut ForestRel<T> {
+        &mut *(&**this).get()
+    }
+}
+
+struct ForestCtx<T> {
+    buf: Vec<ManuallyDrop<Pin<Box<UnsafeCell<ForestRel<T>>>>>>, // TODO change to manual alloc without vec
+    freed: Vec<usize>,
 }
 
 impl<T> ForestCtx<T> {
     fn alloc(this: &Rc<RefCell<Self>>, content: T) -> ForestTree<T> {
         let ctx = this.clone();
         let mut this = this.borrow_mut();
-        let mut v = ForestNodeInner {
+        let mut v = UnsafeCell::new(ForestRel {
             buf_index: 0,
             parent: ptr::null_mut(),
             prev_sibling: ptr::null_mut(),
@@ -35,18 +42,18 @@ impl<T> ForestCtx<T> {
             first_child: ptr::null_mut(),
             last_child: ptr::null_mut(),
             content,
-        };
+        });
         let index = if let Some(index) = this.freed.pop() {
-            v.buf_index = index;
+            v.get_mut().buf_index = index;
             this.buf[index] = ManuallyDrop::new(Box::pin(v));
             index
         } else {
             let index = this.buf.len();
-            v.buf_index = index;
+            v.get_mut().buf_index = index;
             this.buf.push(ManuallyDrop::new(Box::pin(v)));
             index
         };
-        let v_ptr = unsafe { this.buf[index].as_mut().get_unchecked_mut() } as *mut _;
+        let v_ptr = &*this.buf[index].as_ref() as *const UnsafeCell<ForestRel<T>>;
         ForestTree {
             ctx,
             joint: false,
@@ -54,11 +61,11 @@ impl<T> ForestCtx<T> {
         }
     }
 
-    fn drop_subtree(&mut self, inner: *mut ForestNodeInner<T>) {
-        let inner = unsafe { Pin::new_unchecked(&mut *inner) };
+    fn drop_subtree(&mut self, inner: *const UnsafeCell<ForestRel<T>>) {
+        let inner = unsafe { ForestRel::wrap(&inner) };
         let mut cur = inner.first_child;
         while !cur.is_null() {
-            let next = unsafe { Pin::new_unchecked(&mut *cur) }.next_sibling;
+            let next = unsafe { ForestRel::wrap(&cur) }.next_sibling;
             self.drop_subtree(cur);
             cur = next;
         }
@@ -70,12 +77,13 @@ impl<T> ForestCtx<T> {
     }
 }
 
-// We should guarantee that -
-// at any moment, only one mut ref can be obtained in a single tree
+/// A tree in a forest
+///
+/// At any moment, only one mutable reference can be obtained in a single tree.
 pub struct ForestTree<T> {
     ctx: Rc<RefCell<ForestCtx<T>>>,
     joint: bool,
-    inner: *mut ForestNodeInner<T>,
+    inner: *const UnsafeCell<ForestRel<T>>,
 }
 
 impl<T> Drop for ForestTree<T> {
@@ -88,6 +96,7 @@ impl<T> Drop for ForestTree<T> {
 }
 
 impl<T> ForestTree<T> {
+    /// Create a tree in a new forest
     pub fn new_forest(content: T) -> Self {
         let ctx = ForestCtx {
             buf: vec![],
@@ -97,6 +106,8 @@ impl<T> ForestTree<T> {
         ForestCtx::alloc(&ctx, content)
     }
 
+    /// Get an immutable reference of the tree root
+    #[inline]
     pub fn as_node<'a>(&'a self) -> ForestNode<'a, T> {
         ForestNode {
             ctx: &self.ctx,
@@ -104,6 +115,8 @@ impl<T> ForestTree<T> {
         }
     }
 
+    /// Get a mutable reference of the tree root
+    #[inline]
     pub fn as_node_mut<'a>(&'a mut self) -> ForestNodeMut<'a, T> {
         ForestNodeMut {
             ctx: &self.ctx,
@@ -111,7 +124,10 @@ impl<T> ForestTree<T> {
         }
     }
 
-    fn join_into<'a, 'b>(mut self, into: &'b mut ForestNodeMut<'a, T>) -> *mut ForestNodeInner<T> {
+    fn join_into<'a, 'b>(
+        mut self,
+        into: &'b mut ForestNodeMut<'a, T>,
+    ) -> *const UnsafeCell<ForestRel<T>> {
         if !Rc::ptr_eq(&self.ctx, into.ctx) {
             panic!("Cannot join two trees in different forest");
         }
@@ -126,17 +142,22 @@ impl<T: Debug> Debug for ForestTree<T> {
     }
 }
 
-#[derive(Clone, Copy)]
 pub struct ForestNode<'a, T> {
     ctx: &'a Rc<RefCell<ForestCtx<T>>>,
-    inner: *const ForestNodeInner<T>,
+    inner: *const UnsafeCell<ForestRel<T>>,
+}
+
+impl<'a, T> Clone for ForestNode<'a, T> {
+    fn clone(&self) -> Self {
+        Self { ctx: self.ctx, inner: self.inner }
+    }
 }
 
 impl<'a, T> Deref for ForestNode<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &unsafe { &*self.inner }.content
+        &unsafe { ForestRel::wrap(&self.inner) }.content
     }
 }
 
@@ -158,9 +179,31 @@ impl<'a, T: Debug> Debug for ForestNode<'a, T> {
     }
 }
 
+impl<'a, T> PartialEq for ForestNode<'a, T> {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
 impl<'a, T> ForestNode<'a, T> {
+    /// Get the parent node
+    #[inline]
+    pub fn parent(&self) -> Option<ForestNode<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.parent.is_null() {
+            return None;
+        }
+        Some(ForestNode {
+            ctx: self.ctx,
+            inner: this.parent,
+        })
+    }
+
+    /// Get the first child node
+    #[inline]
     pub fn first_child(&self) -> Option<ForestNode<'a, T>> {
-        let this = unsafe { &*self.inner };
+        let this = unsafe { ForestRel::wrap(&self.inner) };
         if this.first_child.is_null() {
             return None;
         }
@@ -170,8 +213,36 @@ impl<'a, T> ForestNode<'a, T> {
         })
     }
 
+    /// Get the last child node
+    #[inline]
+    pub fn last_child(&self) -> Option<ForestNode<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.last_child.is_null() {
+            return None;
+        }
+        Some(ForestNode {
+            ctx: self.ctx,
+            inner: this.last_child,
+        })
+    }
+
+    /// Get the previous sibling node
+    #[inline]
+    pub fn prev_sibling(&self) -> Option<ForestNode<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.prev_sibling.is_null() {
+            return None;
+        }
+        Some(ForestNode {
+            ctx: self.ctx,
+            inner: this.prev_sibling,
+        })
+    }
+
+    /// Get the next sibling node
+    #[inline]
     pub fn next_sibling(&self) -> Option<ForestNode<'a, T>> {
-        let this = unsafe { &*self.inner };
+        let this = unsafe { ForestRel::wrap(&self.inner) };
         if this.next_sibling.is_null() {
             return None;
         }
@@ -184,20 +255,20 @@ impl<'a, T> ForestNode<'a, T> {
 
 pub struct ForestNodeMut<'a, T> {
     ctx: &'a Rc<RefCell<ForestCtx<T>>>,
-    inner: *mut ForestNodeInner<T>,
+    inner: *const UnsafeCell<ForestRel<T>>,
 }
 
 impl<'a, T> Deref for ForestNodeMut<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &unsafe { &*self.inner }.content
+        &unsafe { ForestRel::wrap(&self.inner) }.content
     }
 }
 
 impl<'a, T> DerefMut for ForestNodeMut<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut unsafe { &mut *self.inner }.content
+        &mut unsafe { ForestRel::wrap(&self.inner) }.content
     }
 }
 
@@ -208,6 +279,8 @@ impl<'a, T: Debug> Debug for ForestNodeMut<'a, T> {
 }
 
 impl<'a, T> ForestNodeMut<'a, T> {
+    /// Get an immutable reference
+    #[inline(always)]
     pub fn as_ref<'b>(&'b self) -> ForestNode<'b, T> {
         ForestNode {
             ctx: self.ctx,
@@ -215,51 +288,59 @@ impl<'a, T> ForestNodeMut<'a, T> {
         }
     }
 
+    /// Make a wrapped component the contained value, keeping the borrowing status
+    #[inline]
     pub fn map<'b, U>(
         &'b mut self,
         f: impl FnOnce(&'b mut T) -> &'b mut U,
     ) -> ForestValueMut<'b, U> {
         ForestValueMut {
-            v: f(&mut unsafe { &mut *self.inner }.content),
+            v: f(&mut unsafe { ForestRel::wrap(&self.inner) }.content),
         }
     }
 
+    /// Create a new tree in the same forest
+    #[inline]
     pub fn new_tree(&self, content: T) -> ForestTree<T> {
         ForestCtx::alloc(self.ctx, content)
     }
 
+    /// Append a tree as the last child node
     pub fn append(&mut self, tree: ForestTree<T>) {
         let child_ptr = tree.join_into(self);
         let parent_ptr = self.inner;
-        let parent = unsafe { &mut *parent_ptr };
-        let child = unsafe { &mut *child_ptr };
+        let parent = unsafe { ForestRel::wrap(&parent_ptr) };
+        let child = unsafe { ForestRel::wrap(&child_ptr) };
         child.parent = parent_ptr;
         let last_child_ptr = parent.last_child;
         if last_child_ptr.is_null() {
             parent.first_child = child_ptr;
         } else {
-            let last_child = unsafe { &mut *last_child_ptr };
+            let last_child = unsafe { ForestRel::wrap(&last_child_ptr) };
             child.prev_sibling = last_child_ptr;
             last_child.next_sibling = child_ptr;
         }
         parent.last_child = child_ptr;
     }
 
+    /// Insert a tree as the previous sibling node of the current node
+    ///
+    /// Panics if called on tree root node.
     pub fn insert(&mut self, tree: ForestTree<T>) {
         let child_ptr = tree.join_into(self);
         let before_ptr = self.inner;
-        let before = unsafe { &mut *before_ptr };
+        let before = unsafe { ForestRel::wrap(&before_ptr) };
         let parent_ptr = before.parent;
         if parent_ptr.is_null() {
             panic!("Cannot insert at a tree root node");
         }
-        let parent = unsafe { &mut *parent_ptr };
-        let child = unsafe { &mut *child_ptr };
+        let parent = unsafe { ForestRel::wrap(&parent_ptr) };
+        let child = unsafe { ForestRel::wrap(&child_ptr) };
         child.parent = parent_ptr;
         if before.prev_sibling.is_null() {
             parent.first_child = child_ptr;
         } else {
-            let prev = unsafe { &mut *before.prev_sibling };
+            let prev = unsafe { ForestRel::wrap(&before.prev_sibling) };
             prev.next_sibling = child_ptr;
         }
         child.prev_sibling = before.prev_sibling;
@@ -267,26 +348,29 @@ impl<'a, T> ForestNodeMut<'a, T> {
         before.prev_sibling = child_ptr;
     }
 
+    /// Remove the node from its parent node
+    ///
+    /// Panics if called on tree root node.
     pub fn detach(&mut self) -> ForestTree<T> {
         let child_ptr = self.inner;
-        let child = unsafe { &mut *child_ptr };
+        let child = unsafe { ForestRel::wrap(&child_ptr) };
         let parent_ptr = child.parent;
         if parent_ptr.is_null() {
             panic!("Cannot detach a tree root node");
         }
-        let parent = unsafe { &mut *parent_ptr };
+        let parent = unsafe { ForestRel::wrap(&parent_ptr) };
         let prev_ptr = child.prev_sibling;
         let next_ptr = child.next_sibling;
         if prev_ptr.is_null() {
             parent.first_child = next_ptr;
         } else {
-            let prev = unsafe { &mut *prev_ptr };
+            let prev = unsafe { ForestRel::wrap(&prev_ptr) };
             prev.next_sibling = next_ptr;
         }
         if next_ptr.is_null() {
             parent.last_child = prev_ptr;
         } else {
-            let next = unsafe { &mut *next_ptr };
+            let next = unsafe { ForestRel::wrap(&next_ptr) };
             next.prev_sibling = prev_ptr;
         }
         child.parent = ptr::null_mut();
@@ -299,19 +383,36 @@ impl<'a, T> ForestNodeMut<'a, T> {
         }
     }
 
-    pub fn first_child<'c>(&'c self) -> Option<ForestNode<'c, T>> {
-        let this = unsafe { &mut *self.inner };
-        if this.first_child.is_null() {
+    /// Get the parent node
+    #[inline]
+    pub fn parent(self) -> Option<ForestNodeMut<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.parent.is_null() {
             return None;
         }
-        Some(ForestNode {
+        Some(ForestNodeMut {
             ctx: self.ctx,
-            inner: this.first_child,
+            inner: this.parent,
         })
     }
 
-    pub fn first_child_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
-        let this = unsafe { &mut *self.inner };
+    /// Get the parent node
+    #[inline]
+    pub fn parent_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.parent.is_null() {
+            return None;
+        }
+        Some(ForestNodeMut {
+            ctx: self.ctx,
+            inner: this.parent,
+        })
+    }
+
+    /// Get the first child node
+    #[inline]
+    pub fn first_child(self) -> Option<ForestNodeMut<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
         if this.first_child.is_null() {
             return None;
         }
@@ -321,19 +422,88 @@ impl<'a, T> ForestNodeMut<'a, T> {
         })
     }
 
-    pub fn next_sibling<'c>(&'c self) -> Option<ForestNode<'c, T>> {
-        let this = unsafe { &mut *self.inner };
+    /// Get the first child node
+    #[inline]
+    pub fn first_child_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.first_child.is_null() {
+            return None;
+        }
+        Some(ForestNodeMut {
+            ctx: self.ctx,
+            inner: this.first_child,
+        })
+    }
+
+    /// Get the last child node
+    #[inline]
+    pub fn last_child(self) -> Option<ForestNodeMut<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.last_child.is_null() {
+            return None;
+        }
+        Some(ForestNodeMut {
+            ctx: self.ctx,
+            inner: this.last_child,
+        })
+    }
+
+    /// Get the last child node
+    #[inline]
+    pub fn last_child_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.last_child.is_null() {
+            return None;
+        }
+        Some(ForestNodeMut {
+            ctx: self.ctx,
+            inner: this.last_child,
+        })
+    }
+
+    /// Get the previous sibling node
+    #[inline]
+    pub fn prev_sibling(self) -> Option<ForestNodeMut<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.prev_sibling.is_null() {
+            return None;
+        }
+        Some(ForestNodeMut {
+            ctx: self.ctx,
+            inner: this.prev_sibling,
+        })
+    }
+
+    /// Get the previous sibling node
+    #[inline]
+    pub fn prev_sibling_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
+        if this.prev_sibling.is_null() {
+            return None;
+        }
+        Some(ForestNodeMut {
+            ctx: self.ctx,
+            inner: this.prev_sibling,
+        })
+    }
+
+    /// Get the next sibling node
+    #[inline]
+    pub fn next_sibling(self) -> Option<ForestNodeMut<'a, T>> {
+        let this = unsafe { ForestRel::wrap(&self.inner) };
         if this.next_sibling.is_null() {
             return None;
         }
-        Some(ForestNode {
+        Some(ForestNodeMut {
             ctx: self.ctx,
             inner: this.next_sibling,
         })
     }
 
+    /// Get the next sibling node
+    #[inline]
     pub fn next_sibling_mut<'c>(&'c mut self) -> Option<ForestNodeMut<'c, T>> {
-        let this = unsafe { &mut *self.inner };
+        let this = unsafe { ForestRel::wrap(&self.inner) };
         if this.next_sibling.is_null() {
             return None;
         }
@@ -399,21 +569,21 @@ mod test {
 
     fn check_pointers<'a, T: PartialEq>(tree: &mut ForestTree<T>) {
         fn rec<'a, T: PartialEq>(node: &ForestNode<'a, T>) {
-            let mut prev = ptr::null();
+            let mut prev = None;
             let mut cur_option = node.first_child();
             while let Some(cur) = cur_option {
-                assert_eq!(unsafe { &*cur.inner }.parent as *const _, node.inner);
-                assert_eq!(unsafe { &*cur.inner }.prev_sibling as *const _, prev);
+                assert!(cur.parent().as_ref() == Some(node));
+                assert!(cur.prev_sibling() == prev);
                 rec(&cur);
-                prev = cur.inner;
                 cur_option = cur.next_sibling();
+                prev = Some(cur);
             }
-            assert_eq!(unsafe { &*node.inner }.last_child as *const _, prev);
+            assert!(node.last_child() == prev);
         }
         let node = tree.as_node();
-        assert!(unsafe { &*node.inner }.parent.is_null());
-        assert!(unsafe { &*node.inner }.next_sibling.is_null());
-        assert!(unsafe { &*node.inner }.prev_sibling.is_null());
+        assert!(node.parent() == None);
+        assert!(node.next_sibling() == None);
+        assert!(node.prev_sibling() == None);
         rec(&node);
     }
 

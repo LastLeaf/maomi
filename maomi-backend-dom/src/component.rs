@@ -9,7 +9,8 @@ pub struct DomComponent {
 impl DomComponent {
     pub(crate) fn new(parent: &mut ForestNodeMut<DomGeneralElement>) -> Self {
         Self {
-            shadow_root: parent.new_tree(DomGeneralElement::ShadowRoot(crate::DomShadowRoot::new()))
+            shadow_root: parent
+                .new_tree(DomGeneralElement::ShadowRoot(crate::DomShadowRoot::new())),
         }
     }
 }

@@ -4,7 +4,17 @@ use crate::{tree::*, DomBackend, DomGeneralElement};
 
 pub struct DomElement(web_sys::Element);
 
+impl std::fmt::Debug for DomElement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<{}>", self.0.tag_name())
+    }
+}
+
 impl DomElement {
+    pub fn dom(&self) -> &web_sys::Node {
+        &self.0
+    }
+
     pub fn inner_html(&self) -> String {
         self.0.inner_html()
     }

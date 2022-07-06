@@ -29,29 +29,6 @@ pub trait Backend {
 pub trait BackendGeneralElement {
     type BaseBackend: Backend;
 
-    /// Append some child elements
-    fn append_children<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        children: impl IntoIterator<
-            Item = ForestTree<
-                <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
-            >,
-        >,
-    ) where
-        Self: Sized;
-
-    /// Splice some child elements
-    fn splice_children<'b>(
-        this: &'b mut ForestNodeMut<Self>,
-        range: impl std::ops::RangeBounds<usize>,
-        children: impl IntoIterator<
-            Item = ForestTree<
-                <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
-            >,
-        >,
-    ) where
-        Self: Sized;
-
     /// Try casting to component
     fn as_component_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
@@ -112,6 +89,29 @@ pub trait BackendGeneralElement {
         this: &'b mut ForestNodeMut<Self>,
         content: &str,
     ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    where
+        Self: Sized;
+
+    /// Append a child element
+    fn append<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        child: ForestTree<
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+        >,
+    ) where
+        Self: Sized;
+
+    /// Insert an element before this element
+    fn insert<'b>(
+        this: &'b mut ForestNodeMut<Self>,
+        sibling: ForestTree<
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+        >,
+    ) where
+        Self: Sized;
+
+    /// Detach this element
+    fn detach<'b>(this: &'b mut ForestNodeMut<Self>)
     where
         Self: Sized;
 }

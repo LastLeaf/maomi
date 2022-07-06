@@ -24,6 +24,7 @@ features = [
   "HtmlElement",
   "Node",
   "NodeList",
+  "DocumentFragment",
   "Element",
   "Text",
   "EventListener",
