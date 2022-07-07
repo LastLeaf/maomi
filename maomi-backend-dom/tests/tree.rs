@@ -1,10 +1,8 @@
 use wasm_bindgen_test::*;
 
 use maomi::{
-    backend::{
-        tree::ForestNodeMut, Backend, BackendGeneralElement, SupportBackend,
-    },
-    component::{Component, Node},
+    backend::{tree::ForestNodeMut, Backend, BackendGeneralElement, SupportBackend},
+    component::{ComponentTemplate, Node},
     text_node::TextNode,
 };
 use maomi_backend_dom::{element::*, DomBackend, DomGeneralElement};
@@ -30,7 +28,7 @@ fn manual_tree_building() {
         need_update: bool,
         hello_text: String,
     }
-    
+
     impl HelloWorld {
         pub fn set_property_hello_text(&mut self, content: &str) {
             if self.hello_text.as_str() != content {
@@ -39,8 +37,8 @@ fn manual_tree_building() {
             }
         }
     }
-    
-    impl Component<DomBackend> for HelloWorld {
+
+    impl ComponentTemplate<DomBackend> for HelloWorld {
         fn create(
             backend_element: &mut ForestNodeMut<'_, <DomBackend as Backend>::GeneralElement>,
         ) -> Result<Self, maomi::error::Error>
@@ -60,7 +58,10 @@ fn manual_tree_building() {
                                 let (node, elem) =
                                     <div as SupportBackend<DomBackend>>::create(&mut parent_elem)?;
                                 let children = ();
-                                <DomBackend as Backend>::GeneralElement::append(&mut parent_elem, elem);
+                                <DomBackend as Backend>::GeneralElement::append(
+                                    &mut parent_elem,
+                                    elem,
+                                );
                                 Node { node, children }
                             },
                             {
@@ -87,7 +88,7 @@ fn manual_tree_building() {
             };
             Ok(this)
         }
-    
+
         fn apply_updates(
             &mut self,
             backend_element: &mut ForestNodeMut<'_, <DomBackend as Backend>::GeneralElement>,
@@ -104,8 +105,12 @@ fn manual_tree_building() {
                 {
                     let next_child_elem = elem.first_child_mut();
                     {
-                        let Node { node: _self_node, children: _self_children } = &mut children.0;
-                        let mut elem = next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
+                        let Node {
+                            node: _self_node,
+                            children: _self_children,
+                        } = &mut children.0;
+                        let mut elem =
+                            next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
                         // {
                         //     let next_child_elem = elem.first_child_mut();
                         //     {}
@@ -113,7 +118,8 @@ fn manual_tree_building() {
                         let next_child_elem = elem.next_sibling_mut();
 
                         let node = &mut children.1;
-                        let elem = next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
+                        let elem =
+                            next_child_elem.ok_or(maomi::error::Error::TreeNotMatchedError)?;
                         {
                             node.set_text(&self.hello_text);
                             node.apply_updates::<DomBackend>(elem)?;
@@ -125,7 +131,7 @@ fn manual_tree_building() {
             Ok(())
         }
     }
-    
+
     prepare_env(|mut wrapper| {
         let (mut hello_world, elem) =
             <HelloWorld as SupportBackend<DomBackend>>::create(&mut wrapper).unwrap();

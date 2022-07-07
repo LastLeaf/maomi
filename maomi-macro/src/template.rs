@@ -1,9 +1,11 @@
 use proc_macro::TokenStream;
 use quote::*;
 use syn::parse::*;
+use syn::spanned::Spanned;
 use syn::*;
 
 struct TemplateDefinition {
+    path: Path,
     backend_target: Option<TemplateBackendTarget>,
     brace_token: token::Brace,
     children: Vec<TemplateNode>,
@@ -11,8 +13,9 @@ struct TemplateDefinition {
 
 impl Parse for TemplateDefinition {
     fn parse(input: ParseStream) -> Result<Self> {
+        let path = input.parse()?;
         let la = input.lookahead1();
-        let backend_target = if la.peek(token::For) {
+        let backend_target = if la.peek(token::In) {
             Some(input.parse()?)
         } else if la.peek(token::Brace) {
             None
@@ -27,6 +30,7 @@ impl Parse for TemplateDefinition {
             children.push(child);
         }
         Ok(Self {
+            path,
             backend_target,
             brace_token,
             children,
@@ -36,19 +40,90 @@ impl Parse for TemplateDefinition {
 
 impl ToTokens for TemplateDefinition {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        todo!()
+        let Self {
+            path,
+            backend_target,
+            children,
+            ..
+        } = self;
+
+        // get the backend name
+        let backend = match backend_target {
+            None => {
+                let span = path.span();
+                quote_spanned! { span => __Backend }
+            }
+            Some(backend_target) => {
+                let TemplateBackendTarget {
+                    impl_token,
+                    backend_path,
+                    ..
+                } = backend_target;
+                let span = backend_path.span();
+                match impl_token {
+                    None => quote_spanned! { span => #backend_path },
+                    Some(_) => quote_spanned! { span => __Backend },
+                }
+            }
+        };
+
+        // the impl of Component<#backend>
+        let content = quote! {
+            fn create(
+                __backend_element: &mut maomi::backend::tree::ForestNodeMut<'_, <#backend as maomi::backend::Backend>::GeneralElement>,
+            ) -> Result<Self, maomi::error::Error> {
+                unimplemented!()
+            }
+
+            fn apply_updates(
+                &mut self,
+                __backend_element: &mut maomi::backend::tree::ForestNodeMut<'_, <#backend as maomi::backend::Backend>::GeneralElement>,
+            ) -> Result<(), maomi::error::Error> {
+                unimplemented!()
+            }
+        };
+
+        // wrap the trait
+        let ret = match backend_target {
+            None => quote! {
+                impl<__Backend: maomi::backend::Backend> maomi::component::ComponentTemplate<#backend> for #path {
+                    #content
+                }
+            },
+            Some(backend_target) => {
+                let TemplateBackendTarget {
+                    impl_token,
+                    backend_path,
+                    ..
+                } = backend_target;
+                match impl_token {
+                    None => quote! {
+                        impl maomi::component::ComponentTemplate<#backend> for #path {
+                            #content
+                        }
+                    },
+                    Some(_) => quote! {
+                        impl<__Backend: #backend_path> maomi::component::ComponentTemplate<#backend> for #path {
+                            #content
+                        }
+                    },
+                }
+            }
+        };
+        ret.to_tokens(tokens);
     }
 }
 
 struct TemplateBackendTarget {
-    for_token: token::For,
+    #[allow(dead_code)]
+    in_token: token::In,
     impl_token: Option<token::Impl>,
-    path: Path,
+    backend_path: Path,
 }
 
 impl Parse for TemplateBackendTarget {
     fn parse(input: ParseStream) -> Result<Self> {
-        let for_token = input.parse()?;
+        let in_token = input.parse()?;
         let la = input.lookahead1();
         let impl_token = if la.peek(token::Impl) {
             Some(input.parse()?)
@@ -57,18 +132,12 @@ impl Parse for TemplateBackendTarget {
         } else {
             return Err(la.error());
         };
-        let path = input.parse()?;
+        let backend_path = input.parse()?;
         Ok(Self {
-            for_token,
+            in_token,
             impl_token,
-            path,
+            backend_path,
         })
-    }
-}
-
-impl ToTokens for TemplateBackendTarget {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        todo!()
     }
 }
 
@@ -111,10 +180,7 @@ impl Parse for TemplateNode {
             let content;
             let brace_token = braced!(content in input);
             let expr = content.parse()?;
-            TemplateNode::DynamicText {
-                brace_token,
-                expr,
-            }
+            TemplateNode::DynamicText { brace_token, expr }
         } else if la.peek(token::Lt) {
             let tag_lt_token = input.parse()?;
             let tag_name = input.parse()?;
@@ -167,7 +233,7 @@ impl Parse for TemplateNode {
         } else {
             return Err(la.error());
         };
-        return Ok(ret);
+        Ok(ret)
     }
 }
 
@@ -200,7 +266,49 @@ enum TemplateAttribute {
 
 impl Parse for TemplateAttribute {
     fn parse(input: ParseStream) -> Result<Self> {
-        todo!()
+        let la = input.lookahead1();
+        let ret = if la.peek(Ident) {
+            let name = input.parse()?;
+            let eq_token = input.parse()?;
+            let la = input.lookahead1();
+            if la.peek(Lit) {
+                let value = input.parse()?;
+                TemplateAttribute::StaticProperty {
+                    name,
+                    eq_token,
+                    value,
+                }
+            } else if la.peek(token::Brace) {
+                let content;
+                let brace_token = braced!(content in input);
+                let expr = content.parse()?;
+                TemplateAttribute::DynamicProperty {
+                    name,
+                    eq_token,
+                    brace_token,
+                    expr,
+                }
+            } else {
+                return Err(la.error());
+            }
+        } else if la.peek(token::At) {
+            let at_token = input.parse()?;
+            let name = input.parse()?;
+            let eq_token = input.parse()?;
+            let content;
+            let brace_token = braced!(content in input);
+            let expr = content.parse()?;
+            TemplateAttribute::Event {
+                at_token,
+                name,
+                eq_token,
+                brace_token,
+                expr,
+            }
+        } else {
+            return Err(la.error());
+        };
+        Ok(ret)
     }
 }
 
@@ -214,5 +322,6 @@ pub(crate) fn template(input: TokenStream) -> TokenStream {
     let template_definition = parse_macro_input!(input as TemplateDefinition);
     quote! {
         #template_definition
-    }.into()
+    }
+    .into()
 }

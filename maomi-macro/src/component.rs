@@ -40,5 +40,6 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // concat output
     quote! {
         #input
-    }.into()
+    }
+    .into()
 }
