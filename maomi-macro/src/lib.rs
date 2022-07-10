@@ -9,8 +9,3 @@ mod template;
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     component::component(attr.into(), item.into()).into()
 }
-
-#[proc_macro]
-pub fn template(input: TokenStream) -> TokenStream {
-    template::template(input.into()).into()
-}

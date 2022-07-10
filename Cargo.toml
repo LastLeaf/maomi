@@ -2,6 +2,7 @@
 members = [
     "maomi",
     "maomi-macro",
+    "maomi-tree",
     "maomi-skin",
     "maomi-backend-dom",
     "maomi-dom-template",

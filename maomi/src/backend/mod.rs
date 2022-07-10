@@ -1,4 +1,4 @@
-pub mod tree;
+pub use maomi_tree as tree;
 use crate::error::Error;
 use tree::*;
 
@@ -132,6 +132,7 @@ pub trait SupportBackend<B: Backend> {
     /// Create with a backend element
     fn create<'b>(
         parent: &'b mut ForestNodeMut<B::GeneralElement>,
+        init: FnOnce(&mut T),
     ) -> Result<(Self, ForestTree<B::GeneralElement>), crate::error::Error>
     where
         Self: Sized;

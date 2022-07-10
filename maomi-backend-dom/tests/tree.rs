@@ -24,7 +24,7 @@ fn dom_html(e: &mut ForestNodeMut<DomGeneralElement>) -> String {
 #[wasm_bindgen_test]
 fn manual_tree_building() {
     struct HelloWorld {
-        template_structure: (Node<div, (Node<div, ()>, TextNode, ())>, ()),
+        template_structure: (Node<div, (Node<div, ()>, TextNode, )>, ),
         need_update: bool,
         hello_text: String,
     }

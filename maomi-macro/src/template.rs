@@ -4,144 +4,7 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-struct TemplateDefinition {
-    path: Path,
-    backend_target: Option<TemplateBackendTarget>,
-    brace_token: token::Brace,
-    children: Vec<TemplateNode>,
-}
-
-impl Parse for TemplateDefinition {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let path = input.parse()?;
-        let la = input.lookahead1();
-        let backend_target = if la.peek(token::In) {
-            Some(input.parse()?)
-        } else if la.peek(token::Brace) {
-            None
-        } else {
-            return Err(la.error());
-        };
-        let content;
-        let brace_token = braced!(content in input);
-        let mut children = vec![];
-        while !content.is_empty() {
-            let child = content.parse()?;
-            children.push(child);
-        }
-        Ok(Self {
-            path,
-            backend_target,
-            brace_token,
-            children,
-        })
-    }
-}
-
-impl ToTokens for TemplateDefinition {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self {
-            path,
-            backend_target,
-            children,
-            ..
-        } = self;
-
-        // get the backend name
-        let backend = match backend_target {
-            None => {
-                let span = path.span();
-                quote_spanned! { span => __Backend }
-            }
-            Some(backend_target) => {
-                let TemplateBackendTarget {
-                    impl_token,
-                    backend_path,
-                    ..
-                } = backend_target;
-                let span = backend_path.span();
-                match impl_token {
-                    None => quote_spanned! { span => #backend_path },
-                    Some(_) => quote_spanned! { span => __Backend },
-                }
-            }
-        };
-
-        // the impl of Component<#backend>
-        let content = quote! {
-            fn create(
-                __backend_element: &mut maomi::backend::tree::ForestNodeMut<'_, <#backend as maomi::backend::Backend>::GeneralElement>,
-            ) -> Result<Self, maomi::error::Error> {
-                unimplemented!()
-            }
-
-            fn apply_updates(
-                &mut self,
-                __backend_element: &mut maomi::backend::tree::ForestNodeMut<'_, <#backend as maomi::backend::Backend>::GeneralElement>,
-            ) -> Result<(), maomi::error::Error> {
-                unimplemented!()
-            }
-        };
-
-        // wrap the trait
-        let ret = match backend_target {
-            None => quote! {
-                impl<__Backend: maomi::backend::Backend> maomi::component::ComponentTemplate<#backend> for #path {
-                    #content
-                }
-            },
-            Some(backend_target) => {
-                let TemplateBackendTarget {
-                    impl_token,
-                    backend_path,
-                    ..
-                } = backend_target;
-                match impl_token {
-                    None => quote! {
-                        impl maomi::component::ComponentTemplate<#backend> for #path {
-                            #content
-                        }
-                    },
-                    Some(_) => quote! {
-                        impl<__Backend: #backend_path> maomi::component::ComponentTemplate<#backend> for #path {
-                            #content
-                        }
-                    },
-                }
-            }
-        };
-        ret.to_tokens(tokens);
-    }
-}
-
-struct TemplateBackendTarget {
-    #[allow(dead_code)]
-    in_token: token::In,
-    impl_token: Option<token::Impl>,
-    backend_path: Path,
-}
-
-impl Parse for TemplateBackendTarget {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let in_token = input.parse()?;
-        let la = input.lookahead1();
-        let impl_token = if la.peek(token::Impl) {
-            Some(input.parse()?)
-        } else if la.peek(token::Brace) || la.peek(Ident) || la.peek(token::Colon2) {
-            None
-        } else {
-            return Err(la.error());
-        };
-        let backend_path = input.parse()?;
-        Ok(Self {
-            in_token,
-            impl_token,
-            backend_path,
-        })
-    }
-}
-
-enum TemplateNode {
+pub(super) enum TemplateNode {
     StaticText {
         content: LitStr,
     },
@@ -167,6 +30,29 @@ enum TemplateNode {
         end_tag_name: Path,
         end_tag_gt_token: token::Gt,
     },
+}
+
+impl TemplateNode {
+    pub(super) fn gen_type(&self) -> Type {
+        match self {
+            Self::StaticText { content } => {
+                let span = content.span();
+                parse_quote_spanned!(span=> maomi::text_node::TextNode )
+            }
+            Self::DynamicText { brace_token, .. } => {
+                let span = brace_token.span;
+                parse_quote_spanned!(span=> maomi::text_node::TextNode )
+            }
+            Self::SelfCloseTag { tag_name, .. } => {
+                let span = tag_name.span();
+                parse_quote_spanned!(span=> maomi::component::Node<#tag_name, ()> )
+            }
+            Self::Tag { tag_name, children, .. } => {
+                let span = tag_name.span();
+                parse_quote_spanned!(span=> maomi::component::Node<#tag_name, (#(#children)*)> )
+            }
+        }
+    }
 }
 
 impl Parse for TemplateNode {
@@ -243,7 +129,7 @@ impl ToTokens for TemplateNode {
     }
 }
 
-enum TemplateAttribute {
+pub(super) enum TemplateAttribute {
     StaticProperty {
         name: Ident,
         eq_token: token::Eq,
@@ -316,12 +202,4 @@ impl ToTokens for TemplateAttribute {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         todo!()
     }
-}
-
-pub(crate) fn template(input: TokenStream) -> TokenStream {
-    let template_definition = parse_macro_input!(input as TemplateDefinition);
-    quote! {
-        #template_definition
-    }
-    .into()
 }

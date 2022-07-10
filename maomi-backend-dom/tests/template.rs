@@ -26,13 +26,12 @@ fn test_component<T: maomi::backend::SupportBackend<maomi_backend_dom::DomBacken
 
 #[wasm_bindgen_test]
 fn basic() {
-    template!(HelloWorld in maomi_backend_dom::DomBackend {
-        <div />
-        <div>{{ self.hello_text }}</div>
-    });
-
-    #[component]
+    #[component(maomi_backend_dom::DomBackend)]
     struct HelloWorld {
+        template: template! {
+            <div />
+            <div>{{ self.hello_text }}</div>
+        },
         need_update: bool,
         hello_text: String,
         tap_hello: (),
