@@ -1,8 +1,9 @@
 use std::{
-    cell::{RefCell, Cell},
+    cell::{Cell, RefCell},
     fmt::Debug,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
-    rc::Rc, marker::PhantomData,
+    rc::Rc,
 };
 
 const SLICE_ITEMS: usize = 256;
@@ -28,9 +29,7 @@ impl<T> ForestCtx<T> {
             last_child: None,
             content,
         });
-        ForestNodeRc {
-            inner: slice,
-        }
+        ForestNodeRc { inner: slice }
     }
 }
 
@@ -45,9 +44,14 @@ struct ForestRel<T> {
 }
 
 /// A node in a forest
-#[derive(Clone)]
 pub struct ForestNodeRc<T> {
     inner: SliceRc<ForestRel<T>, SLICE_ITEMS>,
+}
+
+impl<T> Clone for ForestNodeRc<T> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
 }
 
 impl<T> ForestNodeRc<T> {
@@ -68,21 +72,23 @@ impl<T> ForestNodeRc<T> {
         let inner = &self.inner;
         let ctx = &unsafe { inner.data_ref() }.ctx;
         if ctx.mut_count.get() > 0 {
-            panic!("Cannot borrow the forest node when a node is mutably borrowed in the same forest")
+            panic!(
+                "Cannot borrow the forest node when a node is mutably borrowed in the same forest"
+            )
         }
         ctx.ref_count.set(ctx.ref_count.get() + 1);
-        ForestNode {
-            inner,
-        }
+        ForestNode { inner }
     }
 
     /// Get a mutable reference of the tree root
     #[inline]
-    pub fn borrow_mut<'a>(&'a mut self) -> ForestNodeMut<'a, T> {
+    pub fn borrow_mut<'a>(&'a self) -> ForestNodeMut<'a, T> {
         let inner = self.inner.clone();
         let ctx = &unsafe { inner.data_ref() }.ctx;
         if ctx.ref_count.get() > 0 || ctx.mut_count.get() > 0 {
-            panic!("Cannot mutably borrow the forest node when a node is borrowed in the same forest")
+            panic!(
+                "Cannot mutably borrow the forest node when a node is borrowed in the same forest"
+            )
         }
         ctx.mut_count.set(1);
         ForestNodeMut {
@@ -91,10 +97,28 @@ impl<T> ForestNodeRc<T> {
         }
     }
 
+    /// Get a token
+    pub fn token(&self) -> ForestToken {
+        ForestToken {
+            inner: self.inner.weak().leak(),
+        }
+    }
+
     /// Check if two nodes are the same
     #[inline]
     pub fn ptr_eq(&self, rhs: &Self) -> bool {
         self.inner.mem() == rhs.inner.mem()
+    }
+}
+
+/// A static ref to a `ForestNodeRc<T>`
+pub struct ForestToken {
+    inner: *const (),
+}
+
+impl Drop for ForestToken {
+    fn drop(&mut self) {
+        unsafe { SliceWeak::revoke_leaked(self.inner) };
     }
 }
 
@@ -113,9 +137,7 @@ impl<'a, T> Clone for ForestNode<'a, T> {
     fn clone(&self) -> Self {
         let ctx = &unsafe { self.inner.data_ref() }.ctx;
         ctx.ref_count.set(ctx.ref_count.get() + 1);
-        Self {
-            inner: self.inner,
-        }
+        Self { inner: self.inner }
     }
 }
 
@@ -146,19 +168,23 @@ impl<'a, T: Debug> Debug for ForestNode<'a, T> {
 }
 
 impl<'a, T> ForestNode<'a, T> {
-    unsafe fn borrow_unchecked<'b>(&self, another: &'b SliceRc<ForestRel<T>, SLICE_ITEMS>) -> ForestNode<'b, T> {
+    unsafe fn borrow_unchecked<'b>(
+        &self,
+        another: &'b SliceRc<ForestRel<T>, SLICE_ITEMS>,
+    ) -> ForestNode<'b, T> {
         let ctx = &{ another.data_ref() }.ctx;
         ctx.ref_count.set(ctx.ref_count.get() + 1);
-        ForestNode {
-            inner: another,
-        }
+        ForestNode { inner: another }
     }
 
     /// Borrow another node in the same forest
     #[inline]
     pub fn borrow<'b>(&self, target: &'b ForestNodeRc<T>) -> ForestNode<'b, T> {
         unsafe {
-            if !Rc::ptr_eq(&{ self.inner.data_ref() }.ctx, &{ &*target.inner.data_ref() }.ctx) {
+            if !Rc::ptr_eq(
+                &{ self.inner.data_ref() }.ctx,
+                &{ &*target.inner.data_ref() }.ctx,
+            ) {
                 panic!("The target node is not in the same forest")
             }
             self.borrow_unchecked(&target.inner)
@@ -168,7 +194,9 @@ impl<'a, T> ForestNode<'a, T> {
     /// Get the parent node
     #[inline]
     pub fn rc(&self) -> ForestNodeRc<T> {
-        ForestNodeRc { inner: self.inner.clone() }
+        ForestNodeRc {
+            inner: self.inner.clone(),
+        }
     }
 
     /// Check if two nodes are the same
@@ -181,35 +209,66 @@ impl<'a, T> ForestNode<'a, T> {
     #[inline]
     pub fn parent_rc(&self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.parent.as_ref().and_then(|x| x.rc()).map(|x| ForestNodeRc { inner: x })
+        this.parent
+            .as_ref()
+            .and_then(|x| x.rc())
+            .map(|x| ForestNodeRc { inner: x })
+    }
+
+    /// Get the next sibling node
+    #[inline]
+    pub fn first_child_rc(&self) -> Option<ForestNodeRc<T>> {
+        let this = unsafe { self.inner.data_ref() };
+        this.first_child
+            .as_ref()
+            .map(|x| ForestNodeRc { inner: x.clone() })
     }
 
     /// Get the first child node
     #[inline]
     pub fn first_child(&self) -> Option<ForestNode<'a, T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.first_child.as_ref().map(|x| unsafe { self.borrow_unchecked(x) })
+        this.first_child
+            .as_ref()
+            .map(|x| unsafe { self.borrow_unchecked(x) })
     }
 
     /// Get the last child node
     #[inline]
     pub fn last_child_rc(&self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.last_child.as_ref().and_then(|x| x.rc()).map(|x| ForestNodeRc { inner: x })
+        this.last_child
+            .as_ref()
+            .and_then(|x| x.rc())
+            .map(|x| ForestNodeRc { inner: x })
     }
 
     /// Get the previous sibling node
     #[inline]
     pub fn prev_sibling_rc(&self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.prev_sibling.as_ref().and_then(|x| x.rc()).map(|x| ForestNodeRc { inner: x })
+        this.prev_sibling
+            .as_ref()
+            .and_then(|x| x.rc())
+            .map(|x| ForestNodeRc { inner: x })
+    }
+
+    /// Get the next sibling node
+    #[inline]
+    pub fn next_sibling_rc(&self) -> Option<ForestNodeRc<T>> {
+        let this = unsafe { self.inner.data_ref() };
+        this.next_sibling
+            .as_ref()
+            .map(|x| ForestNodeRc { inner: x.clone() })
     }
 
     /// Get the next sibling node
     #[inline]
     pub fn next_sibling(&self) -> Option<ForestNode<'a, T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.next_sibling.as_ref().map(|x| unsafe { self.borrow_unchecked(x) })
+        this.next_sibling
+            .as_ref()
+            .map(|x| unsafe { self.borrow_unchecked(x) })
     }
 }
 
@@ -246,7 +305,10 @@ impl<'a, T: Debug> Debug for ForestNodeMut<'a, T> {
 }
 
 impl<'a, T> ForestNodeMut<'a, T> {
-    unsafe fn borrow_mut_unchecked<'b>(&self, inner: &'b SliceRc<ForestRel<T>, SLICE_ITEMS>) -> ForestNodeMut<'b, T> {
+    unsafe fn borrow_mut_unchecked<'b>(
+        &'b self,
+        inner: &SliceRc<ForestRel<T>, SLICE_ITEMS>,
+    ) -> ForestNodeMut<'b, T> {
         let ctx = &{ &*inner.data_ref() }.ctx;
         ctx.mut_count.set(ctx.mut_count.get() + 1);
         ForestNodeMut {
@@ -259,11 +321,36 @@ impl<'a, T> ForestNodeMut<'a, T> {
     #[inline]
     pub fn borrow_mut<'b>(&'b mut self, target: &'b ForestNodeRc<T>) -> ForestNodeMut<'b, T> {
         unsafe {
-            if !Rc::ptr_eq(&{ self.inner.data_ref() }.ctx, &{ &*target.inner.data_ref() }.ctx) {
+            if !Rc::ptr_eq(
+                &{ self.inner.data_ref() }.ctx,
+                &{ &*target.inner.data_ref() }.ctx,
+            ) {
                 panic!("The target node is not in the same forest")
             }
             self.borrow_mut_unchecked(&target.inner)
         }
+    }
+
+    /// Borrow another node with a token
+    ///
+    /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
+    #[inline]
+    pub fn resolve_token<'b>(&'b mut self, target: &'b ForestToken) -> ForestNodeRc<T> {
+        let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
+        weak.clone().leak();
+        let rc = weak.rc().expect("The target node has been released");
+        ForestNodeRc { inner: rc }
+    }
+
+    /// Borrow another node with a token
+    ///
+    /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
+    #[inline]
+    pub fn borrow_mut_token<'b>(&'b mut self, target: &'b ForestToken) -> ForestNodeMut<'b, T> {
+        let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
+        weak.clone().leak();
+        let rc = weak.rc().expect("The target node has been released");
+        unsafe { self.borrow_mut_unchecked(&rc) }
     }
 
     /// Get an immutable reference
@@ -271,9 +358,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
     pub fn as_ref<'b>(&'b self) -> ForestNode<'b, T> {
         let ctx = &unsafe { self.inner.data_ref() }.ctx;
         ctx.ref_count.set(ctx.ref_count.get() + 1);
-        ForestNode {
-            inner: &self.inner,
-        }
+        ForestNode { inner: &self.inner }
     }
 
     /// Make a wrapped component the contained value, keeping the borrowing status
@@ -282,58 +367,73 @@ impl<'a, T> ForestNodeMut<'a, T> {
         &'b mut self,
         f: impl FnOnce(&'b mut T) -> &'b mut U,
     ) -> ForestValueMut<'b, U> {
-        ForestValueMut {
-            v: f(&mut **self),
-        }
+        ForestValueMut { v: f(&mut **self) }
     }
 
     /// Get the parent node
     #[inline]
     pub fn parent_rc(&self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.parent.as_ref().and_then(|x| x.rc()).map(|x| ForestNodeRc { inner: x })
+        this.parent
+            .as_ref()
+            .and_then(|x| x.rc())
+            .map(|x| ForestNodeRc { inner: x })
     }
 
     /// Get the first child node
     #[inline]
     pub fn first_child_rc(&mut self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.first_child.as_ref().map(|x| ForestNodeRc { inner: x.clone() })
+        this.first_child
+            .as_ref()
+            .map(|x| ForestNodeRc { inner: x.clone() })
     }
 
     /// Get the first child node
     #[inline]
     pub fn first_child_mut<'b>(&'b mut self) -> Option<ForestNodeMut<'b, T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.first_child.as_ref().map(|x| unsafe { self.borrow_mut_unchecked(x) })
+        this.first_child
+            .as_ref()
+            .map(|x| unsafe { self.borrow_mut_unchecked(x) })
     }
 
     /// Get the last child node
     #[inline]
     pub fn last_child_rc(&self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.last_child.as_ref().and_then(|x| x.rc()).map(|x| ForestNodeRc { inner: x })
+        this.last_child
+            .as_ref()
+            .and_then(|x| x.rc())
+            .map(|x| ForestNodeRc { inner: x })
     }
 
     /// Get the previous sibling node
     #[inline]
     pub fn prev_sibling_rc(&self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.prev_sibling.as_ref().and_then(|x| x.rc()).map(|x| ForestNodeRc { inner: x })
+        this.prev_sibling
+            .as_ref()
+            .and_then(|x| x.rc())
+            .map(|x| ForestNodeRc { inner: x })
     }
 
     /// Get the next sibling node
     #[inline]
     pub fn next_sibling_rc(&mut self) -> Option<ForestNodeRc<T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.next_sibling.as_ref().map(|x| ForestNodeRc { inner: x.clone() })
+        this.next_sibling
+            .as_ref()
+            .map(|x| ForestNodeRc { inner: x.clone() })
     }
 
     /// Get the next sibling node
     #[inline]
     pub fn next_sibling_mut<'b>(&'b mut self) -> Option<ForestNodeMut<'b, T>> {
         let this = unsafe { self.inner.data_ref() };
-        this.next_sibling.as_ref().map(|x| unsafe { self.borrow_mut_unchecked(x) })
+        this.next_sibling
+            .as_ref()
+            .map(|x| unsafe { self.borrow_mut_unchecked(x) })
     }
 
     /// Create a new tree in the same forest
@@ -343,7 +443,11 @@ impl<'a, T> ForestNodeMut<'a, T> {
         ctx.new_node(content)
     }
 
-    fn check_insertion(&self, parent: &SliceWeak<ForestRel<T>, SLICE_ITEMS>, target: &ForestNodeRc<T>) {
+    fn check_insertion(
+        &self,
+        parent: &SliceWeak<ForestRel<T>, SLICE_ITEMS>,
+        target: &ForestNodeRc<T>,
+    ) {
         let self_data = unsafe { self.inner.data_ref() };
         let data = unsafe { &*target.inner.data_ref() };
         if !Rc::ptr_eq(&self_data.ctx, &data.ctx) {
@@ -358,6 +462,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
     }
 
     /// Append a tree as the last child node
+    #[inline]
     pub fn append(&mut self, target: &ForestNodeRc<T>) {
         let parent_ptr = &self.inner;
         self.check_insertion(&parent_ptr.weak(), target);
@@ -376,6 +481,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
     }
 
     /// Insert a tree as the previous sibling node of the current node
+    #[inline]
     pub fn insert(&mut self, target: &ForestNodeRc<T>) {
         let before_ptr = &self.inner;
         let before = unsafe { &mut *before_ptr.data_mut() };
@@ -408,6 +514,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
     }
 
     /// Remove the node from its parent node
+    #[inline]
     pub fn detach(self) -> ForestNodeRc<T> {
         let child_ptr = self.inner.clone();
         let child = unsafe { &mut *child_ptr.data_mut() };
@@ -421,7 +528,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
                     parent.last_child = prev_ptr.cloned();
                 }
             }
-            Some(next_ptr) =>{
+            Some(next_ptr) => {
                 let next = unsafe { &mut *next_ptr.data_mut() };
                 next.prev_sibling = prev_ptr.cloned();
             }
@@ -459,6 +566,7 @@ impl<'a, T> Deref for ForestValue<'a, T> {
 }
 
 impl<'a, T> ForestValue<'a, T> {
+    #[inline]
     pub fn map<U>(&'a self, f: impl FnOnce(&'a T) -> &'a U) -> ForestValue<'a, U> {
         ForestValue { v: f(self.v) }
     }
@@ -483,10 +591,12 @@ impl<'a, T> DerefMut for ForestValueMut<'a, T> {
 }
 
 impl<'a, T> ForestValueMut<'a, T> {
+    #[inline]
     pub fn as_ref<'b>(&'b self) -> ForestValue<'b, T> {
         ForestValue { v: self.v }
     }
 
+    #[inline]
     pub fn map<'b, U>(
         &'b mut self,
         f: impl FnOnce(&'b mut T) -> &'b mut U,

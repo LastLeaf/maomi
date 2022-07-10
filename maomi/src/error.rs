@@ -1,13 +1,17 @@
 #[derive(Debug)]
 pub enum Error {
-    TreeNotMatchedError,
+    TreeNotCreated,
+    TreeNodeTypeWrong,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::TreeNotMatchedError => {
-                write!(f, "Component structure does not match the element tree")?;
+            Error::TreeNotCreated => {
+                write!(f, "Component template has not been initialized")?;
+            }
+            Error::TreeNodeTypeWrong => {
+                write!(f, "The node type in backend element tree is incorrect")?;
             }
         }
         Ok(())

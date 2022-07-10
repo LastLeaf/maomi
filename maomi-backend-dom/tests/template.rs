@@ -12,30 +12,30 @@ fn dom_html(
     )
 }
 
-fn test_component<T: maomi::backend::SupportBackend<maomi_backend_dom::DomBackend>>(
-    expected_html: &str,
-) {
-    use maomi::backend::Backend;
-    let mut dom_backend = maomi_backend_dom::DomBackend::new();
-    let mut parent = dom_backend.root_mut();
-    let (_, mut elem) =
-        <T as maomi::backend::SupportBackend<maomi_backend_dom::DomBackend>>::create(&mut parent)
-            .unwrap();
-    assert_eq!(dom_html(&mut elem.as_node_mut()), expected_html);
-}
+// fn test_component<T: maomi::backend::SupportBackend<maomi_backend_dom::DomBackend>>(
+//     expected_html: &str,
+// ) {
+//     use maomi::backend::Backend;
+//     let mut dom_backend = maomi_backend_dom::DomBackend::new();
+//     let mut parent = dom_backend.root_mut();
+//     let (_, mut elem) =
+//         <T as maomi::backend::SupportBackend<maomi_backend_dom::DomBackend>>::create(&mut parent)
+//             .unwrap();
+//     assert_eq!(dom_html(&mut elem.as_node_mut()), expected_html);
+// }
 
-#[wasm_bindgen_test]
-fn basic() {
-    #[component(maomi_backend_dom::DomBackend)]
-    struct HelloWorld {
-        template: template! {
-            <div />
-            <div>{{ self.hello_text }}</div>
-        },
-        need_update: bool,
-        hello_text: String,
-        tap_hello: (),
-    }
+// #[wasm_bindgen_test]
+// fn basic() {
+//     #[component(maomi_backend_dom::DomBackend)]
+//     struct HelloWorld {
+//         template: template! {
+//             <div />
+//             <div>{{ self.hello_text }}</div>
+//         },
+//         need_update: bool,
+//         hello_text: String,
+//         tap_hello: (),
+//     }
 
-    test_component::<HelloWorld>("<div><div></div>Hello world!</div>");
-}
+//     test_component::<HelloWorld>("<div><div></div>Hello world!</div>");
+// }

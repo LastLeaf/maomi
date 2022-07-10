@@ -7,13 +7,8 @@ use super::template::TemplateNode;
 
 enum ComponentAttr {
     None,
-    ImplBackend {
-        impl_token: token::Impl,
-        path: Path,
-    },
-    Backend {
-        path: Path,
-    },
+    ImplBackend { impl_token: token::Impl, path: Path },
+    Backend { path: Path },
 }
 
 impl Parse for ComponentAttr {
@@ -57,7 +52,8 @@ impl Parse for ComponentBody {
                 if let Type::Macro(m) = &mut field.ty {
                     if m.mac.path.is_ident("template") {
                         if template.is_some() {
-                            return Err(input.error("A component struct should only contain one `template!`"));
+                            return Err(input
+                                .error("A component struct should only contain one `template!`"));
                         }
                         has_template = true;
                     }

@@ -65,23 +65,27 @@ pub(crate) fn collect_child_frag<'a>(n: ForestNode<'a, DomGeneralElement>) -> Ch
 pub(crate) fn find_nearest_dom_ancestor<'a>(
     n: ForestNode<'a, DomGeneralElement>,
 ) -> Option<web_sys::Node> {
-    let mut cur = n;
+    let mut cur_rc = n.rc();
     loop {
-        match &*cur {
-            DomGeneralElement::DomElement(x) => {
-                return Some(x.dom().clone());
-            }
-            DomGeneralElement::DomText(x) => {
-                return Some(x.dom().clone());
-            }
-            DomGeneralElement::VirtualElement(_) => {
-                if let Some(x) = cur.parent() {
-                    cur = x;
-                } else {
-                    break;
+        let next = {
+            let cur = n.borrow(&cur_rc);
+            match &*cur {
+                DomGeneralElement::DomElement(x) => {
+                    return Some(x.dom().clone());
+                }
+                DomGeneralElement::DomText(x) => {
+                    return Some(x.dom().clone());
+                }
+                DomGeneralElement::VirtualElement(_) => {
+                    if let Some(x) = cur.parent_rc() {
+                        x
+                    } else {
+                        break;
+                    }
                 }
             }
-        }
+        };
+        cur_rc = next;
     }
     return None;
 }
@@ -110,26 +114,27 @@ fn find_first_dom_child<'a>(parent: ForestNode<'a, DomGeneralElement>) -> Option
 pub(crate) fn find_next_dom_sibling<'a>(
     n: ForestNode<'a, DomGeneralElement>,
 ) -> Option<web_sys::Node> {
-    let mut cur = n;
+    let mut cur_rc = n.rc();
     loop {
-        if let Some(next) = cur.next_sibling() {
-            if let Some(x) = find_first_dom_child(next.clone()) {
-                return Some(x);
-            }
-            cur = next;
-        } else if let Some(parent) = cur.parent() {
-            match &*cur {
-                DomGeneralElement::DomElement(_) | DomGeneralElement::DomText(_) => {
-                    break;
+        let next = {
+            let cur = n.borrow(&cur_rc);
+            if let Some(next) = cur.next_sibling_rc() {
+                if let Some(x) = find_first_dom_child(n.borrow(&next)) {
+                    return Some(x);
                 }
-                DomGeneralElement::VirtualElement(_) => {
-                    cur = parent;
-                    continue;
+                next
+            } else if let Some(parent) = cur.parent_rc() {
+                match &*cur {
+                    DomGeneralElement::DomElement(_) | DomGeneralElement::DomText(_) => {
+                        break;
+                    }
+                    DomGeneralElement::VirtualElement(_) => parent,
                 }
+            } else {
+                break;
             }
-        } else {
-            break;
-        }
+        };
+        cur_rc = next;
     }
     return None;
 }

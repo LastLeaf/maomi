@@ -22,13 +22,13 @@ thread_local! {
 }
 
 pub struct DomBackend {
-    tree: tree::ForestTree<DomGeneralElement>,
+    tree: tree::ForestNodeRc<DomGeneralElement>,
 }
 
 impl DomBackend {
     pub fn new() -> Self {
         Self {
-            tree: tree::ForestTree::new_forest(DomVirtualElement::new().into()),
+            tree: tree::ForestNodeRc::new_forest(DomVirtualElement::new().into()),
         }
     }
 }
@@ -39,7 +39,7 @@ impl Backend for DomBackend {
     type TextNode = DomTextNode;
 
     fn root_mut(&mut self) -> ForestNodeMut<Self::GeneralElement> {
-        self.tree.as_node_mut()
+        self.tree.borrow_mut()
     }
 }
 
@@ -67,7 +67,7 @@ impl DomGeneralElement {
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
         elem: element::DomElement,
-    ) -> ForestTree<DomGeneralElement> {
+    ) -> ForestNodeRc<DomGeneralElement> {
         this.new_tree(DomGeneralElement::DomElement(elem))
     }
 
@@ -100,7 +100,26 @@ impl DomGeneralElement {
         let mut ret = String::new();
         let mut cur = this.first_child();
         while let Some(c) = &cur {
-            ret += Self::inner_html(&c).as_str();
+            ret += Self::outer_html(&c).as_str();
+            cur = c.next_sibling();
+        }
+        ret
+    }
+
+    pub fn outer_html(this: &ForestNode<Self>) -> String {
+        match &**this {
+            DomGeneralElement::DomText(x) => {
+                return x.inner_html();
+            }
+            DomGeneralElement::DomElement(x) => {
+                return x.outer_html();
+            }
+            DomGeneralElement::VirtualElement(_) => {}
+        }
+        let mut ret = String::new();
+        let mut cur = this.first_child();
+        while let Some(c) = &cur {
+            ret += Self::outer_html(&c).as_str();
             cur = c.next_sibling();
         }
         ret
@@ -157,7 +176,7 @@ impl BackendGeneralElement for DomGeneralElement {
 
     fn create_virtual_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    ) -> Result<ForestNodeRc<<Self::BaseBackend as Backend>::GeneralElement>, Error>
     where
         Self: Sized,
     {
@@ -166,10 +185,10 @@ impl BackendGeneralElement for DomGeneralElement {
         Ok(child)
     }
 
-    fn create_text_node<'b>(
-        this: &'b mut ForestNodeMut<Self>,
+    fn create_text_node(
+        this: &mut ForestNodeMut<Self>,
         content: &str,
-    ) -> Result<ForestTree<<Self::BaseBackend as Backend>::GeneralElement>, Error>
+    ) -> Result<ForestNodeRc<<Self::BaseBackend as Backend>::GeneralElement>, Error>
     where
         Self: Sized,
     {
@@ -179,16 +198,17 @@ impl BackendGeneralElement for DomGeneralElement {
 
     fn append<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        child: ForestTree<
+        child: ForestNodeRc<
             <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
         >,
     ) where
         Self: Sized,
     {
-        this.append(child);
+        this.append(&child);
         let this = this.as_ref();
         if let Some(parent) = composing::find_nearest_dom_ancestor(this.clone()) {
-            let child = this.last_child().unwrap();
+            let child = this.last_child_rc().unwrap();
+            let child = this.borrow(&child);
             let before = composing::find_next_dom_sibling(child.clone());
             let child_frag = composing::collect_child_frag(child);
             if let Some(child_frag) = child_frag.dom() {
@@ -199,19 +219,23 @@ impl BackendGeneralElement for DomGeneralElement {
 
     fn insert<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        sibling: ForestTree<
+        sibling: ForestNodeRc<
             <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
         >,
     ) where
         Self: Sized,
     {
-        this.insert(sibling);
+        this.insert(&sibling);
+        todo!();
     }
 
-    fn detach<'b>(this: &'b mut ForestNodeMut<Self>)
+    fn detach(
+        this: ForestNodeMut<Self>,
+    ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
     where
         Self: Sized,
     {
         this.detach();
+        todo!();
     }
 }

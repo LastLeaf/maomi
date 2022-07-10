@@ -1,4 +1,5 @@
 use maomi::backend::SupportBackend;
+use maomi::error::Error;
 
 use crate::{tree::*, DomBackend, DomGeneralElement};
 
@@ -28,6 +29,7 @@ impl DomElement {
 
 #[allow(non_camel_case_types)]
 pub struct div {
+    backend_element_token: ForestToken,
     dom_elem: web_sys::Element,
     hidden: bool,
 }
@@ -48,26 +50,44 @@ impl div {
 
 impl SupportBackend<DomBackend> for div {
     fn create<'b>(
-        parent: &'b mut ForestNodeMut<DomGeneralElement>,
-    ) -> Result<(div, ForestTree<DomGeneralElement>), maomi::error::Error>
+        owner: &'b mut ForestNodeMut<DomGeneralElement>,
+        init: impl FnOnce(&mut Self) -> Result<(), Error>,
+    ) -> Result<(Self, ForestNodeRc<DomGeneralElement>), Error>
     where
         Self: Sized,
     {
         let elem = crate::DOCUMENT.with(|document| document.create_element("div").unwrap());
-        let this = Self {
-            dom_elem: elem.clone(),
+        let backend_element = crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
+        let mut this = Self {
+            backend_element_token: backend_element.token(),
+            dom_elem: elem,
             hidden: false,
         };
+        init(&mut this)?;
         Ok((
             this,
-            crate::DomGeneralElement::create_dom_element(parent, DomElement(elem)),
+            backend_element,
         ))
     }
 
     fn apply_updates<'b>(
         &'b mut self,
-        _backend_element: &'b mut ForestNodeMut<DomGeneralElement>,
+        _owner: &'b mut ForestNodeMut<DomGeneralElement>,
     ) -> Result<(), maomi::error::Error> {
         Ok(())
+    }
+
+    fn backend_element_mut<'b>(
+        &'b mut self,
+        owner: &'b mut ForestNodeMut<DomGeneralElement>,
+    ) -> Result<ForestNodeMut<DomGeneralElement>, Error> {
+        Ok(owner.borrow_mut_token(&self.backend_element_token))
+    }
+
+    fn backend_element_rc<'b>(
+        &'b mut self,
+        owner: &'b mut ForestNodeMut<DomGeneralElement>,
+    ) -> Result<ForestNodeRc<DomGeneralElement>, Error> {
+        Ok(owner.resolve_token(&self.backend_element_token))
     }
 }

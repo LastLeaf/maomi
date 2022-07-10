@@ -47,7 +47,9 @@ impl TemplateNode {
                 let span = tag_name.span();
                 parse_quote_spanned!(span=> maomi::component::Node<#tag_name, ()> )
             }
-            Self::Tag { tag_name, children, .. } => {
+            Self::Tag {
+                tag_name, children, ..
+            } => {
                 let span = tag_name.span();
                 parse_quote_spanned!(span=> maomi::component::Node<#tag_name, (#(#children)*)> )
             }
