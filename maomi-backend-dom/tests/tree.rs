@@ -1,4 +1,3 @@
-use maomi::component::{TemplateHelper, ComponentAttributeMacro};
 use wasm_bindgen_test::*;
 
 use maomi_backend_dom::element::*;
@@ -24,6 +23,10 @@ fn dom_html(
 
 #[wasm_bindgen_test]
 fn manual_tree_building() {
+    macro_rules! backend {
+        () => { maomi_backend_dom::DomBackend };
+    }
+
     struct HelloWorld {
         template_field: maomi::component::Template<(
             maomi::component::Node<div, (maomi::text_node::TextNode,)>,
@@ -33,6 +36,7 @@ fn manual_tree_building() {
 
     impl HelloWorld {
         pub fn set_property_hello_text(&mut self, content: &str) {
+            use maomi::component::TemplateHelper;
             if self.hello_text.as_str() != content {
                 self.hello_text = content.into();
                 self.template_field.mark_dirty();
@@ -49,86 +53,93 @@ fn manual_tree_building() {
         }
     }
 
-    impl maomi::component::ComponentTemplate<maomi_backend_dom::DomBackend> for HelloWorld {
+    impl maomi::component::ComponentTemplate<backend!()> for HelloWorld {
         type TemplateField = maomi::component::Template<(
             maomi::component::Node<div, (maomi::text_node::TextNode,)>,
         )>;
 
+        #[inline]
         fn template(&self) -> &Self::TemplateField {
             &self.template_field
         }
 
+        #[inline]
         fn template_mut(&mut self) -> &mut Self::TemplateField {
             &mut self.template_field
         }
 
         fn create(
             &mut self,
-            parent_element: &mut maomi::backend::tree::ForestNodeMut<<maomi_backend_dom::DomBackend as maomi::backend::Backend>::GeneralElement>,
-        ) -> Result<maomi::backend::tree::ForestNodeRc<<maomi_backend_dom::DomBackend as maomi::backend::Backend>::GeneralElement>, maomi::error::Error>
+            __parent_element: &mut maomi::backend::tree::ForestNodeMut<<backend!() as maomi::backend::Backend>::GeneralElement>,
+        ) -> Result<maomi::backend::tree::ForestNodeRc<<backend!() as maomi::backend::Backend>::GeneralElement>, maomi::error::Error>
         where
             Self: Sized {
             use maomi::backend::BackendGeneralElement;
-            let backend_element = <maomi_backend_dom::DomBackend as maomi::backend::Backend>::GeneralElement::create_virtual_element(parent_element)?;
-            let child_nodes = {
-                let mut parent_element = parent_element.borrow_mut(&backend_element);
+            let __backend_element = <backend!() as maomi::backend::Backend>::GeneralElement::create_virtual_element(__parent_element)?;
+            let __child_nodes = {
+                let mut __parent_element = __parent_element.borrow_mut(&__backend_element);
                 (
                     {
-                        let (node, backend_element) =
-                            <div as maomi::backend::SupportBackend<maomi_backend_dom::DomBackend>>::create(&mut parent_element, |child| {
-                                child.set_property_hidden(false);
+                        let (__node, __backend_element) =
+                            <div as maomi::backend::SupportBackend<backend!()>>::create(&mut __parent_element, |__node| {
+                                __node.set_property_hidden(false);
                                 Ok(())
                             })?;
-                        let child_nodes = {
-                            let mut parent_element = parent_element.borrow_mut(&backend_element);
+                        let __child_nodes = {
+                            let mut __parent_element = __parent_element.borrow_mut(&__backend_element);
                             (
                                 {
-                                    let (text_node, backend_element) = maomi::text_node::TextNode::create::<maomi_backend_dom::DomBackend>(
-                                        &mut parent_element,
+                                    let (__node, __backend_element) = maomi::text_node::TextNode::create::<backend!()>(
+                                        &mut __parent_element,
                                         &self.hello_text,
                                     )?;
-                                    <maomi_backend_dom::DomBackend as maomi::backend::Backend>::GeneralElement::append(&mut parent_element, backend_element);
-                                    text_node
+                                    <backend!() as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
+                                    __node
                                 },
                             )
                         };
-                        <maomi_backend_dom::DomBackend as maomi::backend::Backend>::GeneralElement::append(&mut parent_element, backend_element);
-                        maomi::component::Node { node, child_nodes }
+                        <backend!() as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
+                        maomi::component::Node { node: __node, child_nodes: __child_nodes }
                     },
                 )
             };
             self.template_field = maomi::component::Template::Structure {
                 dirty: false,
-                backend_element_token: backend_element.token(),
-                backend_element: Box::new(backend_element.clone()),
-                child_nodes,
+                backend_element_token: __backend_element.token(),
+                backend_element: Box::new(__backend_element.clone()),
+                child_nodes: __child_nodes,
             };
-            Ok(backend_element)
+            Ok(__backend_element)
         }
 
         fn apply_updates(
             &mut self,
-            backend_element: &mut maomi::backend::tree::ForestNodeMut<<maomi_backend_dom::DomBackend as maomi::backend::Backend>::GeneralElement>,
+            __backend_element: &mut maomi::backend::tree::ForestNodeMut<<backend!() as maomi::backend::Backend>::GeneralElement>,
         ) -> Result<(), maomi::error::Error> {
-            match &mut self.template_field {
+            match self.template_field {
                 maomi::component::Template::Uninitialized => {
                     Ok(())
                 }
-                maomi::component::Template::Structure { dirty, child_nodes, backend_element_token, .. } => {
-                    if *dirty {
-                        *dirty = false;
-                        let mut backend_element = backend_element.borrow_mut_token(backend_element_token);
+                maomi::component::Template::Structure {
+                    dirty: ref mut __dirty,
+                    child_nodes: ref mut __child_nodes,
+                    backend_element_token: ref __backend_element_token,
+                    ..
+                } => {
+                    if *__dirty {
+                        *__dirty = false;
+                        let mut __backend_element = __backend_element.borrow_mut_token(__backend_element_token);
                         {
-                            let maomi::component::Node { ref mut node, child_nodes } = &mut child_nodes.0;
+                            let maomi::component::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.0;
                             {
-                                node.set_property_hidden(false);
+                                __node.set_property_hidden(false);
                             }
+                            <div as maomi::backend::SupportBackend<backend!()>>::apply_updates(__node, &mut __backend_element)?;
                             {
-                                let text_node = &mut child_nodes.0;
-                                text_node.set_text(&self.hello_text);
-                                text_node.apply_updates::<maomi_backend_dom::DomBackend>(&mut backend_element)?;
+                                let __node = &mut __child_nodes.0;
+                                __node.set_text(&self.hello_text);
+                                __node.apply_updates::<backend!()>(&mut __backend_element)?;
                             }
-                            <div as maomi::backend::SupportBackend<maomi_backend_dom::DomBackend>>::apply_updates(node, &mut backend_element)?;
                         }
                     }
                     Ok(())

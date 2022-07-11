@@ -14,7 +14,7 @@ pub struct Node<N, C> {
 pub trait TemplateHelper: Default {
     fn backend_element_mut<B: BackendGeneralElement>(&mut self) -> Result<&tree::ForestNodeRc<B>, Error>;
     fn backend_element_token(&self) -> Result<&tree::ForestToken, Error>;
-    fn mark_dirty(&mut self);
+    fn mark_dirty(&mut self); // TODO update queue when mark dirty
 }
 
 /// The template type
@@ -81,7 +81,7 @@ pub trait Component {
 }
 
 /// Some component helper functions
-pub trait ComponentAttributeMacro<B: Backend> {
+pub trait ComponentExt<B: Backend> {
     type TemplateField;
 
     /// Get a reference of the template field of the component
@@ -94,7 +94,7 @@ pub trait ComponentAttributeMacro<B: Backend> {
     fn update(&mut self) -> Result<(), Error>;
 }
 
-impl<B: Backend, T: ComponentTemplate<B>> ComponentAttributeMacro<B> for T {
+impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B> for T {
     type TemplateField = T::TemplateField;
 
     fn template(&self) -> &Self::TemplateField {
@@ -151,6 +151,8 @@ impl<B: Backend, T: ComponentTemplate<B> + Component> SupportBackend<B> for T {
         let mut component = <Self as Component>::new();
         init(&mut component)?;
         let backend_element = <Self as ComponentTemplate<B>>::create(&mut component, owner)?;
+        <Self as Component>::created(&mut component);
+        <Self as ComponentTemplate<B>>::apply_updates(&mut component, owner)?;
         Ok((component, backend_element))
     }
 
