@@ -21,6 +21,7 @@ struct BackendContextInner<B: Backend> {
 }
 
 impl<B: Backend> BackendContext<B> {
+    /// Create a new backend context
     pub fn new(backend: B) -> Self {
         let entered = RefCell::new(EnteredBackendContext {
             backend,
@@ -81,6 +82,7 @@ impl<B: Backend> EnteredBackendContext<B> {
         MountPoint::new_in_backend(&mut owner, init)
     }
 
+    /// Get the root backend element
     pub fn root_mut(&mut self) -> tree::ForestNodeMut<B::GeneralElement> {
         self.backend.root_mut()
     }
