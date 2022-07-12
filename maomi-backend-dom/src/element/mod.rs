@@ -3,7 +3,7 @@ use maomi::error::Error;
 
 use crate::{tree::*, DomBackend, DomGeneralElement};
 
-pub struct DomElement(web_sys::Element);
+pub struct DomElement(pub(crate) web_sys::Element);
 
 impl std::fmt::Debug for DomElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

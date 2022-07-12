@@ -2,6 +2,8 @@ use crate::error::Error;
 pub use maomi_tree as tree;
 use tree::*;
 
+pub mod context;
+
 /// A backend
 pub trait Backend: 'static {
     type GeneralElement: BackendGeneralElement<BaseBackend = Self>;

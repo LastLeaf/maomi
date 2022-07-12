@@ -1,30 +1,44 @@
-use maomi_backend_dom::{element::*, DomBackend};
+// import WASM support
 use wasm_bindgen::prelude::*;
+// import maomi core module
+use maomi::{prelude::*, backend::context::BackendContext};
+// using DOM backend
+use maomi_backend_dom::{DomBackend, element::*};
 
-template!(HelloWorld in DomBackend {
-    <div />
-    <div>{{ self.hello_text }}</div>
-});
-
-#[component]
+// declare a component
+#[component(for DomBackend)]
 struct HelloWorld {
-    template_structure: (Node<div, (Node<div, (TextNode, ())>, ())>, ()),
-    need_update: bool,
-    hello_text: String,
-    tap_hello: (),
+    // a component should have a template field
+    template: template! {
+        // the template is XML-like
+        <div>
+            // strings in the template must be quoted
+            "Hello world!"
+        </div>
+        <div>
+            // use { ... } bindings in the template
+            { &self.hello }
+        </div>
+    },
+    hello: String,
+}
+
+// implement basic component interfaces
+impl Component for HelloWorld {
+    fn new() -> Self {
+        Self {
+            template: Default::default(),
+            hello: "Hello world again!".to_string(),
+        }
+    }
 }
 
 #[wasm_bindgen(start)]
 pub fn wasm_main() {
-    let mut dom_backend = DomBackend::new();
-    let mut parent = dom_backend.root_mut();
-    let (mut hello_world, elem) =
-        <HelloWorld as SupportBackend<DomBackend>>::create(&mut parent).unwrap();
-    <DomBackend as Backend>::GeneralElement::append(&mut parent, elem);
-    // hello_world.set_property_hello_text("Hello again!");
-    <HelloWorld as SupportBackend<DomBackend>>::apply_updates(
-        &mut hello_world,
-        &mut parent.first_child_mut().unwrap(),
-    )
-    .unwrap();
+    let dom_backend = DomBackend::new_with_document_body().unwrap();
+    let backend_context = BackendContext::new(dom_backend);
+    backend_context.enter_sync(move |ctx| {
+        let mut mount_point = ctx.new_mount_point(|_: &mut HelloWorld| Ok(())).unwrap();
+        mount_point.append_attach(&mut ctx.root_mut());
+    }).ok();
 }

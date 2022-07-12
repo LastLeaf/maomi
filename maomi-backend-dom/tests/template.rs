@@ -17,7 +17,7 @@ fn test_component<T: maomi::backend::SupportBackend<maomi_backend_dom::DomBacken
     expected_html: &str,
 ) {
     use maomi::backend::Backend;
-    let mut dom_backend = maomi_backend_dom::DomBackend::new();
+    let mut dom_backend = maomi_backend_dom::DomBackend::new_with_document_body().unwrap();
     let elem = {
         let mut parent = dom_backend.root_mut();
         let (_, elem) =

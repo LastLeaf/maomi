@@ -66,6 +66,7 @@ impl<S> TemplateHelper for Template<S> {
 /// A component
 ///
 /// This trait must be implemented by components.
+/// It contains some lifetime callbacks.
 pub trait Component {
     /// Called when a new instance requested
     fn new() -> Self;
@@ -81,6 +82,8 @@ pub trait Component {
 }
 
 /// Some component helper functions
+///
+/// This trait is auto-implemented by `#[component]` .
 pub trait ComponentExt<B: Backend> {
     type TemplateField;
 
@@ -89,9 +92,6 @@ pub trait ComponentExt<B: Backend> {
 
     /// Get a mutable reference of the template field of the component
     fn template_mut(&mut self) -> &mut Self::TemplateField;
-
-    /// Apply updates to templates
-    fn update(&mut self) -> Result<(), Error>;
 }
 
 impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B> for T {
@@ -104,8 +104,14 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B> for T {
     fn template_mut(&mut self) -> &mut Self::TemplateField {
         <Self as ComponentTemplate<B>>::template_mut(self)
     }
+}
 
-    fn update(&mut self) -> Result<(), Error> {
+pub(crate) trait StaticComponent<B: Backend> {
+    fn apply_template_updates(&mut self) -> Result<(), Error>;
+}
+
+impl<B: Backend, T: ComponentTemplate<B> + 'static> StaticComponent<B> for T {
+    fn apply_template_updates(&mut self) -> Result<(), Error> {
         let backend_element = <Self as ComponentTemplate<B>>::template_mut(self).backend_element_mut()?.clone();
         let mut backend_element = backend_element.borrow_mut();
         ComponentTemplate::<B>::apply_updates(self, &mut backend_element)?;

@@ -8,7 +8,7 @@ fn prepare_env(
     f: impl FnOnce(&mut maomi::backend::tree::ForestNodeMut<maomi_backend_dom::DomGeneralElement>),
 ) {
     use maomi::backend::Backend;
-    let mut dom_backend = maomi_backend_dom::DomBackend::new();
+    let mut dom_backend = maomi_backend_dom::DomBackend::new_with_document_body().unwrap();
     let mut parent = dom_backend.root_mut();
     f(&mut parent);
 }
