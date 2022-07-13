@@ -83,14 +83,14 @@ impl TemplateNode {
             }
             Self::SelfCloseTag { tag_name, .. } => {
                 let span = tag_name.span();
-                parse_quote_spanned!(span=> maomi::component::Node<#tag_name, ()> )
+                parse_quote_spanned!(span=> maomi::node::Node<#tag_name, ()> )
             }
             Self::Tag {
                 tag_name, children, ..
             } => {
                 let span = tag_name.span();
                 let children = children.iter().map(|c| c.gen_type());
-                parse_quote_spanned!(span=> maomi::component::Node<#tag_name, (#(#children,)*)> )
+                parse_quote_spanned!(span=> maomi::node::Node<#tag_name, (#(#children,)*)> )
             }
         }
     }
@@ -302,7 +302,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         })?;
                     let __child_nodes = ();
                     <#backend_param as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                    maomi::component::Node { node: __node, child_nodes: __child_nodes }
+                    maomi::node::Node { node: __node, child_nodes: __child_nodes }
                 }
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
@@ -321,7 +321,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         )
                     };
                     <#backend_param as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                    maomi::component::Node { node: __node, child_nodes: __child_nodes }
+                    maomi::node::Node { node: __node, child_nodes: __child_nodes }
                 }
             }
         }.to_tokens(tokens);
@@ -376,7 +376,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
                 quote_spanned! {span=>
-                    let maomi::component::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.#child_index;
+                    let maomi::node::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.#child_index;
                     {
                         // TODO set property
                     }
@@ -393,7 +393,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         backend_param,
                     });
                 quote_spanned! {span=>
-                    let maomi::component::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.#child_index;
+                    let maomi::node::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.#child_index;
                     {
                         // TODO set property
                     }

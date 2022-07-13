@@ -1,7 +1,8 @@
-pub mod backend;
-pub mod component;
 pub mod error;
+pub mod backend;
 pub mod text_node;
+pub mod component;
+pub mod node;
 pub mod mount_point;
 pub use backend::context::BackendContext;
 

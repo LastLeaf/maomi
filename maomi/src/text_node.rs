@@ -10,6 +10,7 @@ pub struct TextNode {
 }
 
 impl TextNode {
+    #[inline]
     pub fn create<B: Backend>(
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         content: &str,
@@ -27,6 +28,7 @@ impl TextNode {
         Ok((this, elem))
     }
 
+    #[inline]
     pub fn apply_updates<B: Backend>(
         &mut self,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
@@ -41,6 +43,7 @@ impl TextNode {
     }
 
     /// Get the backend element
+    #[inline]
     pub fn backend_element_mut<'b, B: Backend>(
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
@@ -49,6 +52,7 @@ impl TextNode {
     }
 
     /// Get the backend element
+    #[inline]
     pub fn backend_element_rc<'b, B: Backend>(
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
@@ -56,6 +60,7 @@ impl TextNode {
         Ok(owner.resolve_token(&self.backend_element_token))
     }
 
+    #[inline]
     pub fn set_text(&mut self, text: &str) {
         if self.content.as_str() != text {
             self.content = text.to_string();

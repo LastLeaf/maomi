@@ -1,19 +1,14 @@
+use std::{cell::RefCell, rc::{Rc, Weak}};
+
+use tree::ForestNodeRc;
+
 use crate::{
     backend::{tree, Backend, SupportBackend, BackendGeneralElement},
-    error::Error,
+    error::Error, BackendContext,
 };
-
-/// A helper type to represent a node with child nodes
-#[derive(Debug, Clone, PartialEq)]
-pub struct Node<N, C> {
-    pub node: N,
-    pub child_nodes: C,
-}
 
 /// Some helper functions for the template type
 pub trait TemplateHelper: Default {
-    fn backend_element_mut<B: BackendGeneralElement>(&mut self) -> Result<&tree::ForestNodeRc<B>, Error>;
-    fn backend_element_token(&self) -> Result<&tree::ForestToken, Error>;
     fn mark_dirty(&mut self); // TODO update queue when mark dirty
 }
 
@@ -22,8 +17,7 @@ pub enum Template<S> {
     Uninitialized,
     Structure {
         dirty: bool,
-        backend_element: Box<dyn std::any::Any>,
-        backend_element_token: tree::ForestToken,
+        component: Weak<dyn std::any::Any>,
         child_nodes: S,
     },
 }
@@ -35,24 +29,6 @@ impl<S> Default for Template<S> {
 }
 
 impl<S> TemplateHelper for Template<S> {
-    fn backend_element_mut<B: BackendGeneralElement>(&mut self) -> Result<&tree::ForestNodeRc<B>, Error> {
-        match self {
-            Self::Uninitialized => Err(Error::TreeNotCreated),
-            Self::Structure { backend_element, .. } => {
-                backend_element.downcast_ref::<tree::ForestNodeRc<B>>().ok_or(Error::TreeNodeTypeWrong)
-            }
-        }
-    }
-
-    fn backend_element_token(&self) -> Result<&tree::ForestToken, Error> {
-        match self {
-            Self::Uninitialized => Err(Error::TreeNotCreated),
-            Self::Structure { backend_element_token, .. } => {
-                Ok(backend_element_token)
-            }
-        }
-    }
-
     fn mark_dirty(&mut self) {
         match self {
             Self::Uninitialized => {}
@@ -106,19 +82,6 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B> for T {
     }
 }
 
-pub(crate) trait StaticComponent<B: Backend> {
-    fn apply_template_updates(&mut self) -> Result<(), Error>;
-}
-
-impl<B: Backend, T: ComponentTemplate<B> + 'static> StaticComponent<B> for T {
-    fn apply_template_updates(&mut self) -> Result<(), Error> {
-        let backend_element = <Self as ComponentTemplate<B>>::template_mut(self).backend_element_mut()?.clone();
-        let mut backend_element = backend_element.borrow_mut();
-        ComponentTemplate::<B>::apply_updates(self, &mut backend_element)?;
-        Ok(())
-    }
-}
-
 /// A component template
 ///
 /// Normally it is auto-implemented by `#[component]` .
@@ -135,7 +98,9 @@ pub trait ComponentTemplate<B: Backend> {
     fn create(
         &mut self,
         parent: &mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> Result<tree::ForestNodeRc<B::GeneralElement>, Error>
+        backend_element: &tree::ForestNodeRc<B::GeneralElement>,
+        update_scheduler: Box<dyn UpdateScheduler>,
+    ) -> Result<(), Error>
     where
         Self: Sized;
 
@@ -146,42 +111,125 @@ pub trait ComponentTemplate<B: Backend> {
     ) -> Result<(), Error>;
 }
 
-impl<B: Backend, T: ComponentTemplate<B> + Component> SupportBackend<B> for T {
+/// Represent a component that can update independently
+///
+/// Normally it is auto-implemented by `#[component]` .
+pub trait UpdateScheduler: 'static {
+    fn schedule_update(&mut self);
+}
+
+/// A node that wraps a component instance
+pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component + 'static> {
+    component: Rc<RefCell<C>>,
+    backend_context: BackendContext<B>,
+    backend_element: ForestNodeRc<B::GeneralElement>,
+}
+
+impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B, C> {
+    fn clone(&self) -> Self {
+        Self {
+            component: self.component.clone(),
+            backend_context: self.backend_context.clone(),
+            backend_element: self.backend_element.clone(),
+        }
+    }
+}
+
+impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> ComponentNode<B, C> {
+    /// Enter the component, getting a mutable reference of it
+    ///
+    /// If any component has already entered,
+    /// it will wait until exits,
+    /// so the `f` is required to be `'static` .
+    #[inline]
+    pub fn enter(&self, f: impl 'static + FnOnce(&mut C) -> Result<(), Error>) {
+        let component = self.component.clone();
+        self.backend_context.enter(move |_| {
+            f(&mut component.borrow_mut())
+        });
+    }
+
+    /// Try enter the component sync, getting a mutable reference of it
+    ///
+    /// If any component has already entered, an `Err` is returned.
+    #[inline]
+    pub fn enter_sync<T>(&self, f: impl FnOnce(&mut C) -> T) -> Result<T, Error> {
+        match self.backend_context.enter_sync(|_| {
+            f(&mut self.component.borrow_mut())
+        }) {
+            Ok(ret) => Ok(ret),
+            Err(_) => Err(Error::AlreadyEntered),
+        }
+    }
+}
+
+impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> UpdateScheduler for ComponentNode<B, C> {
+    #[inline]
+    fn schedule_update(&mut self) {
+        let backend_element = self.backend_element.clone();
+        self.enter(move |comp| {
+            let mut backend_element = backend_element.borrow_mut();
+            <C as ComponentTemplate<B>>::apply_updates(comp, &mut backend_element)
+        });
+    }
+}
+
+impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B> for ComponentNode<B, C> {
+    #[inline]
     fn create(
+        backend_context: &BackendContext<B>,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         init: impl FnOnce(&mut Self) -> Result<(), Error>,
     ) -> Result<(Self, tree::ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized,
     {
-        let mut component = <Self as Component>::new();
-        init(&mut component)?;
-        let backend_element = <Self as ComponentTemplate<B>>::create(&mut component, owner)?;
-        <Self as Component>::created(&mut component);
-        <Self as ComponentTemplate<B>>::apply_updates(&mut component, owner)?;
-        Ok((component, backend_element))
+        let mut backend_element = B::GeneralElement::create_virtual_element(owner)?;
+        let this = ComponentNode {
+            component: Rc::new(RefCell::new(<C as Component>::new())),
+            backend_context: backend_context.clone(),
+            backend_element: backend_element.clone(),
+        };
+        {
+            let mut component = this.component.borrow_mut();
+            // TODO init(&mut component)?;
+            <C as ComponentTemplate<B>>::create(
+                &mut component,
+                owner,
+                &mut backend_element,
+                Box::new(this.clone()),
+            )?;
+            <C as Component>::created(&mut component);
+            <C as ComponentTemplate<B>>::apply_updates(&mut component, owner)?;
+        }
+        Ok((this, backend_element))
     }
 
+    #[inline]
     fn apply_updates(
         &mut self,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<(), Error> {
-        <Self as ComponentTemplate<B>>::apply_updates(self, owner)
+        if let Ok(mut comp) = self.component.try_borrow_mut() {
+            <C as ComponentTemplate<B>>::apply_updates(&mut comp, owner)
+        } else {
+            Err(Error::RecursiveUpdate)
+        }
     }
 
+    #[inline]
     fn backend_element_mut<'b>(
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<tree::ForestNodeMut<B::GeneralElement>, Error> {
-        let token = <Self as ComponentTemplate<B>>::template(self).backend_element_token()?;
-        Ok(owner.borrow_mut_token(&token))
+        Ok(owner.borrow_mut(&self.backend_element))
     }
 
+    #[inline]
     fn backend_element_rc<'b>(
         &'b mut self,
-        owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
+        _owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<tree::ForestNodeRc<B::GeneralElement>, Error> {
-        let token = <Self as ComponentTemplate<B>>::template(self).backend_element_token()?;
-        Ok(owner.resolve_token(&token))
+        Ok(self.backend_element.clone())
     }
 }

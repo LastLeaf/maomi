@@ -6,6 +6,12 @@ pub enum Error {
     /// 
     /// Generally means some bad operation is done directly in the backend.
     TreeNodeTypeWrong,
+    /// A recursive update is detected
+    /// 
+    /// An element cannot be updated while it is still in another update process.
+    RecursiveUpdate,
+    /// The backend context is already entered
+    AlreadyEntered,
     /// A general backend failure
     BackendError {
         msg: String,
@@ -21,6 +27,12 @@ impl std::fmt::Display for Error {
             }
             Error::TreeNodeTypeWrong => {
                 write!(f, "The node type in backend element tree is incorrect")?;
+            }
+            Error::RecursiveUpdate => {
+                write!(f, "A recursive update is detected")?;
+            }
+            Error::AlreadyEntered => {
+                write!(f, "The backend context is already entered")?;
             }
             Error::BackendError { msg, err } => {
                 if let Some(err) = err {

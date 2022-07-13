@@ -1,13 +1,12 @@
 use std::{collections::VecDeque, rc::{Rc, Weak}, cell::RefCell};
 
 use super::{Backend, tree};
-use crate::component::{StaticComponent, Component, ComponentTemplate};
+use crate::component::{Component, ComponentTemplate, ComponentNode};
 use crate::mount_point::MountPoint;
 use crate::error::Error;
 
 pub(crate) enum BackendContextEvent<B: Backend> {
-    General(Box<dyn FnOnce(&mut EnteredBackendContext<B>)>),
-    Update(Rc<dyn StaticComponent<B>>),
+    General(Box<dyn FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>>),
 }
 
 /// A backend context for better backend management
@@ -18,6 +17,12 @@ pub struct BackendContext<B: Backend> {
 struct BackendContextInner<B: Backend> {
     entered: RefCell<EnteredBackendContext<B>>,
     event_queue: RefCell<VecDeque<BackendContextEvent<B>>>,
+}
+
+impl<B: Backend> Clone for BackendContext<B> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
 }
 
 impl<B: Backend> BackendContext<B> {
@@ -36,14 +41,30 @@ impl<B: Backend> BackendContext<B> {
         Self { inner }
     }
 
+    fn exec_queue(&self, entered: &mut EnteredBackendContext<B>) {
+        while let Some(ev) = self.inner.event_queue.borrow_mut().pop_front() {
+            match ev {
+                BackendContextEvent::General(f) => {
+                    if let Err(err) = f(entered) {
+                        log::error!("{}", err);
+                    }
+                }
+            }
+        }
+    }
+
     /// Enter the backend context
     ///
     /// If the backend context has already entered,
     /// it will wait until exits,
     /// so the `f` is required to be `'static` .
-    pub fn enter(&self, f: impl 'static + FnOnce(&mut EnteredBackendContext<B>)) {
+    #[inline]
+    pub fn enter(&self, f: impl 'static + FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>) {
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
-            f(&mut entered);
+            if let Err(err) = f(&mut entered) {
+                log::error!("{}", err);
+            }
+            self.exec_queue(&mut entered);
         } else {
             self.inner.event_queue.borrow_mut().push_back(BackendContextEvent::General(Box::new(f)));
         }
@@ -52,11 +73,14 @@ impl<B: Backend> BackendContext<B> {
     /// Try enter the backend context sync
     ///
     /// If the backend context has already entered, an `Err` is returned.
+    #[inline]
     pub fn enter_sync<T, F>(&self, f: F) -> Result<T, F>
     where
         F: FnOnce(&mut EnteredBackendContext<B>) -> T {
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
-            Ok(f(&mut entered))
+            let ret = f(&mut entered);
+            self.exec_queue(&mut entered);
+            Ok(ret)
         } else {
             Err(f)
         }
@@ -76,13 +100,18 @@ impl<B: Backend> EnteredBackendContext<B> {
     /// It is encouraged to change template data bindings in `init` .
     pub fn new_mount_point<C: Component + ComponentTemplate<B>>(
         &mut self,
-        init: impl FnOnce(&mut C) -> Result<(), Error>,
+        init: impl FnOnce(&mut ComponentNode<B, C>) -> Result<(), Error>,
     ) -> Result<MountPoint<B, C>, Error> {
         let mut owner = self.backend.root_mut();
-        MountPoint::new_in_backend(&mut owner, init)
+        MountPoint::new_in_backend(
+            &BackendContext { inner: self.ctx.as_ref().unwrap().upgrade().unwrap() },
+            &mut owner,
+            init,
+        )
     }
 
     /// Get the root backend element
+    #[inline]
     pub fn root_mut(&mut self) -> tree::ForestNodeMut<B::GeneralElement> {
         self.backend.root_mut()
     }

@@ -1,6 +1,7 @@
 
+use crate::BackendContext;
 use crate::error::Error;
-use crate::component::{Component, ComponentTemplate};
+use crate::component::{Component, ComponentTemplate, ComponentNode};
 use crate::backend::{Backend, SupportBackend, tree, BackendGeneralElement};
 
 /// A mount point which can generate a "root" component and mounted to the whole page
@@ -8,9 +9,9 @@ use crate::backend::{Backend, SupportBackend, tree, BackendGeneralElement};
 /// A mount point can be created in a `BackendContext` .
 pub struct MountPoint<
     B: Backend,
-    C: Component + SupportBackend<B>,
+    C: Component + ComponentTemplate<B> + 'static,
 > {
-    component: C,
+    component_node: ComponentNode<B, C>,
     backend_element: tree::ForestNodeRc<B::GeneralElement>,
 }
 
@@ -19,16 +20,13 @@ impl<
     C: Component + ComponentTemplate<B>,
 > MountPoint<B, C> {
     pub(crate) fn new_in_backend(
+        backend_context: &BackendContext<B>,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
-        init: impl FnOnce(&mut C) -> Result<(), Error>,
+        init: impl FnOnce(&mut ComponentNode<B, C>) -> Result<(), Error>,
     ) -> Result<Self, Error> {
-        let mut component = C::new();
-        init(&mut component)?;
-        let backend_element = <C as ComponentTemplate<B>>::create(&mut component, owner)?;
-        <C as Component>::created(&mut component);
-        <C as ComponentTemplate<B>>::apply_updates(&mut component, owner)?;
+        let (component_node, backend_element) = <ComponentNode<B, C> as SupportBackend<B>>::create(backend_context, owner, init)?;
         Ok(Self {
-            component,
+            component_node,
             backend_element,
         })
     }
@@ -50,13 +48,8 @@ impl<
         <B::GeneralElement as BackendGeneralElement>::detach(elem);
     }
 
-    /// Get the underlying root component
-    pub fn root_component(&self) -> &C {
-        &self.component
-    }
-
-    /// Get the underlying root component
-    pub fn root_component_mut(&mut self) -> &mut C {
-        &mut self.component
+    /// Get the root component
+    pub fn root_component(&self) -> &ComponentNode<B, C> {
+        &self.component_node
     }
 }

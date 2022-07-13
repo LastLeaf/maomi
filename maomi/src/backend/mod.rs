@@ -3,6 +3,7 @@ pub use maomi_tree as tree;
 use tree::*;
 
 pub mod context;
+use context::BackendContext;
 
 /// A backend
 pub trait Backend: 'static {
@@ -102,6 +103,7 @@ pub trait BackendTextNode {
 pub trait SupportBackend<B: Backend> {
     /// Create with a backend element
     fn create<'b>(
+        backend_context: &BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
         init: impl FnOnce(&mut Self) -> Result<(), Error>,
     ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
