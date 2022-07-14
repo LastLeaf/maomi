@@ -44,15 +44,6 @@ impl TextNode {
 
     /// Get the backend element
     #[inline]
-    pub fn backend_element_mut<'b, B: Backend>(
-        &'b mut self,
-        owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> Result<tree::ForestNodeMut<B::GeneralElement>, Error> {
-        Ok(owner.borrow_mut_token(&self.backend_element_token))
-    }
-
-    /// Get the backend element
-    #[inline]
     pub fn backend_element_rc<'b, B: Backend>(
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,

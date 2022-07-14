@@ -103,10 +103,9 @@ pub trait BackendTextNode {
 pub trait SupportBackend<B: Backend> {
     /// Create with a backend element
     fn create<'b>(
-        backend_context: &BackendContext<B>,
+        backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        init: impl FnOnce(&mut Self) -> Result<(), Error>,
-    ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
+    ) -> Result<Self, Error>
     where
         Self: Sized;
 
@@ -117,14 +116,8 @@ pub trait SupportBackend<B: Backend> {
     ) -> Result<(), Error>;
 
     /// Get the backend element
-    fn backend_element_mut<'b>(
-        &'b mut self,
-        owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> Result<ForestNodeMut<B::GeneralElement>, Error>;
-
-    /// Get the backend element
     fn backend_element_rc<'b>(
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> Result<ForestNodeRc<B::GeneralElement>, Error>;
+    ) -> ForestNodeRc<B::GeneralElement>;
 }

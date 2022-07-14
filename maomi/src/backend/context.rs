@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, rc::{Rc, Weak}, cell::RefCell};
 
 use super::{Backend, tree};
-use crate::component::{Component, ComponentTemplate, ComponentNode};
+use crate::component::{Component, ComponentTemplate};
 use crate::mount_point::MountPoint;
 use crate::error::Error;
 
@@ -98,9 +98,9 @@ impl<B: Backend> EnteredBackendContext<B> {
     ///
     /// The `init` provides a way to do some updates before the component `created` lifetime.
     /// It is encouraged to change template data bindings in `init` .
-    pub fn new_mount_point<C: Component + ComponentTemplate<B>>(
+    pub fn new_mount_point<C: Component + ComponentTemplate<B, C> + 'static>(
         &mut self,
-        init: impl FnOnce(&mut ComponentNode<B, C>) -> Result<(), Error>,
+        init: impl FnOnce(&mut C) -> Result<(), Error>,
     ) -> Result<MountPoint<B, C>, Error> {
         let mut owner = self.backend.root_mut();
         MountPoint::new_in_backend(

@@ -9,7 +9,7 @@ use crate::backend::{Backend, SupportBackend, tree, BackendGeneralElement};
 /// A mount point can be created in a `BackendContext` .
 pub struct MountPoint<
     B: Backend,
-    C: Component + ComponentTemplate<B> + 'static,
+    C: Component + ComponentTemplate<B, C> + 'static,
 > {
     component_node: ComponentNode<B, C>,
     backend_element: tree::ForestNodeRc<B::GeneralElement>,
@@ -17,14 +17,20 @@ pub struct MountPoint<
 
 impl<
     B: Backend,
-    C: Component + ComponentTemplate<B>,
+    C: Component + ComponentTemplate<B, C>,
 > MountPoint<B, C> {
     pub(crate) fn new_in_backend(
         backend_context: &BackendContext<B>,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
-        init: impl FnOnce(&mut ComponentNode<B, C>) -> Result<(), Error>,
+        init: impl FnOnce(&mut C) -> Result<(), Error>,
     ) -> Result<Self, Error> {
-        let (component_node, backend_element) = <ComponentNode<B, C> as SupportBackend<B>>::create(backend_context, owner, init)?;
+        let mut component_node = <ComponentNode<B, C> as SupportBackend<B>>::create(backend_context, owner)?;
+        let backend_element = component_node.backend_element_rc(owner);
+        {
+            let mut comp = component_node.component.borrow_mut();
+            init(&mut comp)?;
+        }
+        <ComponentNode<B, C> as SupportBackend<B>>::apply_updates(&mut component_node, owner)?;
         Ok(Self {
             component_node,
             backend_element,
