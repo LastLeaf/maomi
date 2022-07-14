@@ -24,13 +24,13 @@ impl<
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         init: impl FnOnce(&mut C) -> Result<(), Error>,
     ) -> Result<Self, Error> {
-        let mut component_node = <ComponentNode<B, C> as SupportBackend<B>>::create(backend_context, owner)?;
+        let mut component_node = <ComponentNode<B, C> as SupportBackend<B>>::init(backend_context, owner)?;
         let backend_element = component_node.backend_element_rc(owner);
         {
             let mut comp = component_node.component.borrow_mut();
             init(&mut comp)?;
         }
-        <ComponentNode<B, C> as SupportBackend<B>>::apply_updates(&mut component_node, owner)?;
+        <ComponentNode<B, C> as SupportBackend<B>>::create_or_update(&mut component_node, backend_context, owner, |_, _| Ok(()))?;
         Ok(Self {
             component_node,
             backend_element,

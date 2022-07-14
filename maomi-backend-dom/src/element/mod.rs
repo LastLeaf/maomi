@@ -49,7 +49,9 @@ impl div {
 }
 
 impl SupportBackend<DomBackend> for div {
-    fn create<'b>(
+    type SlotData = ();
+
+    fn init<'b>(
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<DomGeneralElement>,
     ) -> Result<Self, Error>
@@ -66,11 +68,14 @@ impl SupportBackend<DomBackend> for div {
         Ok(this)
     }
 
-    fn apply_updates<'b>(
+    fn create_or_update<'b>(
         &'b mut self,
-        _owner: &'b mut ForestNodeMut<DomGeneralElement>,
-    ) -> Result<(), maomi::error::Error> {
-        Ok(())
+        _backend_context: &'b BackendContext<DomBackend>,
+        owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
+        slot_fn: impl Fn(&mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        let mut elem = owner.borrow_mut_token(&self.backend_element_token);
+        slot_fn(&mut elem, &())
     }
 
     fn backend_element_rc<'b>(

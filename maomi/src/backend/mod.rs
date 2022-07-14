@@ -101,8 +101,10 @@ pub trait BackendTextNode {
 
 /// A trait that indicates a component or a backend-implemented element for the backend
 pub trait SupportBackend<B: Backend> {
+    type SlotData;
+
     /// Create with a backend element
-    fn create<'b>(
+    fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
     ) -> Result<Self, Error>
@@ -110,9 +112,11 @@ pub trait SupportBackend<B: Backend> {
         Self: Sized;
 
     /// Indicate that the pending updates should be applied
-    fn apply_updates<'b>(
+    fn create_or_update<'b>(
         &'b mut self,
+        backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
+        slot_fn: impl Fn(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
     ) -> Result<(), Error>;
 
     /// Get the backend element

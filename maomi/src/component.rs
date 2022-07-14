@@ -154,6 +154,7 @@ impl<B: Backend, C, T: ComponentTemplate<B, C>> ComponentExt<B, C> for T {
 /// It is auto-implemented by `#[component]` .
 pub trait ComponentTemplate<B: Backend, C> {
     type TemplateField: TemplateHelper<C>;
+    type SlotData;
 
     /// Get a reference of the template field of the component
     fn template(&self) -> &Self::TemplateField;
@@ -165,9 +166,11 @@ pub trait ComponentTemplate<B: Backend, C> {
     fn template_init(&mut self, init: TemplateInit<C>);
 
     /// Create a component within the specified shadow root
-    fn template_create_or_update(
-        &mut self,
-        backend_element: &mut tree::ForestNodeMut<B::GeneralElement>,
+    fn template_create_or_update<'b>(
+        &'b mut self,
+        backend_context: &'b BackendContext<B>,
+        backend_element: &'b mut tree::ForestNodeMut<B::GeneralElement>,
+        slot_fn: impl Fn(&mut tree::ForestNodeMut<<B as Backend>::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
     ) -> Result<(), Error>
     where
         Self: Sized;
@@ -218,11 +221,17 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateSchedul
     #[inline]
     fn schedule_update(&self) {
         let backend_element = self.backend_element.clone();
+        let backend_context = self.backend_context.clone();
         let component = self.component.clone();
         self.backend_context.enter(move |_| {
             let mut backend_element = backend_element.borrow_mut();
             let mut comp = component.borrow_mut();
-            <C as ComponentTemplate<B, C>>::template_create_or_update(&mut comp, &mut backend_element)
+            <C as ComponentTemplate<B, C>>::template_create_or_update(
+                &mut comp,
+                &backend_context,
+                &mut backend_element,
+                |_, _| Ok(()), // TODO fn scope?
+            )
         });
     }
 
@@ -289,8 +298,10 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateSchedul
 }
 
 impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBackend<B> for ComponentNode<B, C> {
+    type SlotData = <C as ComponentTemplate<B, C>>::SlotData;
+
     #[inline]
-    fn create<'b>(
+    fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<Self, Error>
@@ -314,13 +325,20 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBacken
     }
 
     #[inline]
-    fn apply_updates(
-        &mut self,
-        owner: &mut tree::ForestNodeMut<B::GeneralElement>,
+    fn create_or_update<'b>(
+        &'b mut self,
+        backend_context: &'b BackendContext<B>,
+        owner: &'b mut tree::ForestNodeMut<<B as Backend>::GeneralElement>,
+        slot_fn: impl Fn(&mut tree::ForestNodeMut<<B as Backend>::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);
-            <C as ComponentTemplate<B, C>>::template_create_or_update(&mut comp, &mut backend_element)
+            <C as ComponentTemplate<B, C>>::template_create_or_update(
+                &mut comp,
+                backend_context,
+                &mut backend_element,
+                slot_fn,
+            )
         } else {
             Err(Error::RecursiveUpdate)
         }

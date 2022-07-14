@@ -663,7 +663,7 @@ mod test {
 
     #[test]
     fn append() {
-        let mut tree: ForestNodeRc<DropTest> = ForestNodeRc::new_forest(1.into());
+        let tree: ForestNodeRc<DropTest> = ForestNodeRc::new_forest(1.into());
         {
             let mut n1 = tree.borrow_mut();
             let n2 = n1.new_tree(2.into());
@@ -685,7 +685,7 @@ mod test {
 
     #[test]
     fn insert() {
-        let mut tree: ForestNodeRc<DropTest> = ForestNodeRc::new_forest(1.into());
+        let tree: ForestNodeRc<DropTest> = ForestNodeRc::new_forest(1.into());
         {
             let mut n1 = tree.borrow_mut();
             let n2 = n1.new_tree(2.into());
@@ -713,7 +713,7 @@ mod test {
 
     #[test]
     fn detach() {
-        let mut tree: ForestNodeRc<DropTest> = ForestNodeRc::new_forest(1.into());
+        let tree: ForestNodeRc<DropTest> = ForestNodeRc::new_forest(1.into());
         {
             let mut n1 = tree.borrow_mut();
             let n2 = n1.new_tree(2.into());
