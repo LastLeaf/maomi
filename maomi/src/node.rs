@@ -1,5 +1,5 @@
 
-/// A helper type to represent a node with child nodes
+/// A helper type for a node with child nodes
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node<N, C> {
     pub node: N,

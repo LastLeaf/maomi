@@ -30,7 +30,7 @@ impl<
             let mut comp = component_node.component.borrow_mut();
             init(&mut comp)?;
         }
-        <ComponentNode<B, C> as SupportBackend<B>>::create_or_update(&mut component_node, backend_context, owner, |_, _| Ok(()))?;
+        <ComponentNode<B, C> as SupportBackend<B>>::create(&mut component_node, backend_context, owner, |_| Ok(()))?;
         Ok(Self {
             component_node,
             backend_element,

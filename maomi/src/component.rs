@@ -1,11 +1,10 @@
 use std::{cell::RefCell, rc::{Rc, Weak}, marker::PhantomData};
 
-use tree::ForestNodeRc;
-
 use crate::{
     backend::{tree, Backend, SupportBackend, BackendGeneralElement},
-    error::Error, BackendContext,
+    error::Error, BackendContext, diff::ListItemChange,
 };
+use tree::ForestNodeRc;
 
 /// An init object for the template
 /// 
@@ -17,6 +16,7 @@ pub struct TemplateInit<C> {
 /// Some helper functions for the template type
 pub trait TemplateHelper<C>: Default {
     fn mark_dirty(&mut self) where C: 'static;
+    fn clear_dirty(&mut self) -> bool where C: 'static;
     fn is_initialized(&self) -> bool;
     fn component_rc(&self) -> Result<ComponentRc<C>, Error> where C: 'static;
 }
@@ -59,6 +59,13 @@ impl<C, S> TemplateHelper<C> for Template<C, S> {
                 updater.schedule_update();
             }
         }
+    }
+
+    #[inline]
+    fn clear_dirty(&mut self) -> bool where C: 'static {
+        let dirty = self.dirty;
+        self.dirty = false;
+        dirty
     }
 
     #[inline]
@@ -170,7 +177,7 @@ pub trait ComponentTemplate<B: Backend, C> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl Fn(&mut tree::ForestNodeMut<<B as Backend>::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
     ) -> Result<(), Error>
     where
         Self: Sized;
@@ -230,8 +237,12 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateSchedul
                 &mut comp,
                 &backend_context,
                 &mut backend_element,
-                |_, _| Ok(()), // TODO fn scope?
-            )
+                |_| {
+                    // TODO notify slot changes to the owner component
+                    Ok(())
+                }
+            )?;
+            Ok(())
         });
     }
 
@@ -325,11 +336,21 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBacken
     }
 
     #[inline]
-    fn create_or_update<'b>(
+    fn create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut tree::ForestNodeMut<<B as Backend>::GeneralElement>,
-        slot_fn: impl Fn(&mut tree::ForestNodeMut<<B as Backend>::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        self.apply_updates(backend_context, owner, slot_fn)
+    }
+
+    #[inline]
+    fn apply_updates<'b>(
+        &'b mut self,
+        backend_context: &'b BackendContext<B>,
+        owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
+        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);

@@ -4,6 +4,7 @@ use tree::*;
 
 pub mod context;
 use context::BackendContext;
+use crate::diff::ListItemChange;
 
 /// A backend
 pub trait Backend: 'static {
@@ -111,12 +112,20 @@ pub trait SupportBackend<B: Backend> {
     where
         Self: Sized;
 
-    /// Indicate that the pending updates should be applied
-    fn create_or_update<'b>(
+    /// Indicate that the create process should be finished
+    fn create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl Fn(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
+    ) -> Result<(), Error>;
+
+    /// Indicate that the pending updates should be applied
+    fn apply_updates<'b>(
+        &'b mut self,
+        backend_context: &'b BackendContext<B>,
+        owner: &'b mut ForestNodeMut<B::GeneralElement>,
+        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
     ) -> Result<(), Error>;
 
     /// Get the backend element

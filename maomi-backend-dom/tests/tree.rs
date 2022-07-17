@@ -1,3 +1,4 @@
+use maomi::{diff::ListItemChange, prelude::TemplateHelper};
 use wasm_bindgen_test::*;
 
 use maomi_backend_dom::element::*;
@@ -62,35 +63,45 @@ fn manual_tree_building() {
         }
 
         #[inline]
-        fn template_init(&mut self, __init: maomi::component::TemplateInit<TodoComp>) {
-            self.todo_template.init(__init);
+        fn template_init(&mut self, __m_init: maomi::component::TemplateInit<TodoComp>) {
+            self.todo_template.init(__m_init);
         }
 
         #[inline]
         fn template_create_or_update<'b>(
             &'b mut self,
-            __backend_context: &'b maomi::BackendContext<todo_backend!()>,
-            __backend_element: &'b mut maomi::backend::tree::ForestNodeMut<<todo_backend!() as maomi::backend::Backend>::GeneralElement>,
-            __slot_fn: impl Fn(&mut maomi::backend::tree::ForestNodeMut<<todo_backend!() as maomi::backend::Backend>::GeneralElement>, &Self::SlotData) -> Result<(), maomi::error::Error>,
+            __m_backend_context: &'b maomi::BackendContext<todo_backend!()>,
+            __m_backend_element: &'b mut maomi::backend::tree::ForestNodeMut<<todo_backend!() as maomi::backend::Backend>::GeneralElement>,
+            __m_slot_fn: impl Fn(ListItemChange<&mut maomi::backend::tree::ForestNodeMut<<todo_backend!() as maomi::backend::Backend>::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
         ) -> Result<(), maomi::error::Error>
         where
             Self: Sized {
             // main tree impl
-            use maomi::backend::BackendGeneralElement;
             if self.todo_template.structure.is_none() {
-                let __parent_element = __backend_element;
-                let __children = (
+                let __m_parent_element = __m_backend_element;
+                let __m_children = (
                     // create child impl
                     {
-                        let mut __child = <div as maomi::backend::SupportBackend<todo_backend!()>>::init(__backend_context, __parent_element)?;
-                        let __backend_element = <div as maomi::backend::SupportBackend<todo_backend!()>>::backend_element_rc(&mut __child, __parent_element);
-                        <todo_backend!() as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                        __child
+                        let mut __m_child = <div as maomi::backend::SupportBackend<todo_backend!()>>::init(__m_backend_context, __m_parent_element)?;
+                        let __m_backend_element = <div as maomi::backend::SupportBackend<todo_backend!()>>::backend_element_rc(&mut __m_child, __m_parent_element);
+                        <div as maomi::backend::SupportBackend<todo_backend!()>>::create(&mut __m_child, __m_backend_context, __m_parent_element, |__m_slot_change| {
+                            match __m_slot_change {
+                                ListItemChange::Added(node, data) => {
+                                    // TODO
+                                }
+                            }
+                        })?;
+                        <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
+                        __m_child
                     },
                 );
-                // TODO update
+                if self.todo_template.clear_dirty() {
+                    // TODO update
+                } else {
+                    // TODO recurse slots
+                }
             }
-            Ok(())
+            Ok(__m_slot_manager)
         }
 
         // fn create(
