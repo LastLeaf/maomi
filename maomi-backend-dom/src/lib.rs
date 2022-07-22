@@ -63,6 +63,10 @@ impl Backend for DomBackend {
     type VirtualElement = DomVirtualElement;
     type TextNode = DomTextNode;
 
+    fn root(&self) -> ForestNode<Self::GeneralElement> {
+        self.tree.borrow()
+    }
+
     fn root_mut(&mut self) -> ForestNodeMut<Self::GeneralElement> {
         self.tree.borrow_mut()
     }

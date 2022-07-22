@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::{error::Error, node::SlotChildren};
 pub use maomi_tree as tree;
 use tree::*;
 
@@ -11,6 +11,9 @@ pub trait Backend: 'static {
     type GeneralElement: BackendGeneralElement<BaseBackend = Self>;
     type VirtualElement: BackendVirtualElement<BaseBackend = Self>;
     type TextNode: BackendTextNode<BaseBackend = Self>;
+
+    /// Get the root element
+    fn root(&self) -> ForestNode<Self::GeneralElement>;
 
     /// Get the root element
     fn root_mut(&mut self) -> ForestNodeMut<Self::GeneralElement>;
@@ -113,19 +116,19 @@ pub trait SupportBackend<B: Backend> {
         Self: Sized;
 
     /// Indicate that the create process should be finished
-    fn create<'b>(
+    fn create<'b, R>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
-    ) -> Result<(), Error>;
+        slot_fn: impl FnMut(&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
+    ) -> Result<SlotChildren<R>, Error>;
 
     /// Indicate that the pending updates should be applied
-    fn apply_updates<'b>(
+    fn apply_updates<'b, R>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl Fn(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<(), Error>,
+        slot_fn: impl FnMut(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<R, Error>,
     ) -> Result<(), Error>;
 
     /// Get the backend element

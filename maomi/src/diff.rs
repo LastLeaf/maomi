@@ -5,5 +5,5 @@
 pub enum ListItemChange<N, T> {
     Unchanged(N, T),
     Added(N, T),
-    Removed(N, T),
+    Removed(N),
 }

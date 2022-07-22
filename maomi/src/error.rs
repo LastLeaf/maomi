@@ -6,6 +6,8 @@ pub enum Error {
     /// 
     /// Generally means some bad operation is done directly in the backend.
     TreeNodeTypeWrong,
+    /// A list update failed due to wrong changes list
+    ListChangeWrong,
     /// A recursive update is detected
     /// 
     /// An element cannot be updated while it is still in another update process.
@@ -27,6 +29,9 @@ impl std::fmt::Display for Error {
             }
             Error::TreeNodeTypeWrong => {
                 write!(f, "The node type in backend element tree is incorrect")?;
+            }
+            Error::ListChangeWrong => {
+                write!(f, "The list change is incorrect")?;
             }
             Error::RecursiveUpdate => {
                 write!(f, "A recursive update is detected")?;

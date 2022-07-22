@@ -112,6 +112,12 @@ impl<B: Backend> EnteredBackendContext<B> {
 
     /// Get the root backend element
     #[inline]
+    pub fn root(&self) -> tree::ForestNode<B::GeneralElement> {
+        self.backend.root()
+    }
+
+    /// Get the root backend element
+    #[inline]
     pub fn root_mut(&mut self) -> tree::ForestNodeMut<B::GeneralElement> {
         self.backend.root_mut()
     }
