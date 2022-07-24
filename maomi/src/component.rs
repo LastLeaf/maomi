@@ -1,13 +1,20 @@
-use std::{cell::RefCell, rc::{Rc, Weak}, marker::PhantomData};
+use std::{
+    cell::RefCell,
+    marker::PhantomData,
+    rc::{Rc, Weak},
+};
 
 use crate::{
-    backend::{tree, Backend, SupportBackend, BackendGeneralElement},
-    error::Error, BackendContext, diff::ListItemChange, node::SlotChildren,
+    backend::{tree, Backend, BackendGeneralElement, SupportBackend},
+    diff::ListItemChange,
+    error::Error,
+    node::SlotChildren,
+    BackendContext,
 };
 use tree::ForestNodeRc;
 
 /// An init object for the template
-/// 
+///
 /// This struct is auto-managed by `#[component]` .
 pub struct TemplateInit<C> {
     updater: Box<dyn UpdateScheduler<EnterType = C>>,
@@ -15,10 +22,16 @@ pub struct TemplateInit<C> {
 
 /// Some helper functions for the template type
 pub trait TemplateHelper<C>: Default {
-    fn mark_dirty(&mut self) where C: 'static;
-    fn clear_dirty(&mut self) -> bool where C: 'static;
+    fn mark_dirty(&mut self)
+    where
+        C: 'static;
+    fn clear_dirty(&mut self) -> bool
+    where
+        C: 'static;
     fn is_initialized(&self) -> bool;
-    fn component_rc(&self) -> Result<ComponentRc<C>, Error> where C: 'static;
+    fn component_rc(&self) -> Result<ComponentRc<C>, Error>
+    where
+        C: 'static;
 }
 
 /// The template type
@@ -28,7 +41,7 @@ pub struct Template<C, S> {
     updater: Option<Box<dyn UpdateScheduler<EnterType = C>>>,
     dirty: bool,
     /// The template node tree structure
-    /// 
+    ///
     /// Caution: do not modify anything inside node tree unless you really understand how templates works.
     pub structure: Option<S>,
 }
@@ -52,7 +65,10 @@ impl<C, S> Template<C, S> {
 
 impl<C, S> TemplateHelper<C> for Template<C, S> {
     #[inline]
-    fn mark_dirty(&mut self) where C: 'static {
+    fn mark_dirty(&mut self)
+    where
+        C: 'static,
+    {
         if self.structure.is_some() && !self.dirty {
             if let Some(updater) = self.updater.as_ref() {
                 self.dirty = true;
@@ -62,7 +78,10 @@ impl<C, S> TemplateHelper<C> for Template<C, S> {
     }
 
     #[inline]
-    fn clear_dirty(&mut self) -> bool where C: 'static {
+    fn clear_dirty(&mut self) -> bool
+    where
+        C: 'static,
+    {
         let dirty = self.dirty;
         self.dirty = false;
         dirty
@@ -74,13 +93,18 @@ impl<C, S> TemplateHelper<C> for Template<C, S> {
     }
 
     #[inline]
-    fn component_rc(&self) -> Result<ComponentRc<C>, Error> where C: 'static {
-        self.updater.as_ref().and_then(|x| x.upgrade_scheduler()).map(|x| {
-            ComponentRc {
+    fn component_rc(&self) -> Result<ComponentRc<C>, Error>
+    where
+        C: 'static,
+    {
+        self.updater
+            .as_ref()
+            .and_then(|x| x.upgrade_scheduler())
+            .map(|x| ComponentRc {
                 inner: x,
                 _phantom: PhantomData,
-            }
-        }).ok_or(Error::TreeNotCreated)
+            })
+            .ok_or(Error::TreeNotCreated)
     }
 }
 
@@ -134,10 +158,14 @@ pub trait ComponentExt<B: Backend, C> {
     fn template(&self) -> &Self::TemplateField;
 
     /// Manually trigger an update for the template
-    fn mark_dirty(&mut self) where C: 'static;
+    fn mark_dirty(&mut self)
+    where
+        C: 'static;
 
     /// Get a `ComponentRc` for the component
-    fn component_rc(&self) -> Result<ComponentRc<C>, Error> where C: 'static;
+    fn component_rc(&self) -> Result<ComponentRc<C>, Error>
+    where
+        C: 'static;
 }
 
 impl<B: Backend, C, T: ComponentTemplate<B, C>> ComponentExt<B, C> for T {
@@ -147,11 +175,17 @@ impl<B: Backend, C, T: ComponentTemplate<B, C>> ComponentExt<B, C> for T {
         <Self as ComponentTemplate<B, C>>::template(self)
     }
 
-    fn mark_dirty(&mut self) where C: 'static {
+    fn mark_dirty(&mut self)
+    where
+        C: 'static,
+    {
         <Self as ComponentTemplate<B, C>>::template_mut(self).mark_dirty();
     }
 
-    fn component_rc(&self) -> Result<ComponentRc<C>, Error> where C: 'static {
+    fn component_rc(&self) -> Result<ComponentRc<C>, Error>
+    where
+        C: 'static,
+    {
         <Self as ComponentTemplate<B, C>>::template(self).component_rc()
     }
 }
@@ -177,7 +211,10 @@ pub trait ComponentTemplate<B: Backend, C> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
+        slot_fn: impl FnMut(
+            &mut tree::ForestNodeMut<B::GeneralElement>,
+            &Self::SlotData,
+        ) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error>
     where
         Self: Sized;
@@ -187,7 +224,9 @@ pub trait ComponentTemplate<B: Backend, C> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<R, Error>,
+        slot_fn: impl FnMut(
+            ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+        ) -> Result<R, Error>,
     ) -> Result<(), Error>
     where
         Self: Sized;
@@ -232,7 +271,9 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> ComponentNode
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateScheduler for ComponentNode<B, C> {
+impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateScheduler
+    for ComponentNode<B, C>
+{
     type EnterType = C;
 
     #[inline]
@@ -250,7 +291,7 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateSchedul
                 |_| {
                     // TODO notify slot changes to the owner component
                     Ok(())
-                }
+                },
             )?;
             Ok(())
         });
@@ -264,9 +305,8 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateSchedul
     #[inline]
     fn enter(&self, f: Box<dyn FnOnce(&mut Self::EnterType) -> Result<(), Error>>) {
         let component = self.component.clone();
-        self.backend_context.enter(move |_| {
-            f(&mut component.borrow_mut())
-        });
+        self.backend_context
+            .enter(move |_| f(&mut component.borrow_mut()));
     }
 }
 
@@ -291,7 +331,9 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> ComponentNode
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateScheduler for ComponentNodeWeak<B, C> {
+impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateScheduler
+    for ComponentNodeWeak<B, C>
+{
     type EnterType = C;
 
     #[inline]
@@ -318,14 +360,16 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> UpdateSchedul
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBackend<B> for ComponentNode<B, C> {
+impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBackend<B>
+    for ComponentNode<B, C>
+{
     type SlotData = <C as ComponentTemplate<B, C>>::SlotData;
 
     #[inline]
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> Result<Self, Error>
+    ) -> Result<(Self, tree::ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized,
     {
@@ -342,7 +386,7 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBacken
             let mut comp = this.component.borrow_mut();
             <C as ComponentTemplate<B, C>>::template_init(&mut comp, init);
         }
-        Ok(this)
+        Ok((this, backend_element))
     }
 
     #[inline]
@@ -350,7 +394,10 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBacken
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut tree::ForestNodeMut<<B as Backend>::GeneralElement>,
-        slot_fn: impl FnMut(&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
+        slot_fn: impl FnMut(
+            &mut tree::ForestNodeMut<B::GeneralElement>,
+            &Self::SlotData,
+        ) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);
@@ -370,7 +417,9 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBacken
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<R, Error>,
+        slot_fn: impl FnMut(
+            ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+        ) -> Result<R, Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);
@@ -383,13 +432,5 @@ impl<B: Backend, C: ComponentTemplate<B, C> + Component + 'static> SupportBacken
         } else {
             Err(Error::RecursiveUpdate)
         }
-    }
-
-    #[inline]
-    fn backend_element_rc<'b>(
-        &'b mut self,
-        _owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> tree::ForestNodeRc<B::GeneralElement> {
-        self.backend_element.clone()
     }
 }

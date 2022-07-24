@@ -1,9 +1,13 @@
-use std::{collections::VecDeque, rc::{Rc, Weak}, cell::RefCell};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    rc::{Rc, Weak},
+};
 
-use super::{Backend, tree};
+use super::{tree, Backend};
 use crate::component::{Component, ComponentTemplate};
-use crate::mount_point::MountPoint;
 use crate::error::Error;
+use crate::mount_point::MountPoint;
 
 pub(crate) enum BackendContextEvent<B: Backend> {
     General(Box<dyn FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>>),
@@ -21,17 +25,16 @@ struct BackendContextInner<B: Backend> {
 
 impl<B: Backend> Clone for BackendContext<B> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 
 impl<B: Backend> BackendContext<B> {
     /// Create a new backend context
     pub fn new(backend: B) -> Self {
-        let entered = RefCell::new(EnteredBackendContext {
-            backend,
-            ctx: None,
-        });
+        let entered = RefCell::new(EnteredBackendContext { backend, ctx: None });
         let inner = Rc::new(BackendContextInner {
             entered,
             event_queue: Default::default(),
@@ -59,14 +62,20 @@ impl<B: Backend> BackendContext<B> {
     /// it will wait until exits,
     /// so the `f` is required to be `'static` .
     #[inline]
-    pub fn enter(&self, f: impl 'static + FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>) {
+    pub fn enter(
+        &self,
+        f: impl 'static + FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>,
+    ) {
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
             if let Err(err) = f(&mut entered) {
                 log::error!("{}", err);
             }
             self.exec_queue(&mut entered);
         } else {
-            self.inner.event_queue.borrow_mut().push_back(BackendContextEvent::General(Box::new(f)));
+            self.inner
+                .event_queue
+                .borrow_mut()
+                .push_back(BackendContextEvent::General(Box::new(f)));
         }
     }
 
@@ -76,7 +85,8 @@ impl<B: Backend> BackendContext<B> {
     #[inline]
     pub fn enter_sync<T, F>(&self, f: F) -> Result<T, F>
     where
-        F: FnOnce(&mut EnteredBackendContext<B>) -> T {
+        F: FnOnce(&mut EnteredBackendContext<B>) -> T,
+    {
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
             let ret = f(&mut entered);
             self.exec_queue(&mut entered);
@@ -104,7 +114,9 @@ impl<B: Backend> EnteredBackendContext<B> {
     ) -> Result<MountPoint<B, C>, Error> {
         let mut owner = self.backend.root_mut();
         MountPoint::new_in_backend(
-            &BackendContext { inner: self.ctx.as_ref().unwrap().upgrade().unwrap() },
+            &BackendContext {
+                inner: self.ctx.as_ref().unwrap().upgrade().unwrap(),
+            },
             &mut owner,
             init,
         )

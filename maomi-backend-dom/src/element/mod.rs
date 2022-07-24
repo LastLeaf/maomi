@@ -1,5 +1,5 @@
 use maomi::{
-    backend::SupportBackend, BackendContext, error::Error, diff::ListItemChange, node::SlotChildren,
+    backend::SupportBackend, diff::ListItemChange, error::Error, node::SlotChildren, BackendContext,
 };
 
 use crate::{tree::*, DomBackend, DomGeneralElement};
@@ -55,25 +55,29 @@ impl SupportBackend<DomBackend> for div {
     fn init<'b>(
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<DomGeneralElement>,
-    ) -> Result<Self, Error>
+    ) -> Result<(Self, ForestNodeRc<DomGeneralElement>), Error>
     where
         Self: Sized,
     {
         let elem = crate::DOCUMENT.with(|document| document.create_element("div").unwrap());
-        let backend_element = crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
+        let backend_element =
+            crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
         let this = Self {
             backend_element_token: backend_element.token(),
             dom_elem: elem,
             hidden: false,
         };
-        Ok(this)
+        Ok((this, backend_element))
     }
 
     fn create<'b, R>(
         &'b mut self,
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<DomGeneralElement>,
-        mut slot_fn: impl FnMut(&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData) -> Result<R, Error>,
+        mut slot_fn: impl FnMut(
+            &mut ForestNodeMut<DomGeneralElement>,
+            &Self::SlotData,
+        ) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error> {
         let mut node = owner.borrow_mut_token(&self.backend_element_token);
         let r = slot_fn(&mut node, &())?;
@@ -84,17 +88,12 @@ impl SupportBackend<DomBackend> for div {
         &'b mut self,
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
-        mut slot_fn: impl FnMut(ListItemChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>) -> Result<R, Error>,
+        mut slot_fn: impl FnMut(
+            ListItemChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
+        ) -> Result<R, Error>,
     ) -> Result<(), Error> {
         let mut node = owner.borrow_mut_token(&self.backend_element_token);
         slot_fn(ListItemChange::Unchanged(&mut node, &()))?;
         Ok(())
-    }
-
-    fn backend_element_rc<'b>(
-        &'b mut self,
-        owner: &'b mut ForestNodeMut<DomGeneralElement>,
-    ) -> ForestNodeRc<DomGeneralElement> {
-        owner.resolve_token(&self.backend_element_token)
     }
 }

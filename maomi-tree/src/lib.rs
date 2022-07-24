@@ -50,7 +50,9 @@ pub struct ForestNodeRc<T> {
 
 impl<T> Clone for ForestNodeRc<T> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 

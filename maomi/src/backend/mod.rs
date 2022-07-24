@@ -3,8 +3,8 @@ pub use maomi_tree as tree;
 use tree::*;
 
 pub mod context;
-use context::BackendContext;
 use crate::diff::ListItemChange;
+use context::BackendContext;
 
 /// A backend
 pub trait Backend: 'static {
@@ -111,7 +111,7 @@ pub trait SupportBackend<B: Backend> {
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-    ) -> Result<Self, Error>
+    ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized;
 
@@ -120,7 +120,10 @@ pub trait SupportBackend<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
+        slot_fn: impl FnMut(
+            &mut tree::ForestNodeMut<B::GeneralElement>,
+            &Self::SlotData,
+        ) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error>;
 
     /// Indicate that the pending updates should be applied
@@ -128,12 +131,8 @@ pub trait SupportBackend<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>) -> Result<R, Error>,
+        slot_fn: impl FnMut(
+            ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+        ) -> Result<R, Error>,
     ) -> Result<(), Error>;
-
-    /// Get the backend element
-    fn backend_element_rc<'b>(
-        &'b mut self,
-        owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> ForestNodeRc<B::GeneralElement>;
 }

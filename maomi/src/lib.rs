@@ -1,10 +1,10 @@
-pub mod error;
 pub mod backend;
-pub mod text_node;
 pub mod component;
 pub mod diff;
-pub mod node;
+pub mod error;
 pub mod mount_point;
+pub mod node;
+pub mod text_node;
 pub use backend::context::BackendContext;
 
 pub mod prelude {

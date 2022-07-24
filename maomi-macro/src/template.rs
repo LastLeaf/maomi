@@ -21,11 +21,17 @@ impl Template {
     }
 
     pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateCreate<'a> {
-        TemplateCreate { template: self, backend_param }
+        TemplateCreate {
+            template: self,
+            backend_param,
+        }
     }
 
     pub(super) fn to_update<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateUpdate<'a> {
-        TemplateUpdate { template: self, backend_param }
+        TemplateUpdate {
+            template: self,
+            backend_param,
+        }
     }
 }
 
@@ -36,9 +42,7 @@ impl Parse for Template {
             let child = input.parse()?;
             children.push(child);
         }
-        Ok(Self {
-            children,
-        })
+        Ok(Self { children })
     }
 }
 
@@ -147,7 +151,10 @@ impl Parse for TemplateNode {
                     Some(x) => x.ident.clone(),
                 };
                 if !end_tag_name.is_ident(&short_tag_name) {
-                    return Err(Error::new(end_tag_name.span(), "End tag name does not match the start tag name"));
+                    return Err(Error::new(
+                        end_tag_name.span(),
+                        "End tag name does not match the start tag name",
+                    ));
                 }
                 let end_tag_gt_token = input.parse()?;
                 TemplateNode::Tag {
@@ -247,9 +254,15 @@ pub(super) struct TemplateCreate<'a> {
 
 impl<'a> ToTokens for TemplateCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { template, backend_param } = self;
+        let Self {
+            template,
+            backend_param,
+        } = self;
         let Template { children } = template;
-        let children = children.into_iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+        let children = children.into_iter().map(|x| TemplateNodeCreate {
+            template_node: x,
+            backend_param,
+        });
         quote! {
             let __child_nodes = {
                 let mut __parent_element = __parent_element.borrow_mut(&__backend_element);
@@ -257,7 +270,8 @@ impl<'a> ToTokens for TemplateCreate<'a> {
                     #({ #children },)*
                 )
             };
-        }.to_tokens(tokens)
+        }
+        .to_tokens(tokens)
     }
 }
 
@@ -268,7 +282,10 @@ struct TemplateNodeCreate<'a> {
 
 impl<'a> ToTokens for TemplateNodeCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { template_node, backend_param } = self;
+        let Self {
+            template_node,
+            backend_param,
+        } = self;
         match template_node {
             TemplateNode::StaticText { content } => {
                 let span = content.span();
@@ -335,9 +352,13 @@ pub(super) struct TemplateUpdate<'a> {
 
 impl<'a> ToTokens for TemplateUpdate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { template, backend_param } = self;
+        let Self {
+            template,
+            backend_param,
+        } = self;
         let Template { children } = template;
-        let children = children.into_iter()
+        let children = children
+            .into_iter()
             .enumerate()
             .map(|(index, x)| TemplateNodeUpdate {
                 child_index: Index::from(index),
@@ -348,7 +369,8 @@ impl<'a> ToTokens for TemplateUpdate<'a> {
             {
                 #({ #children })*
             }
-        }.to_tokens(tokens);
+        }
+        .to_tokens(tokens);
     }
 }
 
@@ -360,7 +382,11 @@ struct TemplateNodeUpdate<'a> {
 
 impl<'a> ToTokens for TemplateNodeUpdate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { child_index, template_node, backend_param } = self;
+        let Self {
+            child_index,
+            template_node,
+            backend_param,
+        } = self;
         match template_node {
             TemplateNode::StaticText { .. } => {
                 quote! {}

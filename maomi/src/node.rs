@@ -27,7 +27,7 @@ impl<C> SlotChildren<C> {
                 *self = match index {
                     0 => Self::Multiple(vec![v, x]),
                     1 => Self::Multiple(vec![x, v]),
-                    _ => Err(Error::ListChangeWrong)?
+                    _ => Err(Error::ListChangeWrong)?,
                 }
             } else {
                 unreachable!();

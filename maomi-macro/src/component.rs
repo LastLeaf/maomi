@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::*;
 use syn::parse::*;
-use syn::*;
 use syn::spanned::Spanned;
+use syn::*;
 
 use super::template::Template;
 
@@ -110,7 +110,13 @@ impl Parse for ComponentBody {
 
 impl ToTokens for ComponentBody {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { attr, inner, template, template_field, template_ty } = self;
+        let Self {
+            attr,
+            inner,
+            template,
+            template_field,
+            template_ty,
+        } = self;
 
         // generate backend type params
         let backend_param = match attr {
@@ -122,7 +128,7 @@ impl ToTokens for ComponentBody {
             ComponentAttr::Backend { path, .. } => {
                 let span = path.span();
                 quote_spanned! {span=> #path }
-            },
+            }
         };
         let backend_param_in_impl = match attr {
             ComponentAttr::None => quote! { <__Backend: maomi::backend::Backend> },
@@ -131,8 +137,8 @@ impl ToTokens for ComponentBody {
                 quote_spanned! {span=> <__Backend: #path> }
             }
             ComponentAttr::Backend { .. } => {
-                quote! { }
-            },
+                quote! {}
+            }
         };
 
         // impl the component template
@@ -141,17 +147,17 @@ impl ToTokens for ComponentBody {
         let impl_component_template = quote! {
             impl #backend_param_in_impl maomi::component::ComponentTemplate<#backend_param> for HelloWorld {
                 type TemplateField = #template_ty;
-        
+
                 #[inline]
                 fn template(&self) -> &Self::TemplateField {
                     &self.#template_field
                 }
-        
+
                 #[inline]
                 fn template_mut(&mut self) -> &mut Self::TemplateField {
                     &mut self.#template_field
                 }
-        
+
                 fn create(
                     &mut self,
                     __parent_element: &mut maomi::backend::tree::ForestNodeMut<<#backend_param as maomi::backend::Backend>::GeneralElement>,
@@ -169,7 +175,7 @@ impl ToTokens for ComponentBody {
                     };
                     Ok(__backend_element)
                 }
-        
+
                 fn apply_updates(
                     &mut self,
                     __backend_element: &mut maomi::backend::tree::ForestNodeMut<<#backend_param as maomi::backend::Backend>::GeneralElement>,
@@ -193,13 +199,14 @@ impl ToTokens for ComponentBody {
                         }
                     }
                 }
-            }        
+            }
         };
 
         quote! {
             #inner
             #impl_component_template
-        }.to_tokens(tokens);
+        }
+        .to_tokens(tokens);
     }
 }
 

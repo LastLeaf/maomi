@@ -36,7 +36,8 @@ impl TextNode {
         if self.changed {
             self.changed = false;
             let mut text_node = owner.borrow_mut_token(&self.backend_element_token);
-            let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node).ok_or(Error::TreeNodeTypeWrong)?;
+            let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
+                .ok_or(Error::TreeNodeTypeWrong)?;
             text_node.set_text(&self.content);
         }
         Ok(())

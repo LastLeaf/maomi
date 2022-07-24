@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 // import maomi core module
 use maomi::{prelude::*, BackendContext};
 // using DOM backend
-use maomi_backend_dom::{DomBackend, element::*};
+use maomi_backend_dom::{element::*, DomBackend};
 
 // declare a component
 #[component(for DomBackend)]
@@ -40,8 +40,11 @@ pub fn wasm_main() {
     let backend_context = BackendContext::new(dom_backend);
 
     // create a mount point
-    backend_context.enter_sync(move |ctx| {
-        let mut mount_point = ctx.new_mount_point(|_: &mut HelloWorld| Ok(())).unwrap();
-        mount_point.append_attach(&mut ctx.root_mut());
-    }).map_err(|_| "Cannot init mount point").unwrap();
+    backend_context
+        .enter_sync(move |ctx| {
+            let mut mount_point = ctx.new_mount_point(|_: &mut HelloWorld| Ok(())).unwrap();
+            mount_point.append_attach(&mut ctx.root_mut());
+        })
+        .map_err(|_| "Cannot init mount point")
+        .unwrap();
 }

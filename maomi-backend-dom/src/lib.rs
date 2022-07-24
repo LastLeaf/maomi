@@ -26,27 +26,28 @@ pub struct DomBackend {
 }
 
 impl DomBackend {
+    pub fn new_with_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
+        Ok(Self::wrap_root_element(dom_elem))
+    }
+
     pub fn new_with_element_id(id: &str) -> Result<Self, Error> {
-        let dom_elem = DOCUMENT.with(|document| {
-            document.get_element_by_id(id)
-        }).ok_or_else(|| {
-            Error::BackendError {
+        let dom_elem = DOCUMENT
+            .with(|document| document.get_element_by_id(id))
+            .ok_or_else(|| Error::BackendError {
                 msg: format!("Cannot find the element {:?}", id),
                 err: None,
-            }
-        })?;
+            })?;
         Ok(Self::wrap_root_element(dom_elem))
     }
 
     pub fn new_with_document_body() -> Result<Self, Error> {
-        let dom_elem = DOCUMENT.with(|document| {
-            document.body()
-        }).ok_or_else(|| {
-            Error::BackendError {
-                msg: "Cannot find the <body> element".into(),
-                err: None,
-            }
-        })?;
+        let dom_elem =
+            DOCUMENT
+                .with(|document| document.body())
+                .ok_or_else(|| Error::BackendError {
+                    msg: "Cannot find the <body> element".into(),
+                    err: None,
+                })?;
         Ok(Self::wrap_root_element(dom_elem.into()))
     }
 

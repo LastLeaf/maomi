@@ -3,13 +3,13 @@ pub enum Error {
     /// The operation is invalid before component created
     TreeNotCreated,
     /// A wrong backend tree is visited
-    /// 
+    ///
     /// Generally means some bad operation is done directly in the backend.
     TreeNodeTypeWrong,
     /// A list update failed due to wrong changes list
     ListChangeWrong,
     /// A recursive update is detected
-    /// 
+    ///
     /// An element cannot be updated while it is still in another update process.
     RecursiveUpdate,
     /// The backend context is already entered
