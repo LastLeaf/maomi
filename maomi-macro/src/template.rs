@@ -17,7 +17,7 @@ impl Template {
             MacroDelimiter::Bracket(x) => x.span,
         };
         let children = children.iter().map(|c| c.gen_type());
-        parse_quote_spanned!(span=> maomi::component::Template<(#(#children,)*)> )
+        parse_quote_spanned!(span=> maomi::component::Template<Self, (#(#children,)*), ()> )
     }
 
     pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateCreate<'a> {
@@ -264,12 +264,7 @@ impl<'a> ToTokens for TemplateCreate<'a> {
             backend_param,
         });
         quote! {
-            let __child_nodes = {
-                let mut __parent_element = __parent_element.borrow_mut(&__backend_element);
-                (
-                    #({ #children },)*
-                )
-            };
+            (#({#children},)*)
         }
         .to_tokens(tokens)
     }
@@ -290,55 +285,74 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             TemplateNode::StaticText { content } => {
                 let span = content.span();
                 quote_spanned! {span=>
-                    let (__node, __backend_element) = maomi::text_node::TextNode::create::<#backend_param>(
-                        &mut __parent_element,
+                    let (__m_child, __m_backend_element) =
+                    maomi::text_node::TextNode::create::<#backend_param>(
+                        __m_parent_element,
                         #content,
                     )?;
-                    <#backend_param as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                    __node
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    __m_child
                 }
             }
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
                 quote_spanned! {span=>
-                    let (__node, __backend_element) = maomi::text_node::TextNode::create::<#backend_param>(
-                        &mut __parent_element,
+                    let (__m_child, __m_backend_element) =
+                    maomi::text_node::TextNode::create::<#backend_param>(
+                        __m_parent_element,
                         #expr,
                     )?;
-                    <#backend_param as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                    __node
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    __m_child
                 }
             }
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
                 quote_spanned! {span=>
-                    let (__node, __backend_element) =
-                        <#tag_name as maomi::backend::SupportBackend<#backend_param>>::create(&mut __parent_element, |__node| {
-                            // TODO set property
-                            Ok(())
-                        })?;
-                    let __child_nodes = ();
-                    <#backend_param as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                    maomi::node::Node { node: __node, child_nodes: __child_nodes }
+                    let (mut __m_child, __m_backend_element) =
+                        <div as maomi::backend::SupportBackend<#backend_param>>::init(
+                            __m_backend_context,
+                            __m_parent_element,
+                        )?;
+                    let __m_slot_children = <div as maomi::backend::SupportBackend<
+                        #backend_param,
+                    >>::create(
+                        &mut __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        |__m_parent_element, __m_scope| Ok(()),
+                    )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
+                    maomi::node::Node {
+                        node: __m_child,
+                        child_nodes: __m_slot_children,
+                    }
                 }
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
                 let children = children.into_iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
                 quote_spanned! {span=>
-                    let (__node, __backend_element) =
-                        <#tag_name as maomi::backend::SupportBackend<#backend_param>>::create(&mut __parent_element, |__node| {
-                            // TODO set property
-                            Ok(())
-                        })?;
-                    let __child_nodes = {
-                        let mut __parent_element = __parent_element.borrow_mut(&__backend_element);
-                        (
-                            #({ #children },)*
-                        )
-                    };
-                    <#backend_param as maomi::backend::Backend>::GeneralElement::append(&mut __parent_element, __backend_element);
-                    maomi::node::Node { node: __node, child_nodes: __child_nodes }
+                    let (mut __m_child, __m_backend_element) =
+                        <div as maomi::backend::SupportBackend<#backend_param>>::init(
+                            __m_backend_context,
+                            __m_parent_element,
+                        )?;
+                    let __m_slot_children = <div as maomi::backend::SupportBackend<
+                        #backend_param,
+                    >>::create(
+                        &mut __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        |__m_parent_element, __m_scope| {
+                            Ok((#({#children},)*))
+                        },
+                    )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
+                    maomi::node::Node {
+                        node: __m_child,
+                        child_nodes: __m_slot_children,
+                    }
                 }
             }
         }.to_tokens(tokens);
@@ -366,9 +380,7 @@ impl<'a> ToTokens for TemplateUpdate<'a> {
                 backend_param,
             });
         quote! {
-            {
-                #({ #children })*
-            }
+            #({#children})*
         }
         .to_tokens(tokens);
     }
@@ -394,24 +406,49 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
                 quote_spanned! {span=>
-                    let __node = &mut __child_nodes.#child_index;
-                    __node.set_text(#expr);
-                    __node.apply_updates::<#backend_param>(&mut __backend_element)?;
+                    let __m_child = &mut __m_children.#child_index;
+                    __m_child.set_text::<#backend_param>(__m_parent_element, #expr)?;
                 }
             }
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
                 quote_spanned! {span=>
-                    let maomi::node::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.#child_index;
-                    {
-                        // TODO set property
-                    }
-                    <#tag_name as maomi::backend::SupportBackend<#backend_param>>::apply_updates(__node, &mut __backend_element)?;
+                    let maomi::node::Node {
+                        node: ref mut __m_child,
+                        child_nodes: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    let mut __m_children_i = 0usize;
+                    <div as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
+                        __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        |__m_slot_change| {
+                            Ok(
+                                match __m_slot_change {
+                                    maomi::diff::ListItemChange::Added(__m_parent_element, __m_scope) => {
+                                        __m_slot_children.add(__m_children_i, __m_children)?;
+                                        __m_children_i += 1;
+                                    }
+                                    maomi::diff::ListItemChange::Unchanged(__m_parent_element, __m_scope) => {
+                                        __m_children_i += 1;
+                                    }
+                                    maomi::diff::ListItemChange::Removed(__m_parent_element) => {
+                                        __m_slot_children.remove(__m_children_i)?;
+                                    }
+                                }
+                            )
+                        },
+                    )?;
                 }
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
-                let children = children.into_iter()
+                let create_children = children.into_iter()
+                    .map(|x| TemplateNodeCreate {
+                        template_node: x,
+                        backend_param,
+                    });
+                let update_children = children.into_iter()
                     .enumerate()
                     .map(|(index, x)| TemplateNodeUpdate {
                         child_index: Index::from(index),
@@ -419,12 +456,36 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         backend_param,
                     });
                 quote_spanned! {span=>
-                    let maomi::node::Node { node: ref mut __node, child_nodes: ref mut __child_nodes } = __child_nodes.#child_index;
-                    {
-                        // TODO set property
-                    }
-                    <#tag_name as maomi::backend::SupportBackend<#backend_param>>::apply_updates(__node, &mut __backend_element)?;
-                    #({ #children })*
+                    let maomi::node::Node {
+                        node: ref mut __m_child,
+                        child_nodes: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    let mut __m_children_i = 0usize;
+                    <div as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
+                        __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        |__m_slot_change| {
+                            Ok(
+                                match __m_slot_change {
+                                    maomi::diff::ListItemChange::Added(__m_parent_element, __m_scope) => {
+                                        let __m_children = (#({#create_children},)*);
+                                        __m_slot_children.add(__m_children_i, __m_children)?;
+                                        __m_children_i += 1;
+                                    }
+                                    maomi::diff::ListItemChange::Unchanged(__m_parent_element, __m_scope) => {
+                                        let __m_children =
+                                            __m_slot_children.get_mut(__m_children_i)?;
+                                        #({#update_children})*
+                                        __m_children_i += 1;
+                                    }
+                                    maomi::diff::ListItemChange::Removed(__m_parent_element) => {
+                                        __m_slot_children.remove(__m_children_i)?;
+                                    }
+                                }
+                            )
+                        },
+                    )?;
                 }
             }
         }.to_tokens(tokens);

@@ -108,7 +108,7 @@ impl<B: Backend> EnteredBackendContext<B> {
     ///
     /// The `init` provides a way to do some updates before the component `created` lifetime.
     /// It is encouraged to change template data bindings in `init` .
-    pub fn new_mount_point<C: Component + ComponentTemplate<B, C> + 'static>(
+    pub fn new_mount_point<C: Component + ComponentTemplate<B> + 'static>(
         &mut self,
         init: impl FnOnce(&mut C) -> Result<(), Error>,
     ) -> Result<MountPoint<B, C>, Error> {

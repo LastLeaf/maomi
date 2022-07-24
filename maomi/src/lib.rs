@@ -8,6 +8,6 @@ pub mod text_node;
 pub use backend::context::BackendContext;
 
 pub mod prelude {
-    pub use super::component::{Component, ComponentExt, TemplateHelper};
+    pub use super::component::{Component, ComponentExt};
     pub use maomi_macro::*;
 }

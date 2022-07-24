@@ -120,10 +120,10 @@ impl ToTokens for ComponentBody {
 
         // generate backend type params
         let backend_param = match attr {
-            ComponentAttr::None => quote! { __Backend },
+            ComponentAttr::None => quote! { __MBackend },
             ComponentAttr::ImplBackend { path, .. } => {
                 let span = path.span();
-                quote_spanned! {span=> __Backend }
+                quote_spanned! {span=> __MBackend }
             }
             ComponentAttr::Backend { path, .. } => {
                 let span = path.span();
@@ -131,13 +131,46 @@ impl ToTokens for ComponentBody {
             }
         };
         let backend_param_in_impl = match attr {
-            ComponentAttr::None => quote! { <__Backend: maomi::backend::Backend> },
+            ComponentAttr::None => Some(parse_quote! { __MBackend: maomi::backend::Backend }),
             ComponentAttr::ImplBackend { path, .. } => {
                 let span = path.span();
-                quote_spanned! {span=> <__Backend: #path> }
+                Some(parse_quote_spanned! {span=> __MBackend: #path })
             }
             ComponentAttr::Backend { .. } => {
-                quote! {}
+                None
+            }
+        };
+
+        // find component name and type params
+        let component_name = {
+            let component_name_ident = &inner.ident;
+            let component_type_params = inner.generics.params.iter().map(|x| {
+                let span = x.span();
+                match x {
+                    GenericParam::Type(x) => {
+                        let x = x.ident.clone();
+                        quote_spanned! {span=> #x }
+                    }
+                    GenericParam::Lifetime(x) => {
+                        let x = x.lifetime.clone();
+                        quote_spanned! {span=> #x }
+                    }
+                    GenericParam::Const(x) => {
+                        let x = x.ident.clone();
+                        quote_spanned! {span=> #x }
+                    }
+                }
+            });
+            quote! {
+                #component_name_ident<#(#component_type_params),*>
+            }
+        };
+
+        // find generics for impl
+        let impl_type_params = {
+            let items = inner.generics.params.iter().chain(backend_param_in_impl.as_ref());
+            quote! {
+                <#(#items),*>
             }
         };
 
@@ -145,8 +178,9 @@ impl ToTokens for ComponentBody {
         let template_create = template.to_create(&backend_param);
         let template_update = template.to_update(&backend_param);
         let impl_component_template = quote! {
-            impl #backend_param_in_impl maomi::component::ComponentTemplate<#backend_param> for HelloWorld {
+            impl #impl_type_params maomi::component::ComponentTemplate<#backend_param> for #component_name {
                 type TemplateField = #template_ty;
+                type SlotData = ();
 
                 #[inline]
                 fn template(&self) -> &Self::TemplateField {
@@ -158,46 +192,62 @@ impl ToTokens for ComponentBody {
                     &mut self.#template_field
                 }
 
-                fn create(
-                    &mut self,
-                    __parent_element: &mut maomi::backend::tree::ForestNodeMut<<#backend_param as maomi::backend::Backend>::GeneralElement>,
-                ) -> Result<maomi::backend::tree::ForestNodeRc<<#backend_param as maomi::backend::Backend>::GeneralElement>, maomi::error::Error>
-                where
-                    Self: Sized {
-                    use maomi::backend::BackendGeneralElement;
-                    let __backend_element = <#backend_param as maomi::backend::Backend>::GeneralElement::create_virtual_element(__parent_element)?;
-                    #template_create
-                    self.#template_field = maomi::component::Template::Structure {
-                        dirty: false,
-                        backend_element_token: __backend_element.token(),
-                        backend_element: Box::new(__backend_element.clone()),
-                        child_nodes: __child_nodes,
-                    };
-                    Ok(__backend_element)
+                #[inline]
+                fn template_init(&mut self, __m_init: maomi::component::TemplateInit<#component_name>) {
+                    self.#template_field.init(__m_init);
                 }
 
-                fn apply_updates(
-                    &mut self,
-                    __backend_element: &mut maomi::backend::tree::ForestNodeMut<<#backend_param as maomi::backend::Backend>::GeneralElement>,
-                ) -> Result<(), maomi::error::Error> {
-                    match self.#template_field {
-                        maomi::component::Template::Uninitialized => {
-                            Ok(())
-                        }
-                        maomi::component::Template::Structure {
-                            dirty: ref mut __dirty,
-                            child_nodes: ref mut __child_nodes,
-                            backend_element_token: ref __backend_element_token,
-                            ..
-                        } => {
-                            if *__dirty {
-                                *__dirty = false;
-                                let mut __backend_element = __backend_element.borrow_mut_token(__backend_element_token);
-                                #template_update
-                            }
-                            Ok(())
-                        }
-                    }
+                #[inline]
+                fn template_create<'__m_b, __MSlot>(
+                    &'__m_b mut self,
+                    __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
+                    __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
+                        <#backend_param as maomi::backend::Backend>::GeneralElement,
+                    >,
+                    __m_slot_fn: impl FnMut(
+                        &mut maomi::backend::tree::ForestNodeMut<
+                            <#backend_param as maomi::backend::Backend>::GeneralElement,
+                        >,
+                        &Self::SlotData,
+                    ) -> Result<__MSlot, maomi::error::Error>,
+                ) -> Result<maomi::node::SlotChildren<__MSlot>, maomi::error::Error>
+                where
+                    Self: Sized,
+                {
+                    let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
+                    let mut __m_parent_element = __m_backend_element;
+                    self.#template_field.structure = Some(#template_create);
+                    Ok(__m_slot)
+                }
+
+                #[inline]
+                fn template_update<'__m_b>(
+                    &'__m_b mut self,
+                    __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
+                    __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
+                        <#backend_param as maomi::backend::Backend>::GeneralElement,
+                    >,
+                    __m_slot_fn: impl FnMut(
+                        maomi::diff::ListItemChange<
+                            &mut maomi::backend::tree::ForestNodeMut<
+                                <#backend_param as maomi::backend::Backend>::GeneralElement,
+                            >,
+                            &Self::SlotData,
+                        >,
+                    ) -> Result<(), maomi::error::Error>,
+                ) -> Result<(), maomi::error::Error>
+                where
+                    Self: Sized,
+                {
+                    // update tree
+                    let mut __m_parent_element = __m_backend_element;
+                    let __m_children = self
+                        .#template_field
+                        .structure
+                        .as_mut()
+                        .ok_or(maomi::error::Error::TreeNotCreated)?;
+                    #template_update
+                    Ok(())
                 }
             }
         };

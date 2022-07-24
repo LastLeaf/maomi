@@ -127,12 +127,12 @@ pub trait SupportBackend<B: Backend> {
     ) -> Result<SlotChildren<R>, Error>;
 
     /// Indicate that the pending updates should be applied
-    fn apply_updates<'b, R>(
+    fn apply_updates<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
         slot_fn: impl FnMut(
             ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
-        ) -> Result<R, Error>,
+        ) -> Result<(), Error>,
     ) -> Result<(), Error>;
 }

@@ -84,13 +84,13 @@ impl SupportBackend<DomBackend> for div {
         Ok(SlotChildren::Single(r))
     }
 
-    fn apply_updates<'b, R>(
+    fn apply_updates<'b>(
         &'b mut self,
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
         mut slot_fn: impl FnMut(
             ListItemChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
-        ) -> Result<R, Error>,
+        ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         let mut node = owner.borrow_mut_token(&self.backend_element_token);
         slot_fn(ListItemChange::Unchanged(&mut node, &()))?;

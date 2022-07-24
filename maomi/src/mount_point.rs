@@ -6,12 +6,12 @@ use crate::BackendContext;
 /// A mount point which can generate a "root" component and mounted to the whole page
 ///
 /// A mount point can be created in a `BackendContext` .
-pub struct MountPoint<B: Backend, C: Component + ComponentTemplate<B, C> + 'static> {
+pub struct MountPoint<B: Backend, C: Component + ComponentTemplate<B> + 'static> {
     component_node: ComponentNode<B, C>,
     backend_element: tree::ForestNodeRc<B::GeneralElement>,
 }
 
-impl<B: Backend, C: Component + ComponentTemplate<B, C>> MountPoint<B, C> {
+impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     pub(crate) fn new_in_backend(
         backend_context: &BackendContext<B>,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,

@@ -6,7 +6,6 @@ use crate::{
 pub struct TextNode {
     backend_element_token: tree::ForestToken,
     content: String,
-    changed: bool,
 }
 
 impl TextNode {
@@ -23,24 +22,8 @@ impl TextNode {
         let this = Self {
             backend_element_token: elem.token(),
             content: String::new(),
-            changed: false,
         };
         Ok((this, elem))
-    }
-
-    #[inline]
-    pub fn apply_updates<B: Backend>(
-        &mut self,
-        owner: &mut tree::ForestNodeMut<B::GeneralElement>,
-    ) -> Result<(), Error> {
-        if self.changed {
-            self.changed = false;
-            let mut text_node = owner.borrow_mut_token(&self.backend_element_token);
-            let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
-                .ok_or(Error::TreeNodeTypeWrong)?;
-            text_node.set_text(&self.content);
-        }
-        Ok(())
     }
 
     /// Get the backend element
@@ -53,10 +36,18 @@ impl TextNode {
     }
 
     #[inline]
-    pub fn set_text(&mut self, text: &str) {
+    pub fn set_text<B: Backend>(
+        &mut self,
+        owner: &mut tree::ForestNodeMut<B::GeneralElement>,
+        text: &str,
+    ) -> Result<(), Error> {
         if self.content.as_str() != text {
             self.content = text.to_string();
-            self.changed = true;
+            let mut text_node = owner.borrow_mut_token(&self.backend_element_token);
+            let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
+                .ok_or(Error::TreeNodeTypeWrong)?;
+            text_node.set_text(&self.content);
         }
+        Ok(())
     }
 }

@@ -51,39 +51,54 @@ impl<C> SlotChildren<C> {
     }
 
     pub fn get_mut(&mut self, index: usize) -> Result<&mut C, Error> {
-        todo!()
+        if let Self::Single(x) = self {
+            match index {
+                0 => Ok(x),
+                _ => Err(Error::ListChangeWrong),
+            }
+        } else if let Self::Multiple(vec) = self {
+            vec.get_mut(index).ok_or(Error::ListChangeWrong)
+        } else {
+            Err(Error::ListChangeWrong)
+        }
+    }
+
+    pub fn iter(&self) -> SlotChildrenIter<C> {
+        (&self).into_iter()
     }
 }
 
-impl<C> IntoIterator for SlotChildren<C> {
-    type Item = C;
-    type IntoIter = SlotChildrenIter<C>;
+impl<'a, C> IntoIterator for &'a SlotChildren<C> {
+    type Item = &'a C;
+    type IntoIter = SlotChildrenIter<'a, C>;
 
     fn into_iter(self) -> Self::IntoIter {
-        todo!()
+        match self {
+            SlotChildren::None => SlotChildrenIter::None,
+            SlotChildren::Single(x) => SlotChildrenIter::Single(x),
+            SlotChildren::Multiple(x) => SlotChildrenIter::Multiple(x.iter()),
+        }
     }
 }
 
-pub enum SlotChildrenIter<C> {
+pub enum SlotChildrenIter<'a, C> {
     None,
-    Single(C),
-    Multiple(std::vec::IntoIter<C>),
+    Single(&'a C),
+    Multiple(std::slice::Iter<'a, C>),
 }
 
-impl<C> Iterator for SlotChildrenIter<C> {
-    type Item = C;
+impl<'a, C> Iterator for SlotChildrenIter<'a, C> {
+    type Item = &'a C;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::None => None,
-            Self::Multiple(x) => x.next(),
-            x => {
-                let r = std::mem::replace(x, SlotChildrenIter::None);
-                match r {
-                    Self::Single(x) => Some(x),
-                    _ => unreachable!(),
-                }
-            }
+        if let Self::Single(x) = self {
+            let x = *x;
+            *self = Self::None;
+            Some(x)
+        } else if let Self::Multiple(x) = self {
+            x.next()
+        } else {
+            None
         }
     }
 }
