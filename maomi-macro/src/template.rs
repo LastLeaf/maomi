@@ -192,6 +192,7 @@ pub(super) enum TemplateAttribute {
         value: Lit,
     },
     DynamicProperty {
+        ref_token: Option<token::And>,
         name: Ident,
         eq_token: token::Eq,
         brace_token: token::Brace,
@@ -201,7 +202,7 @@ pub(super) enum TemplateAttribute {
         at_token: token::At,
         name: Ident,
         eq_token: token::Eq,
-        brace_token: token::Brace,
+        brace_token: token::Brace, // TODO
         expr: Expr,
     },
 }
@@ -220,11 +221,24 @@ impl Parse for TemplateAttribute {
                     eq_token,
                     value,
                 }
+            } else if la.peek(token::And) {
+                let ref_token = input.parse()?;
+                let content;
+                let brace_token = braced!(content in input);
+                let expr = content.parse()?;
+                TemplateAttribute::DynamicProperty {
+                    ref_token: Some(ref_token),
+                    name,
+                    eq_token,
+                    brace_token,
+                    expr,
+                }
             } else if la.peek(token::Brace) {
                 let content;
                 let brace_token = braced!(content in input);
                 let expr = content.parse()?;
                 TemplateAttribute::DynamicProperty {
+                    ref_token: None,
                     name,
                     eq_token,
                     brace_token,
@@ -315,13 +329,14 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
+                let attrs = attrs.into_iter().map(|attr| TemplateAttributeCreate { attr });
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
                         <#tag_name as maomi::backend::SupportBackend<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
                         )?;
-                    #attrs
+                    #(#attrs)*
                     let __m_slot_children = <#tag_name as maomi::backend::SupportBackend<
                         #backend_param,
                     >>::create(
@@ -339,6 +354,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
+                let attrs = attrs.into_iter().map(|attr| TemplateAttributeCreate { attr });
                 let children = children.into_iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
@@ -346,7 +362,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             __m_backend_context,
                             __m_parent_element,
                         )?;
-                    #attrs
+                    #(#attrs)*
                     let __m_slot_children = <#tag_name as maomi::backend::SupportBackend<
                         #backend_param,
                     >>::create(
@@ -421,17 +437,20 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
+                let attrs = attrs.into_iter().map(|attr| TemplateAttributeUpdate { attr });
                 quote_spanned! {span=>
                     let maomi::node::Node {
                         node: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
                     let mut __m_children_i = 0usize;
-                    #attrs
+                    let mut __m_changed = false;
+                    #(#attrs)*
                     <#tag_name as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
+                        __m_changed,
                         |__m_slot_change| {
                             Ok(
                                 match __m_slot_change {
@@ -453,6 +472,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
+                let attrs = attrs.into_iter().map(|attr| TemplateAttributeUpdate { attr });
                 let create_children = children.into_iter()
                     .map(|x| TemplateNodeCreate {
                         template_node: x,
@@ -471,11 +491,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
                     let mut __m_children_i = 0usize;
-                    #attrs
+                    let mut __m_changed = false;
+                    #(#attrs)*
                     <#tag_name as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
+                        __m_changed,
                         |__m_slot_change| {
                             Ok(
                                 match __m_slot_change {
@@ -500,5 +522,77 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 }
             }
         }.to_tokens(tokens);
+    }
+}
+
+pub(super) struct TemplateAttributeCreate<'a> {
+    attr: &'a TemplateAttribute,
+}
+
+impl<'a> ToTokens for TemplateAttributeCreate<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self {
+            attr,
+        } = self;
+        match attr {
+            TemplateAttribute::StaticProperty { name, value, .. } => {
+                let span = value.span();
+                let ref_sign = match value {
+                    Lit::Str(_) | Lit::ByteStr(_) => quote! {},
+                    _ => quote!{ & },
+                };
+                quote_spanned! {span=>
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #ref_sign #value);
+                }
+            }
+            TemplateAttribute::DynamicProperty { ref_token, name, expr, .. } => {
+                let span = expr.span();
+                if ref_token.is_some() {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, &(#expr));
+                    }
+                } else {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #expr);
+                    }
+                }
+            }
+            TemplateAttribute::Event { name, expr, .. } => {
+                let span = expr.span();
+                quote_spanned! {span=>
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #expr);
+                }
+            }
+        }
+        .to_tokens(tokens)
+    }
+}
+
+pub(super) struct TemplateAttributeUpdate<'a> {
+    attr: &'a TemplateAttribute,
+}
+
+impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self {
+            attr,
+        } = self;
+        match attr {
+            TemplateAttribute::StaticProperty { .. } => {
+                quote! {}
+            }
+            TemplateAttribute::DynamicProperty { ref_token, name, expr, .. } => {
+                let span = expr.span();
+                quote_spanned! {span=>
+                    if maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #ref_token #expr) {
+                        __m_changed = true;
+                    }
+                }
+            }
+            TemplateAttribute::Event { .. } => {
+                quote! {}
+            }
+        }
+        .to_tokens(tokens)
     }
 }

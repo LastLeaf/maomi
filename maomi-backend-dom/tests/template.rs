@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
-use maomi_backend_dom::element::*;
+use maomi_backend_dom::{DomBackend, element::*};
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -34,13 +34,14 @@ fn test_component<T: 'static + Component + maomi::component::ComponentTemplate<m
 
 #[wasm_bindgen_test]
 fn basic() {
-    #[component(for maomi_backend_dom::DomBackend)]
+    #[component(for DomBackend)]
     struct HelloWorld {
         template: template! {
-            <div title="Hello">"Hello world!"</div>
-            <div title="Again">{ &self.hello_text }</div>
+            <div title="Hello"> "Hello world!" </div>
+            <div title={ &self.hello_title }> { &self.hello_text } </div>
         },
         hello_text: String,
+        hello_title: String,
     }
 
     impl Component for HelloWorld {
@@ -48,6 +49,7 @@ fn basic() {
             Self {
                 template: Default::default(),
                 hello_text: "".into(),
+                hello_title: "Again".into(),
             }
         }
 
@@ -57,5 +59,5 @@ fn basic() {
         }
     }
 
-    test_component::<HelloWorld>("<div>Hello world!</div><div>Hello world again!</div>");
+    test_component::<HelloWorld>(r#"<div title="Hello">Hello world!</div><div title="Again">Hello world again!</div>"#);
 }

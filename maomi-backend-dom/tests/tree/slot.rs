@@ -150,11 +150,13 @@ fn single_slot() {
                     child_nodes: ref mut __m_slot_children,
                 } = __m_children.0;
                 let mut __m_children_i = 0usize;
-                maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.title, &self.todo_hello_title);
+                let mut __m_changed = false;
+                if maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.title, &self.todo_hello_title) { __m_changed = true };
                 <div as maomi::backend::SupportBackend<todo_backend!()>>::apply_updates(
                     __m_child,
                     __m_backend_context,
                     __m_parent_element,
+                    __m_changed,
                     |__m_slot_change| {
                         Ok({
                             match __m_slot_change {

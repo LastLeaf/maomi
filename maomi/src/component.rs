@@ -447,13 +447,14 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
+        force_dirty: bool,
         slot_fn: impl FnMut(
             ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);
-            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() {
+            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
                 <C as ComponentTemplate<B>>::template_update(
                     &mut comp,
                     backend_context,

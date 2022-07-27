@@ -129,6 +129,7 @@ impl SupportBackend<DomBackend> for div {
         &'b mut self,
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
+        _force_dirty: bool,
         mut slot_fn: impl FnMut(
             ListItemChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,

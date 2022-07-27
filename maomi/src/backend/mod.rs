@@ -131,6 +131,7 @@ pub trait SupportBackend<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
+        force_dirty: bool,
         slot_fn: impl FnMut(
             ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,
