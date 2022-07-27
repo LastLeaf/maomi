@@ -1,1 +1,1 @@
-mod slot;
+pub mod slot;

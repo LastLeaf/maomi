@@ -19,6 +19,7 @@ fn single_slot() {
             (),
         >,
         todo_hello_text: String,
+        todo_hello_title: String,
     }
 
     impl maomi::component::Component for TodoComp {
@@ -26,6 +27,7 @@ fn single_slot() {
             Self {
                 todo_template: Default::default(),
                 todo_hello_text: "Hello world!".into(),
+                todo_hello_title: "Hello world".into(),
             }
         }
     }
@@ -82,6 +84,8 @@ fn single_slot() {
                             __m_backend_context,
                             __m_parent_element,
                         )?;
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.title, &self.todo_hello_title);
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.hidden, &false);
                     let __m_slot_children = <div as maomi::backend::SupportBackend<
                         todo_backend!(),
                     >>::create(
@@ -146,6 +150,7 @@ fn single_slot() {
                     child_nodes: ref mut __m_slot_children,
                 } = __m_children.0;
                 let mut __m_children_i = 0usize;
+                maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.title, &self.todo_hello_title);
                 <div as maomi::backend::SupportBackend<todo_backend!()>>::apply_updates(
                     __m_child,
                     __m_backend_context,

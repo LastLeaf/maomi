@@ -1,10 +1,11 @@
+use std::{rc::Rc, ops::Deref, borrow::Borrow};
 use maomi::{
-    backend::SupportBackend, diff::ListItemChange, error::Error, node::SlotChildren, BackendContext,
+    backend::SupportBackend, diff::ListItemChange, error::Error, node::SlotChildren, BackendContext, prop::PropertyUpdate,
 };
 
 use crate::{tree::*, DomBackend, DomGeneralElement};
 
-pub struct DomElement(pub(crate) web_sys::Element);
+pub struct DomElement(pub(crate) Rc<web_sys::Element>);
 
 impl std::fmt::Debug for DomElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -26,27 +27,67 @@ impl DomElement {
     }
 }
 
+pub struct DomStrAttr {
+    dom_elem: Rc<web_sys::Element>,
+    attr_name: &'static str,
+    inner: String,
+}
+
+impl Deref for DomStrAttr {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = String>> PropertyUpdate<S> for DomStrAttr where String: Borrow<S> {
+    fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool {
+        if dest.inner.borrow() == src {
+            return false;
+        }
+        dest.inner = src.to_owned();
+        dest.dom_elem.set_attribute(dest.attr_name, &dest.inner).unwrap();
+        true
+    }
+}
+
+pub struct DomBoolAttr {
+    dom_elem: Rc<web_sys::Element>,
+    attr_name: &'static str,
+    inner: bool,
+}
+
+impl Deref for DomBoolAttr {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = bool>> PropertyUpdate<S> for DomBoolAttr where bool: Borrow<S> {
+    fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool {
+        if dest.inner.borrow() == src {
+            return false;
+        }
+        dest.inner = src.to_owned();
+        if dest.inner {
+            dest.dom_elem.set_attribute(dest.attr_name, "").unwrap();
+        } else {
+            dest.dom_elem.remove_attribute(dest.attr_name).unwrap();
+        }
+        true
+    }
+}
+
 // TODO generate via macro
 
 #[allow(non_camel_case_types)]
 pub struct div {
     backend_element_token: ForestToken,
-    dom_elem: web_sys::Element,
-    hidden: bool,
-}
-
-impl div {
-    pub fn set_property_hidden(&mut self, v: bool) {
-        if self.hidden == v {
-            return;
-        }
-        self.hidden = v;
-        if v {
-            self.dom_elem.set_attribute("hidden", "").unwrap();
-        } else {
-            self.dom_elem.remove_attribute("hidden").unwrap();
-        }
-    }
+    pub title: DomStrAttr,
+    pub hidden: DomBoolAttr,
 }
 
 impl SupportBackend<DomBackend> for div {
@@ -59,13 +100,13 @@ impl SupportBackend<DomBackend> for div {
     where
         Self: Sized,
     {
-        let elem = crate::DOCUMENT.with(|document| document.create_element("div").unwrap());
+        let elem = Rc::new(crate::DOCUMENT.with(|document| document.create_element("div").unwrap()));
         let backend_element =
             crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
         let this = Self {
             backend_element_token: backend_element.token(),
-            dom_elem: elem,
-            hidden: false,
+            title: DomStrAttr { dom_elem: elem.clone(), attr_name: "title", inner: String::new() },
+            hidden: DomBoolAttr { dom_elem: elem.clone(), attr_name: "hidden", inner: false },
         };
         Ok((this, backend_element))
     }

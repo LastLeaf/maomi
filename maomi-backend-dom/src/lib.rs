@@ -1,4 +1,4 @@
-use element::DomElement;
+use std::rc::Rc;
 use enum_dispatch::enum_dispatch;
 use maomi::{
     backend::{tree::*, *},
@@ -6,6 +6,7 @@ use maomi::{
 };
 
 pub mod element;
+use element::DomElement;
 pub mod virtual_element;
 pub use virtual_element::DomVirtualElement;
 pub mod text_node;
@@ -52,7 +53,7 @@ impl DomBackend {
     }
 
     fn wrap_root_element(dom_elem: web_sys::Element) -> Self {
-        let root_elem = element::DomElement(dom_elem);
+        let root_elem = element::DomElement(Rc::new(dom_elem));
         Self {
             tree: tree::ForestNodeRc::new_forest(root_elem.into()),
         }

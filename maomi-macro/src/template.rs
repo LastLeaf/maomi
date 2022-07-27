@@ -58,18 +58,25 @@ pub(super) enum TemplateNode {
         tag_lt_token: token::Lt,
         tag_name: Path,
         attrs: Vec<TemplateAttribute>,
+        #[allow(dead_code)]
         close_token: token::Div,
+        #[allow(dead_code)]
         tag_gt_token: token::Gt,
     },
     Tag {
         tag_lt_token: token::Lt,
         tag_name: Path,
         attrs: Vec<TemplateAttribute>,
+        #[allow(dead_code)]
         tag_gt_token: token::Gt,
         children: Vec<TemplateNode>,
+        #[allow(dead_code)]
         end_tag_lt_token: token::Lt,
+        #[allow(dead_code)]
         close_token: token::Div,
+        #[allow(dead_code)]
         end_tag_name: Path,
+        #[allow(dead_code)]
         end_tag_gt_token: token::Gt,
     },
 }
@@ -310,11 +317,12 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let span = tag_lt_token.span();
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
-                        <div as maomi::backend::SupportBackend<#backend_param>>::init(
+                        <#tag_name as maomi::backend::SupportBackend<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
                         )?;
-                    let __m_slot_children = <div as maomi::backend::SupportBackend<
+                    #attrs
+                    let __m_slot_children = <#tag_name as maomi::backend::SupportBackend<
                         #backend_param,
                     >>::create(
                         &mut __m_child,
@@ -334,11 +342,12 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let children = children.into_iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
-                        <div as maomi::backend::SupportBackend<#backend_param>>::init(
+                        <#tag_name as maomi::backend::SupportBackend<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
                         )?;
-                    let __m_slot_children = <div as maomi::backend::SupportBackend<
+                    #attrs
+                    let __m_slot_children = <#tag_name as maomi::backend::SupportBackend<
                         #backend_param,
                     >>::create(
                         &mut __m_child,
@@ -418,7 +427,8 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
                     let mut __m_children_i = 0usize;
-                    <div as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
+                    #attrs
+                    <#tag_name as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
@@ -461,7 +471,8 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
                     let mut __m_children_i = 0usize;
-                    <div as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
+                    #attrs
+                    <#tag_name as maomi::backend::SupportBackend<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,

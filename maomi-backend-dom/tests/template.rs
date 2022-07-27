@@ -37,8 +37,8 @@ fn basic() {
     #[component(for maomi_backend_dom::DomBackend)]
     struct HelloWorld {
         template: template! {
-            <div>"Hello world!"</div>
-            <div>{ &self.hello_text }</div>
+            <div title="Hello">"Hello world!"</div>
+            <div title="Again">{ &self.hello_text }</div>
         },
         hello_text: String,
     }

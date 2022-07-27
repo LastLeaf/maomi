@@ -11,11 +11,11 @@ struct HelloWorld {
     // a component should have a template field
     template: template! {
         // the template is XML-like
-        <div>
+        <div title="Hello!">
             // strings in the template must be quoted
             "Hello world!"
         </div>
-        <div>
+        <div title={ &self.hello }>
             // use { ... } bindings in the template
             { &self.hello }
         </div>

@@ -1,6 +1,6 @@
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-mod tree;
+pub mod tree;
 
 fn prepare_env(
     f: impl FnOnce(&mut maomi::backend::context::EnteredBackendContext<maomi_backend_dom::DomBackend>),

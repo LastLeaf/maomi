@@ -5,9 +5,11 @@ pub mod error;
 pub mod mount_point;
 pub mod node;
 pub mod text_node;
+pub mod prop;
 pub use backend::context::BackendContext;
 
 pub mod prelude {
     pub use super::component::{Component, ComponentExt};
+    pub use super::prop::Prop;
     pub use maomi_macro::*;
 }
