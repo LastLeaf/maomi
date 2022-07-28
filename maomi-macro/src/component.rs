@@ -136,9 +136,7 @@ impl ToTokens for ComponentBody {
                 let span = path.span();
                 Some(parse_quote_spanned! {span=> __MBackend: #path })
             }
-            ComponentAttr::Backend { .. } => {
-                None
-            }
+            ComponentAttr::Backend { .. } => None,
         };
 
         // find component name and type params
@@ -168,7 +166,11 @@ impl ToTokens for ComponentBody {
 
         // find generics for impl
         let impl_type_params = {
-            let items = inner.generics.params.iter().chain(backend_param_in_impl.as_ref());
+            let items = inner
+                .generics
+                .params
+                .iter()
+                .chain(backend_param_in_impl.as_ref());
             quote! {
                 <#(#items),*>
             }
@@ -178,7 +180,7 @@ impl ToTokens for ComponentBody {
         let template_create = template.to_create(&backend_param);
         let template_update = template.to_update(&backend_param);
         let impl_component_template = quote! {
-            impl #impl_type_params maomi::component::ComponentTemplate<#backend_param> for #component_name {
+            impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
                 type TemplateField = #template_ty;
                 type SlotData = ();
 
@@ -193,7 +195,7 @@ impl ToTokens for ComponentBody {
                 }
 
                 #[inline]
-                fn template_init(&mut self, __m_init: maomi::component::TemplateInit<#component_name>) {
+                fn template_init(&mut self, __m_init: maomi::template::TemplateInit<#component_name>) {
                     self.#template_field.init(__m_init);
                 }
 

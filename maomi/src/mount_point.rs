@@ -1,5 +1,6 @@
 use crate::backend::{tree, Backend, BackendGeneralElement, SupportBackend};
-use crate::component::{Component, ComponentNode, ComponentTemplate};
+use crate::component::{Component, ComponentNode};
+use crate::template::ComponentTemplate;
 use crate::error::Error;
 use crate::BackendContext;
 

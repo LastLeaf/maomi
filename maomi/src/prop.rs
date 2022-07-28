@@ -1,4 +1,4 @@
-use std::{ops::Deref, borrow::Borrow};
+use std::{borrow::Borrow, ops::Deref};
 
 pub trait PropertyUpdate<S: ?Sized> {
     fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool;

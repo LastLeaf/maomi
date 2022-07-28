@@ -1,7 +1,8 @@
-use std::{rc::Rc, ops::Deref, borrow::Borrow};
 use maomi::{
-    backend::SupportBackend, diff::ListItemChange, error::Error, node::SlotChildren, BackendContext, prop::PropertyUpdate,
+    backend::SupportBackend, diff::ListItemChange, error::Error, node::SlotChildren,
+    prop::PropertyUpdate, BackendContext,
 };
+use std::{borrow::Borrow, ops::Deref, rc::Rc};
 
 use crate::{tree::*, DomBackend, DomGeneralElement};
 
@@ -41,13 +42,18 @@ impl Deref for DomStrAttr {
     }
 }
 
-impl<S: ?Sized + PartialEq + ToOwned<Owned = String>> PropertyUpdate<S> for DomStrAttr where String: Borrow<S> {
+impl<S: ?Sized + PartialEq + ToOwned<Owned = String>> PropertyUpdate<S> for DomStrAttr
+where
+    String: Borrow<S>,
+{
     fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool {
         if dest.inner.borrow() == src {
             return false;
         }
         dest.inner = src.to_owned();
-        dest.dom_elem.set_attribute(dest.attr_name, &dest.inner).unwrap();
+        dest.dom_elem
+            .set_attribute(dest.attr_name, &dest.inner)
+            .unwrap();
         true
     }
 }
@@ -66,7 +72,10 @@ impl Deref for DomBoolAttr {
     }
 }
 
-impl<S: ?Sized + PartialEq + ToOwned<Owned = bool>> PropertyUpdate<S> for DomBoolAttr where bool: Borrow<S> {
+impl<S: ?Sized + PartialEq + ToOwned<Owned = bool>> PropertyUpdate<S> for DomBoolAttr
+where
+    bool: Borrow<S>,
+{
     fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool {
         if dest.inner.borrow() == src {
             return false;
@@ -100,13 +109,22 @@ impl SupportBackend<DomBackend> for div {
     where
         Self: Sized,
     {
-        let elem = Rc::new(crate::DOCUMENT.with(|document| document.create_element("div").unwrap()));
+        let elem =
+            Rc::new(crate::DOCUMENT.with(|document| document.create_element("div").unwrap()));
         let backend_element =
             crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
         let this = Self {
             backend_element_token: backend_element.token(),
-            title: DomStrAttr { dom_elem: elem.clone(), attr_name: "title", inner: String::new() },
-            hidden: DomBoolAttr { dom_elem: elem.clone(), attr_name: "hidden", inner: false },
+            title: DomStrAttr {
+                dom_elem: elem.clone(),
+                attr_name: "title",
+                inner: String::new(),
+            },
+            hidden: DomBoolAttr {
+                dom_elem: elem.clone(),
+                attr_name: "hidden",
+                inner: false,
+            },
         };
         Ok((this, backend_element))
     }

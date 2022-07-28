@@ -1,9 +1,9 @@
-use std::rc::Rc;
 use enum_dispatch::enum_dispatch;
 use maomi::{
     backend::{tree::*, *},
     error::Error,
 };
+use std::rc::Rc;
 
 pub mod element;
 use element::DomElement;

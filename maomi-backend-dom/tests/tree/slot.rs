@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
-use maomi_backend_dom::element::*;
 use crate::*;
+use maomi_backend_dom::element::*;
 
 #[wasm_bindgen_test]
 fn single_slot() {
@@ -13,7 +13,7 @@ fn single_slot() {
 
     struct TodoComp {
         // template structure
-        todo_template: maomi::component::Template<
+        todo_template: maomi::template::Template<
             TodoComp,
             (maomi::node::Node<div, (maomi::text_node::TextNode,)>,),
             (),
@@ -33,8 +33,8 @@ fn single_slot() {
     }
 
     // main impl
-    impl maomi::component::ComponentTemplate<todo_backend!()> for TodoComp {
-        type TemplateField = maomi::component::Template<
+    impl maomi::template::ComponentTemplate<todo_backend!()> for TodoComp {
+        type TemplateField = maomi::template::Template<
             TodoComp,
             (maomi::node::Node<div, (maomi::text_node::TextNode,)>,),
             (),
@@ -52,7 +52,7 @@ fn single_slot() {
         }
 
         #[inline]
-        fn template_init(&mut self, __m_init: maomi::component::TemplateInit<TodoComp>) {
+        fn template_init(&mut self, __m_init: maomi::template::TemplateInit<TodoComp>) {
             self.todo_template.init(__m_init);
         }
 
@@ -84,7 +84,10 @@ fn single_slot() {
                             __m_backend_context,
                             __m_parent_element,
                         )?;
-                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.title, &self.todo_hello_title);
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(
+                        &mut __m_child.title,
+                        &self.todo_hello_title,
+                    );
                     maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.hidden, &false);
                     let __m_slot_children = <div as maomi::backend::SupportBackend<
                         todo_backend!(),
@@ -151,7 +154,12 @@ fn single_slot() {
                 } = __m_children.0;
                 let mut __m_children_i = 0usize;
                 let mut __m_changed = false;
-                if maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.title, &self.todo_hello_title) { __m_changed = true };
+                if maomi::prop::PropertyUpdate::compare_and_set_ref(
+                    &mut __m_child.title,
+                    &self.todo_hello_title,
+                ) {
+                    __m_changed = true
+                };
                 <div as maomi::backend::SupportBackend<todo_backend!()>>::apply_updates(
                     __m_child,
                     __m_backend_context,
@@ -160,13 +168,14 @@ fn single_slot() {
                     |__m_slot_change| {
                         Ok({
                             match __m_slot_change {
-                                maomi::diff::ListItemChange::Added(__m_parent_element, __m_scope) => {
+                                maomi::diff::ListItemChange::Added(
+                                    __m_parent_element,
+                                    __m_scope,
+                                ) => {
                                     // create children
                                     let __m_children = ({
                                         let (__m_child, __m_backend_element) =
-                                            maomi::text_node::TextNode::create::<
-                                                todo_backend!(),
-                                            >(
+                                            maomi::text_node::TextNode::create::<todo_backend!()>(
                                                 __m_parent_element,
                                                 &self.todo_hello_text,
                                             )?;
@@ -176,13 +185,18 @@ fn single_slot() {
                                     __m_slot_children.add(__m_children_i, __m_children)?;
                                     __m_children_i += 1;
                                 }
-                                maomi::diff::ListItemChange::Unchanged(__m_parent_element, __m_scope) => {
-                                    let __m_children =
-                                        __m_slot_children.get_mut(__m_children_i)?;
+                                maomi::diff::ListItemChange::Unchanged(
+                                    __m_parent_element,
+                                    __m_scope,
+                                ) => {
+                                    let __m_children = __m_slot_children.get_mut(__m_children_i)?;
                                     {
                                         // update children
                                         let __m_child = &mut __m_children.0;
-                                        __m_child.set_text::<todo_backend!()>(__m_parent_element, &self.todo_hello_text)?;
+                                        __m_child.set_text::<todo_backend!()>(
+                                            __m_parent_element,
+                                            &self.todo_hello_text,
+                                        )?;
                                     }
                                     __m_children_i += 1;
                                 }

@@ -17,7 +17,7 @@ impl Template {
             MacroDelimiter::Bracket(x) => x.span,
         };
         let children = children.iter().map(|c| c.gen_type());
-        parse_quote_spanned!(span=> maomi::component::Template<Self, (#(#children,)*), ()> )
+        parse_quote_spanned!(span=> maomi::template::Template<Self, (#(#children,)*), ()> )
     }
 
     pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateCreate<'a> {
@@ -188,21 +188,27 @@ impl Parse for TemplateNode {
 pub(super) enum TemplateAttribute {
     StaticProperty {
         name: Ident,
+        #[allow(dead_code)]
         eq_token: token::Eq,
         value: Lit,
     },
     DynamicProperty {
         ref_token: Option<token::And>,
         name: Ident,
+        #[allow(dead_code)]
         eq_token: token::Eq,
+        #[allow(dead_code)]
         brace_token: token::Brace,
         expr: Expr,
     },
     Event {
+        #[allow(dead_code)]
         at_token: token::At,
         name: Ident,
+        #[allow(dead_code)]
         eq_token: token::Eq,
-        brace_token: token::Brace, // TODO
+        #[allow(dead_code)]
+        brace_token: token::Brace,
         expr: Expr,
     },
 }
@@ -531,9 +537,7 @@ pub(super) struct TemplateAttributeCreate<'a> {
 
 impl<'a> ToTokens for TemplateAttributeCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self {
-            attr,
-        } = self;
+        let Self { attr } = self;
         match attr {
             TemplateAttribute::StaticProperty { name, value, .. } => {
                 let span = value.span();
@@ -574,9 +578,7 @@ pub(super) struct TemplateAttributeUpdate<'a> {
 
 impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self {
-            attr,
-        } = self;
+        let Self { attr } = self;
         match attr {
             TemplateAttribute::StaticProperty { .. } => {
                 quote! {}

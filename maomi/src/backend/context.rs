@@ -5,7 +5,8 @@ use std::{
 };
 
 use super::{tree, Backend};
-use crate::component::{Component, ComponentTemplate};
+use crate::component::Component;
+use crate::template::ComponentTemplate;
 use crate::error::Error;
 use crate::mount_point::MountPoint;
 

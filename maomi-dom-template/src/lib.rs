@@ -15,8 +15,8 @@ struct HelloWorld {
             // strings in the template must be quoted
             "Hello world!"
         </div>
+        // use { ... } bindings in the template
         <div title={ &self.hello }>
-            // use { ... } bindings in the template
             { &self.hello }
         </div>
     },

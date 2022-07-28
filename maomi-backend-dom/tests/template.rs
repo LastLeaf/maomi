@@ -1,11 +1,13 @@
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
-use maomi_backend_dom::{DomBackend, element::*};
+use maomi_backend_dom::{element::*, DomBackend};
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-fn test_component<T: 'static + Component + maomi::component::ComponentTemplate<maomi_backend_dom::DomBackend>>(
+fn test_component<
+    T: 'static + Component + maomi::template::ComponentTemplate<maomi_backend_dom::DomBackend>,
+>(
     expected_html: &str,
 ) {
     let elem = web_sys::window()
@@ -59,5 +61,7 @@ fn basic() {
         }
     }
 
-    test_component::<HelloWorld>(r#"<div title="Hello">Hello world!</div><div title="Again">Hello world again!</div>"#);
+    test_component::<HelloWorld>(
+        r#"<div title="Hello">Hello world!</div><div title="Again">Hello world again!</div>"#,
+    );
 }
