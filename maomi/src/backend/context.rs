@@ -1,7 +1,10 @@
 use std::{
-    cell::RefCell,
+    cell::{RefCell, Cell},
     collections::VecDeque,
     rc::{Rc, Weak},
+    task::{Waker, Context, Poll},
+    future::Future,
+    pin::Pin,
 };
 
 use super::{tree, Backend};
@@ -10,8 +13,48 @@ use crate::template::ComponentTemplate;
 use crate::error::Error;
 use crate::mount_point::MountPoint;
 
+/// A future that can be resolved with a callback function
+pub struct AsyncCallback<R: 'static> {
+    done: Rc<Cell<Option<R>>>,
+    waker: Rc<Cell<Option<Waker>>>,
+}
+
+impl<R: 'static> Future for AsyncCallback<R> {
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if let Some(ret) = self.done.take() {
+            Poll::Ready(ret)
+        } else {
+            self.waker.set(Some(cx.waker().clone()));
+            Poll::Pending
+        }
+    }
+}
+
+impl<R: 'static> AsyncCallback<R> {
+    /// Create with a function which can resolve the future later
+    pub fn new() -> (Self, impl 'static + FnOnce(R)) {
+        let done = Rc::new(Cell::new(None));
+        let done2 = done.clone();
+        let waker = Rc::new(Cell::new(None));
+        let waker2 = waker.clone();
+        let callback = move |ret| {
+            done2.set(Some(ret));
+            match waker2.take() {
+                Some(waker) => {
+                    let waker: Waker = waker;
+                    waker.wake();
+                }
+                None => {}
+            }
+        };
+        (Self { done, waker }, callback)
+    }
+}
+
 pub(crate) enum BackendContextEvent<B: Backend> {
-    General(Box<dyn FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>>),
+    General(Box<dyn FnOnce(&mut EnteredBackendContext<B>)>),
 }
 
 /// A backend context for better backend management
@@ -49,9 +92,7 @@ impl<B: Backend> BackendContext<B> {
         while let Some(ev) = self.inner.event_queue.borrow_mut().pop_front() {
             match ev {
                 BackendContextEvent::General(f) => {
-                    if let Err(err) = f(entered) {
-                        log::error!("{}", err);
-                    }
+                    f(entered);
                 }
             }
         }
@@ -63,21 +104,23 @@ impl<B: Backend> BackendContext<B> {
     /// it will wait until exits,
     /// so the `f` is required to be `'static` .
     #[inline]
-    pub fn enter(
-        &self,
-        f: impl 'static + FnOnce(&mut EnteredBackendContext<B>) -> Result<(), Error>,
-    ) {
+    pub fn enter<T: 'static, F>(&self, f: F) -> AsyncCallback<T>
+    where
+        F: 'static + FnOnce(&mut EnteredBackendContext<B>) -> T
+    {
+        let (fut, cb) = AsyncCallback::new();
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
-            if let Err(err) = f(&mut entered) {
-                log::error!("{}", err);
-            }
+            f(&mut entered);
             self.exec_queue(&mut entered);
         } else {
             self.inner
                 .event_queue
                 .borrow_mut()
-                .push_back(BackendContextEvent::General(Box::new(f)));
+                .push_back(BackendContextEvent::General(Box::new(move |x| {
+                    cb(f(x));
+                })));
         }
+        fut
     }
 
     /// Try enter the backend context sync
@@ -109,16 +152,16 @@ impl<B: Backend> EnteredBackendContext<B> {
     ///
     /// The `init` provides a way to do some updates before the component `created` lifetime.
     /// It is encouraged to change template data bindings in `init` .
-    pub fn new_mount_point<C: Component + ComponentTemplate<B> + 'static>(
+    pub fn append_attach<C: Component + ComponentTemplate<B> + 'static>(
         &mut self,
         init: impl FnOnce(&mut C) -> Result<(), Error>,
     ) -> Result<MountPoint<B, C>, Error> {
-        let mut owner = self.backend.root_mut();
-        MountPoint::new_in_backend(
+        let mut root = self.backend.root_mut();
+        MountPoint::append_attach(
             &BackendContext {
                 inner: self.ctx.as_ref().unwrap().upgrade().unwrap(),
             },
-            &mut owner,
+            &mut root,
             init,
         )
     }

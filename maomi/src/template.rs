@@ -11,7 +11,7 @@ use crate::{
 ///
 /// This struct is auto-managed by `#[component]` .
 pub struct TemplateInit<C: ?Sized> {
-    pub(crate) updater: Box<dyn UpdateScheduler<EnterType = C>>,
+    pub(crate) updater: Box<dyn UpdateSchedulerWeak<EnterType = C>>,
 }
 
 /// Some helper functions for the template type
@@ -33,7 +33,7 @@ pub trait TemplateHelper<C: ?Sized, D>: Default {
 ///
 /// This struct is auto-managed by `#[component]` .
 pub struct Template<C, S, D> {
-    updater: Option<Box<dyn UpdateScheduler<EnterType = C>>>,
+    updater: Option<Box<dyn UpdateSchedulerWeak<EnterType = C>>>,
     dirty: bool,
     /// The template node tree structure
     ///
@@ -70,10 +70,7 @@ impl<C, S, D> TemplateHelper<C, D> for Template<C, S, D> {
         C: 'static,
     {
         if self.structure.is_some() && !self.dirty {
-            if let Some(updater) = self.updater.as_ref() {
-                self.dirty = true;
-                updater.schedule_update();
-            }
+            self.dirty = true;
         }
     }
 

@@ -7,7 +7,7 @@ pub mod mount_point;
 pub mod node;
 pub mod prop;
 pub mod text_node;
-pub use backend::context::BackendContext;
+pub use backend::context::{BackendContext, AsyncCallback};
 
 pub mod prelude {
     pub use super::component::{Component, ComponentExt};

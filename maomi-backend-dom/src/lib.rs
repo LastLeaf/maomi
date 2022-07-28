@@ -22,6 +22,12 @@ thread_local! {
     };
 }
 
+/// A common async runner
+pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
+    wasm_bindgen_futures::spawn_local(fut);
+}
+
+/// A DOM backend
 pub struct DomBackend {
     tree: tree::ForestNodeRc<DomGeneralElement>,
 }

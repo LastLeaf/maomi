@@ -213,8 +213,7 @@ fn single_slot() {
     }
 
     prepare_env(|ctx| {
-        let mut mount_point = ctx.new_mount_point(|_: &mut TodoComp| Ok(())).unwrap();
-        mount_point.append_attach(&mut ctx.root_mut());
+        let _mount_point = ctx.append_attach(|_: &mut TodoComp| Ok(())).unwrap();
         let html = maomi_backend_dom::DomGeneralElement::inner_html(&ctx.root());
         assert_eq!(html, "<div>Hello world!</div>");
     });

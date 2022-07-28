@@ -13,7 +13,7 @@ pub struct MountPoint<B: Backend, C: Component + ComponentTemplate<B> + 'static>
 }
 
 impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
-    pub(crate) fn new_in_backend(
+    fn new_in_backend(
         backend_context: &BackendContext<B>,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         init: impl FnOnce(&mut C) -> Result<(), Error>,
@@ -36,9 +36,14 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
         })
     }
 
-    /// Attach to a parent as the last child of it
-    pub fn append_attach(&mut self, parent: &mut tree::ForestNodeMut<B::GeneralElement>) {
-        <B::GeneralElement as BackendGeneralElement>::append(parent, self.backend_element.clone())
+    pub(crate) fn append_attach(
+        backend_context: &BackendContext<B>,
+        parent: &mut tree::ForestNodeMut<B::GeneralElement>,
+        init: impl FnOnce(&mut C) -> Result<(), Error>,
+    ) -> Result<Self, Error> {
+        let this = Self::new_in_backend(backend_context, parent, init)?;
+        <B::GeneralElement as BackendGeneralElement>::append(parent, this.backend_element.clone());
+        Ok(this)
     }
 
     /// Detach the mount point
