@@ -20,7 +20,7 @@ async fn test_component<
     let backend_context = maomi::BackendContext::new(dom_backend);
     backend_context
         .enter_sync(move |ctx| {
-            let _mount_point = ctx.append_attach(|_: &mut T| Ok(())).unwrap();
+            let _mount_point = ctx.append_attach(|_: &mut T| {}).unwrap();
         })
         .map_err(|_| "Cannot init mount point")
         .unwrap();
@@ -41,10 +41,29 @@ async fn test_component<
 #[wasm_bindgen_test]
 async fn basic() {
     #[component(for DomBackend)]
+    struct Child {
+        template: template! {
+            <div title={ &*self.title }> { &self.text } </div>
+        },
+        text: Prop<String>,
+        title: Prop<String>,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                text: Prop::new("".into()),
+                title: Prop::new("".into()),
+            }
+        }
+    }
+
+    #[component(for DomBackend)]
     struct HelloWorld {
         template: template! {
             <div title="Hello"> "Hello world!" </div>
-            <div title={ &self.hello_title }> { &self.hello_text } </div>
+            <Child title={ &self.hello_title } text=&{ self.hello_text } />
         },
         hello_text: String,
         hello_title: String,
@@ -70,6 +89,64 @@ async fn basic() {
     }
 
     test_component::<HelloWorld>(
+        r#"<div title="Hello">Hello world!</div><div title="Again">Hello world again!</div>"#,
+    ).await;
+}
+
+#[wasm_bindgen_test]
+async fn template_if() {
+    #[component(for DomBackend)]
+    struct Child {
+        template: template! {
+            <div title={ &*self.title }> { &self.text } </div>
+        },
+        text: Prop<String>,
+        title: Prop<String>,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                text: Prop::new("".into()),
+                title: Prop::new("".into()),
+            }
+        }
+    }
+
+    #[component(for DomBackend)]
+    struct Parent {
+        template: template! {
+            if text.len() > 10 {
+                <div> "(too long)" </div>
+            } else if text.len() == 0 {
+                <div> "(empty)" </div>
+            } else {
+                <div> { self.text } </div>
+            }
+        },
+        text: String,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                text: "".into(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    this.hello_text = "Hello world again!".into();
+                }).await.unwrap();
+            });
+        }
+    }
+
+    test_component::<Parent>(
         r#"<div title="Hello">Hello world!</div><div title="Again">Hello world again!</div>"#,
     ).await;
 }

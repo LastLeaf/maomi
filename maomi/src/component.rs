@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     template::*,
-    backend::{tree::*, Backend, BackendGeneralElement, SupportBackend, context::AsyncCallback},
+    backend::{tree::*, Backend, BackendGeneralElement, BackendComponent, context::AsyncCallback, SupportBackend},
     diff::ListItemChange,
     error::Error,
     node::SlotChildren,
@@ -87,7 +87,7 @@ impl<C: 'static> ComponentRc<C> {
 ///
 /// This trait must be implemented by components.
 /// It contains some lifetime callbacks.
-pub trait Component {
+pub trait Component: 'static {
     /// Called when a new instance requested
     fn new() -> Self;
 
@@ -155,7 +155,7 @@ pub(crate) trait UpdateSchedulerWeak: 'static {
 }
 
 /// A node that wraps a component instance
-pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component + 'static> {
+pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component> {
     pub(crate) component: Rc<RefCell<C>>,
     backend_context: BackendContext<B>,
     backend_element: ForestNodeRc<B::GeneralElement>,
@@ -171,7 +171,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B,
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> ComponentNode<B, C> {
+impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
     /// Get a weak reference
     #[inline]
     fn weak_ref(&self) -> ComponentNodeWeak<B, C> {
@@ -183,7 +183,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> ComponentNode<B,
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> UpdateScheduler
+impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler
     for ComponentNode<B, C>
 {
     type EnterType = C;
@@ -226,13 +226,13 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> UpdateScheduler
 }
 
 /// A node that wraps a component instance
-struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component + 'static> {
+struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component> {
     component: Weak<RefCell<C>>,
     backend_context: BackendContext<B>,
     backend_element: ForestNodeRc<B::GeneralElement>,
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> ComponentNodeWeak<B, C> {
+impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeWeak<B, C> {
     fn upgrade(&self) -> Option<ComponentNode<B, C>> {
         if let Some(component) = self.component.upgrade() {
             Some(ComponentNode {
@@ -246,7 +246,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> ComponentNodeWea
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> UpdateSchedulerWeak
+impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateSchedulerWeak
     for ComponentNodeWeak<B, C>
 {
     type EnterType = C;
@@ -261,10 +261,16 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> UpdateSchedulerW
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B>
+impl<B: Backend, C: ComponentTemplate<B> + Component> SupportBackend<B> for C {
+    type Target = ComponentNode<B, C>;
+}
+
+impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B>
     for ComponentNode<B, C>
 {
     type SlotData = <C as ComponentTemplate<B>>::SlotData;
+    type UpdateTarget = C;
+    type UpdateContext = bool;
 
     #[inline]
     fn init<'b>(
@@ -295,6 +301,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<<B as Backend>::GeneralElement>,
+        update_fn: impl FnOnce(&mut C, &mut bool),
         slot_fn: impl FnMut(
             &mut ForestNodeMut<B::GeneralElement>,
             &Self::SlotData,
@@ -302,6 +309,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B
     ) -> Result<SlotChildren<R>, Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);
+            let mut force_dirty = false;
+            update_fn(&mut comp, &mut force_dirty);
             let ret = <C as ComponentTemplate<B>>::template_create(
                 &mut comp,
                 backend_context,
@@ -309,14 +318,6 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B
                 slot_fn,
             )?;
             <C as Component>::created(&mut comp);
-            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() {
-                <C as ComponentTemplate<B>>::template_update(
-                    &mut comp,
-                    backend_context,
-                    &mut backend_element,
-                    |_| Ok(()), // TODO handling slot upper update
-                )?;
-            }
             Ok(ret)
         } else {
             Err(Error::RecursiveUpdate)
@@ -328,13 +329,15 @@ impl<B: Backend, C: ComponentTemplate<B> + Component + 'static> SupportBackend<B
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        force_dirty: bool,
+        update_fn: impl FnOnce(&mut C, &mut bool),
         slot_fn: impl FnMut(
             ListItemChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component.try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element);
+            let mut force_dirty = false;
+            update_fn(&mut comp, &mut force_dirty);
             if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
                 <C as ComponentTemplate<B>>::template_update(
                     &mut comp,

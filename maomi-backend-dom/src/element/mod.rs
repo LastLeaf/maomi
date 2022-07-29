@@ -1,12 +1,12 @@
 use maomi::{
-    backend::SupportBackend, diff::ListItemChange, error::Error, node::SlotChildren,
+    backend::{BackendComponent, SupportBackend}, diff::ListItemChange, error::Error, node::SlotChildren,
     prop::PropertyUpdate, BackendContext,
 };
-use std::{borrow::Borrow, ops::Deref, rc::Rc};
+use std::{borrow::Borrow, ops::Deref};
 
 use crate::{tree::*, DomBackend, DomGeneralElement};
 
-pub struct DomElement(pub(crate) Rc<web_sys::Element>);
+pub struct DomElement(pub(crate) web_sys::Element);
 
 impl std::fmt::Debug for DomElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,7 +29,6 @@ impl DomElement {
 }
 
 pub struct DomStrAttr {
-    dom_elem: Rc<web_sys::Element>,
     attr_name: &'static str,
     inner: String,
 }
@@ -46,20 +45,20 @@ impl<S: ?Sized + PartialEq + ToOwned<Owned = String>> PropertyUpdate<S> for DomS
 where
     String: Borrow<S>,
 {
-    fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool {
+    type UpdateContext = web_sys::Element;
+
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut web_sys::Element) {
         if dest.inner.borrow() == src {
-            return false;
+            return;
         }
         dest.inner = src.to_owned();
-        dest.dom_elem
+        ctx
             .set_attribute(dest.attr_name, &dest.inner)
             .unwrap();
-        true
     }
 }
 
 pub struct DomBoolAttr {
-    dom_elem: Rc<web_sys::Element>,
     attr_name: &'static str,
     inner: bool,
 }
@@ -76,17 +75,18 @@ impl<S: ?Sized + PartialEq + ToOwned<Owned = bool>> PropertyUpdate<S> for DomBoo
 where
     bool: Borrow<S>,
 {
-    fn compare_and_set_ref(dest: &mut Self, src: &S) -> bool {
+    type UpdateContext = web_sys::Element;
+
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut web_sys::Element) {
         if dest.inner.borrow() == src {
-            return false;
+            return;
         }
         dest.inner = src.to_owned();
         if dest.inner {
-            dest.dom_elem.set_attribute(dest.attr_name, "").unwrap();
+            ctx.set_attribute(dest.attr_name, "").unwrap();
         } else {
-            dest.dom_elem.remove_attribute(dest.attr_name).unwrap();
+            ctx.remove_attribute(dest.attr_name).unwrap();
         }
-        true
     }
 }
 
@@ -99,8 +99,10 @@ pub struct div {
     pub hidden: DomBoolAttr,
 }
 
-impl SupportBackend<DomBackend> for div {
+impl BackendComponent<DomBackend> for div {
     type SlotData = ();
+    type UpdateTarget = Self;
+    type UpdateContext = web_sys::Element;
 
     fn init<'b>(
         _backend_context: &'b BackendContext<DomBackend>,
@@ -109,19 +111,16 @@ impl SupportBackend<DomBackend> for div {
     where
         Self: Sized,
     {
-        let elem =
-            Rc::new(crate::DOCUMENT.with(|document| document.create_element("div").unwrap()));
+        let elem = crate::DOCUMENT.with(|document| document.create_element("div").unwrap());
         let backend_element =
             crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
         let this = Self {
             backend_element_token: backend_element.token(),
             title: DomStrAttr {
-                dom_elem: elem.clone(),
                 attr_name: "title",
                 inner: String::new(),
             },
             hidden: DomBoolAttr {
-                dom_elem: elem.clone(),
                 attr_name: "hidden",
                 inner: false,
             },
@@ -133,12 +132,14 @@ impl SupportBackend<DomBackend> for div {
         &'b mut self,
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<DomGeneralElement>,
+        update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
         mut slot_fn: impl FnMut(
             &mut ForestNodeMut<DomGeneralElement>,
             &Self::SlotData,
         ) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error> {
         let mut node = owner.borrow_mut_token(&self.backend_element_token);
+        update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
         let r = slot_fn(&mut node, &())?;
         Ok(SlotChildren::Single(r))
     }
@@ -147,13 +148,18 @@ impl SupportBackend<DomBackend> for div {
         &'b mut self,
         _backend_context: &'b BackendContext<DomBackend>,
         owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
-        _force_dirty: bool,
+        update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
         mut slot_fn: impl FnMut(
             ListItemChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         let mut node = owner.borrow_mut_token(&self.backend_element_token);
+        update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
         slot_fn(ListItemChange::Unchanged(&mut node, &()))?;
         Ok(())
     }
+}
+
+impl SupportBackend<DomBackend> for div {
+    type Target = Self;
 }

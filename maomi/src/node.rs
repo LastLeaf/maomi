@@ -1,9 +1,9 @@
-use crate::error::Error;
+use crate::{error::Error, backend::{SupportBackend, Backend}};
 
 /// A helper type for a node with child nodes
 #[derive(Debug, Clone, PartialEq)]
-pub struct Node<N, C> {
-    pub node: N,
+pub struct Node<B: Backend, N: SupportBackend<B>, C> {
+    pub node: N::Target,
     pub child_nodes: SlotChildren<C>,
 }
 

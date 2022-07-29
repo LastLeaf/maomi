@@ -3,7 +3,6 @@ use maomi::{
     backend::{tree::*, *},
     error::Error,
 };
-use std::rc::Rc;
 
 pub mod element;
 use element::DomElement;
@@ -22,7 +21,7 @@ thread_local! {
     };
 }
 
-/// A common async runner
+/// A common async runner for DOM environment
 pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
     wasm_bindgen_futures::spawn_local(fut);
 }
@@ -59,7 +58,7 @@ impl DomBackend {
     }
 
     fn wrap_root_element(dom_elem: web_sys::Element) -> Self {
-        let root_elem = element::DomElement(Rc::new(dom_elem));
+        let root_elem = element::DomElement(dom_elem);
         Self {
             tree: tree::ForestNodeRc::new_forest(root_elem.into()),
         }

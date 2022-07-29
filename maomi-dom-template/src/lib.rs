@@ -42,7 +42,7 @@ pub fn wasm_main() {
     // create a mount point
     backend_context
         .enter_sync(move |ctx| {
-            let _mount_point = ctx.append_attach(|_: &mut HelloWorld| Ok(())).unwrap();
+            let _mount_point = ctx.append_attach(|_: &mut HelloWorld| {}).unwrap();
         })
         .map_err(|_| "Cannot init mount point")
         .unwrap();

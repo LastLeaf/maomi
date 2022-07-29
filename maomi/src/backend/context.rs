@@ -154,7 +154,7 @@ impl<B: Backend> EnteredBackendContext<B> {
     /// It is encouraged to change template data bindings in `init` .
     pub fn append_attach<C: Component + ComponentTemplate<B> + 'static>(
         &mut self,
-        init: impl FnOnce(&mut C) -> Result<(), Error>,
+        init: impl FnOnce(&mut C),
     ) -> Result<MountPoint<B, C>, Error> {
         let mut root = self.backend.root_mut();
         MountPoint::append_attach(

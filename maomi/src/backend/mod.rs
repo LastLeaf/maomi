@@ -104,8 +104,10 @@ pub trait BackendTextNode {
 }
 
 /// A trait that indicates a component or a backend-implemented element for the backend
-pub trait SupportBackend<B: Backend> {
+pub trait BackendComponent<B: Backend> {
     type SlotData;
+    type UpdateTarget;
+    type UpdateContext;
 
     /// Create with a backend element
     fn init<'b>(
@@ -120,6 +122,7 @@ pub trait SupportBackend<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
+        update_fn: impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext),
         slot_fn: impl FnMut(
             &mut tree::ForestNodeMut<B::GeneralElement>,
             &Self::SlotData,
@@ -131,9 +134,14 @@ pub trait SupportBackend<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        force_dirty: bool,
+        update_fn: impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext),
         slot_fn: impl FnMut(
             ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error>;
+}
+
+/// A trait that indicates a component that can be converted into a `SupportBackend`
+pub trait SupportBackend<B: Backend> {
+    type Target: BackendComponent<B>;
 }

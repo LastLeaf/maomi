@@ -46,16 +46,36 @@ impl Parse for ComponentAttr {
 }
 
 struct ComponentBody {
-    attr: ComponentAttr,
     inner: ItemStruct,
-    template: Template,
+    backend_param: proc_macro2::TokenStream,
+    backend_param_in_impl: Option<GenericParam>,
+    template: Result<Template>,
     template_field: Ident,
     template_ty: Type,
 }
 
-impl Parse for ComponentBody {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let mut inner: ItemStruct = input.parse()?;
+impl ComponentBody {
+    fn new(attr: ComponentAttr, mut inner: ItemStruct) -> Result<Self> {
+        // generate backend type params
+        let backend_param = match &attr {
+            ComponentAttr::None => quote! { __MBackend },
+            ComponentAttr::ImplBackend { path, .. } => {
+                let span = path.span();
+                quote_spanned! {span=> __MBackend }
+            }
+            ComponentAttr::Backend { path, .. } => {
+                let span = path.span();
+                quote_spanned! {span=> #path }
+            }
+        };
+        let backend_param_in_impl = match &attr {
+            ComponentAttr::None => Some(parse_quote! { __MBackend: maomi::backend::Backend }),
+            ComponentAttr::ImplBackend { path, .. } => {
+                let span = path.span();
+                Some(parse_quote_spanned! {span=> __MBackend: #path })
+            }
+            ComponentAttr::Backend { .. } => None,
+        };
 
         // find `template!` invoke
         let mut template = None;
@@ -67,8 +87,8 @@ impl Parse for ComponentBody {
                 if let Type::Macro(m) = &mut field.ty {
                     if m.mac.path.is_ident("template") {
                         if template.is_some() {
-                            return Err(input
-                                .error("a component struct should only contain one `template!`"));
+                            Err(syn::Error::new(m.span(), "a component struct can only contain one `template!` field"))?;
+                            continue;
                         }
                         has_template = true;
                     }
@@ -79,10 +99,13 @@ impl Parse for ComponentBody {
                     }
                     if let Type::Macro(m) = &mut field.ty {
                         let tokens = m.mac.tokens.clone();
-                        let t = Template::parse.parse2(tokens)?;
-                        field.ty = t.gen_type(&m.mac.delimiter);
-                        template = Some(t);
+                        let t = Template::parse.parse2(tokens);
+                        field.ty = match t.as_ref() {
+                            Ok(x) => x.gen_type(&backend_param, &m.mac.delimiter),
+                            Err(_) => parse_quote! { () },
+                        };
                         template_ty = Some(field.ty.clone());
+                        template = Some(t);
                         template_field = field.ident.clone();
                     } else {
                         unreachable!()
@@ -90,17 +113,18 @@ impl Parse for ComponentBody {
                 }
             }
         } else {
-            return Err(input.error("a component struct must be a named struct"));
+            Err(syn::Error::new(inner.span(), "a component struct must be a named struct"))?;
         }
         let template = if let Some(t) = template {
             t
         } else {
-            return Err(input.error("a component struct must contain a `template!` field"));
+            return Err(syn::Error::new(inner.span(), "a component struct must contain a `template!` field"));
         };
 
         Ok(Self {
-            attr: ComponentAttr::None,
             inner,
+            backend_param,
+            backend_param_in_impl,
             template,
             template_field: template_field.unwrap(),
             template_ty: template_ty.unwrap(),
@@ -111,33 +135,13 @@ impl Parse for ComponentBody {
 impl ToTokens for ComponentBody {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self {
-            attr,
             inner,
+            backend_param,
+            backend_param_in_impl,
             template,
             template_field,
             template_ty,
         } = self;
-
-        // generate backend type params
-        let backend_param = match attr {
-            ComponentAttr::None => quote! { __MBackend },
-            ComponentAttr::ImplBackend { path, .. } => {
-                let span = path.span();
-                quote_spanned! {span=> __MBackend }
-            }
-            ComponentAttr::Backend { path, .. } => {
-                let span = path.span();
-                quote_spanned! {span=> #path }
-            }
-        };
-        let backend_param_in_impl = match attr {
-            ComponentAttr::None => Some(parse_quote! { __MBackend: maomi::backend::Backend }),
-            ComponentAttr::ImplBackend { path, .. } => {
-                let span = path.span();
-                Some(parse_quote_spanned! {span=> __MBackend: #path })
-            }
-            ComponentAttr::Backend { .. } => None,
-        };
 
         // find component name and type params
         let component_name = {
@@ -177,80 +181,87 @@ impl ToTokens for ComponentBody {
         };
 
         // impl the component template
-        let template_create = template.to_create(&backend_param);
-        let template_update = template.to_update(&backend_param);
-        let impl_component_template = quote! {
-            impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
-                type TemplateField = #template_ty;
-                type SlotData = ();
+        let impl_component_template = match template.as_ref() {
+            Ok(template) => {
+                let template_create = template.to_create(&backend_param);
+                let template_update = template.to_update(&backend_param);
+                quote! {
+                    impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
+                        type TemplateField = #template_ty;
+                        type SlotData = ();
 
-                #[inline]
-                fn template(&self) -> &Self::TemplateField {
-                    &self.#template_field
-                }
+                        #[inline]
+                        fn template(&self) -> &Self::TemplateField {
+                            &self.#template_field
+                        }
 
-                #[inline]
-                fn template_mut(&mut self) -> &mut Self::TemplateField {
-                    &mut self.#template_field
-                }
+                        #[inline]
+                        fn template_mut(&mut self) -> &mut Self::TemplateField {
+                            &mut self.#template_field
+                        }
 
-                #[inline]
-                fn template_init(&mut self, __m_init: maomi::template::TemplateInit<#component_name>) {
-                    self.#template_field.init(__m_init);
-                }
+                        #[inline]
+                        fn template_init(&mut self, __m_init: maomi::template::TemplateInit<#component_name>) {
+                            self.#template_field.init(__m_init);
+                        }
 
-                #[inline]
-                fn template_create<'__m_b, __MSlot>(
-                    &'__m_b mut self,
-                    __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
-                    __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
-                        <#backend_param as maomi::backend::Backend>::GeneralElement,
-                    >,
-                    __m_slot_fn: impl FnMut(
-                        &mut maomi::backend::tree::ForestNodeMut<
-                            <#backend_param as maomi::backend::Backend>::GeneralElement,
-                        >,
-                        &Self::SlotData,
-                    ) -> Result<__MSlot, maomi::error::Error>,
-                ) -> Result<maomi::node::SlotChildren<__MSlot>, maomi::error::Error>
-                where
-                    Self: Sized,
-                {
-                    let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
-                    let mut __m_parent_element = __m_backend_element;
-                    self.#template_field.structure = Some(#template_create);
-                    Ok(__m_slot)
-                }
-
-                #[inline]
-                fn template_update<'__m_b>(
-                    &'__m_b mut self,
-                    __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
-                    __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
-                        <#backend_param as maomi::backend::Backend>::GeneralElement,
-                    >,
-                    __m_slot_fn: impl FnMut(
-                        maomi::diff::ListItemChange<
-                            &mut maomi::backend::tree::ForestNodeMut<
+                        #[inline]
+                        fn template_create<'__m_b, __MSlot>(
+                            &'__m_b mut self,
+                            __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
+                            __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
                             >,
-                            &Self::SlotData,
-                        >,
-                    ) -> Result<(), maomi::error::Error>,
-                ) -> Result<(), maomi::error::Error>
-                where
-                    Self: Sized,
-                {
-                    // update tree
-                    let mut __m_parent_element = __m_backend_element;
-                    let __m_children = self
-                        .#template_field
-                        .structure
-                        .as_mut()
-                        .ok_or(maomi::error::Error::TreeNotCreated)?;
-                    #template_update
-                    Ok(())
+                            __m_slot_fn: impl FnMut(
+                                &mut maomi::backend::tree::ForestNodeMut<
+                                    <#backend_param as maomi::backend::Backend>::GeneralElement,
+                                >,
+                                &Self::SlotData,
+                            ) -> Result<__MSlot, maomi::error::Error>,
+                        ) -> Result<maomi::node::SlotChildren<__MSlot>, maomi::error::Error>
+                        where
+                            Self: Sized,
+                        {
+                            let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
+                            let mut __m_parent_element = __m_backend_element;
+                            self.#template_field.structure = Some(#template_create);
+                            Ok(__m_slot)
+                        }
+
+                        #[inline]
+                        fn template_update<'__m_b>(
+                            &'__m_b mut self,
+                            __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
+                            __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
+                                <#backend_param as maomi::backend::Backend>::GeneralElement,
+                            >,
+                            __m_slot_fn: impl FnMut(
+                                maomi::diff::ListItemChange<
+                                    &mut maomi::backend::tree::ForestNodeMut<
+                                        <#backend_param as maomi::backend::Backend>::GeneralElement,
+                                    >,
+                                    &Self::SlotData,
+                                >,
+                            ) -> Result<(), maomi::error::Error>,
+                        ) -> Result<(), maomi::error::Error>
+                        where
+                            Self: Sized,
+                        {
+                            // update tree
+                            let mut __m_parent_element = __m_backend_element;
+                            let __m_children = self
+                                .#template_field
+                                .structure
+                                .as_mut()
+                                .ok_or(maomi::error::Error::TreeNotCreated)?;
+                            #template_update
+                            Ok(())
+                        }
+                    }
                 }
+            }
+            Err(err) => {
+                err.to_compile_error()
             }
         };
 
@@ -264,10 +275,15 @@ impl ToTokens for ComponentBody {
 
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let component_attr = parse_macro_input!(attr as ComponentAttr);
-    let mut component_body = parse_macro_input!(item as ComponentBody);
-    component_body.attr = component_attr;
-    quote! {
-        #component_body
+    match ComponentBody::new(component_attr, parse_macro_input!(item as ItemStruct)) {
+        Ok(component_body) => {
+            quote! {
+                #component_body
+            }
+            .into()
+        }
+        Err(err) => {
+            err.to_compile_error().into()
+        }
     }
-    .into()
 }

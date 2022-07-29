@@ -337,7 +337,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
     ///
     /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
     #[inline]
-    pub fn resolve_token<'b>(&'b mut self, target: &'b ForestToken) -> ForestNodeRc<T> {
+    pub fn resolve_token<'b>(&'b mut self, target: &ForestToken) -> ForestNodeRc<T> {
         let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
         weak.clone().leak();
         let rc = weak.rc().expect("The target node has been released");
@@ -348,7 +348,7 @@ impl<'a, T> ForestNodeMut<'a, T> {
     ///
     /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
     #[inline]
-    pub fn borrow_mut_token<'b>(&'b mut self, target: &'b ForestToken) -> ForestNodeMut<'b, T> {
+    pub fn borrow_mut_token<'b>(&'b mut self, target: &ForestToken) -> ForestNodeMut<'b, T> {
         let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
         weak.clone().leak();
         let rc = weak.rc().expect("The target node has been released");

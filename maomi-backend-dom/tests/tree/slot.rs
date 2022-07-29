@@ -15,7 +15,7 @@ fn single_slot() {
         // template structure
         todo_template: maomi::template::Template<
             TodoComp,
-            (maomi::node::Node<div, (maomi::text_node::TextNode,)>,),
+            (maomi::node::Node<todo_backend!(), div, (maomi::text_node::TextNode,)>,),
             (),
         >,
         todo_hello_text: String,
@@ -36,7 +36,7 @@ fn single_slot() {
     impl maomi::template::ComponentTemplate<todo_backend!()> for TodoComp {
         type TemplateField = maomi::template::Template<
             TodoComp,
-            (maomi::node::Node<div, (maomi::text_node::TextNode,)>,),
+            (maomi::node::Node<todo_backend!(), div, (maomi::text_node::TextNode,)>,),
             (),
         >;
         type SlotData = ();
@@ -80,21 +80,26 @@ fn single_slot() {
                 // create children
                 ({
                     let (mut __m_child, __m_backend_element) =
-                        <div as maomi::backend::SupportBackend<todo_backend!()>>::init(
+                        <<div as maomi::backend::SupportBackend<todo_backend!()>>::Target as maomi::backend::BackendComponent<todo_backend!()>>::init(
                             __m_backend_context,
                             __m_parent_element,
                         )?;
-                    maomi::prop::PropertyUpdate::compare_and_set_ref(
-                        &mut __m_child.title,
-                        &self.todo_hello_title,
-                    );
-                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.hidden, &false);
-                    let __m_slot_children = <div as maomi::backend::SupportBackend<
-                        todo_backend!(),
-                    >>::create(
+                    let __m_slot_children = <<div as maomi::backend::SupportBackend<todo_backend!()>>::Target as maomi::backend::BackendComponent<todo_backend!()>>::create(
                         &mut __m_child,
                         __m_backend_context,
                         __m_parent_element,
+                        |__m_child, __m_update_ctx| {
+                            maomi::prop::PropertyUpdate::compare_and_set_ref(
+                                &mut __m_child.title,
+                                &self.todo_hello_title,
+                                __m_update_ctx,
+                            );
+                            maomi::prop::PropertyUpdate::compare_and_set_ref(
+                                &mut __m_child.hidden,
+                                &false,
+                                __m_update_ctx,
+                            );
+                        },
                         |__m_parent_element, __m_scope| {
                             Ok({
                                 // create children
@@ -153,18 +158,17 @@ fn single_slot() {
                     child_nodes: ref mut __m_slot_children,
                 } = __m_children.0;
                 let mut __m_children_i = 0usize;
-                let mut __m_changed = false;
-                if maomi::prop::PropertyUpdate::compare_and_set_ref(
-                    &mut __m_child.title,
-                    &self.todo_hello_title,
-                ) {
-                    __m_changed = true
-                };
-                <div as maomi::backend::SupportBackend<todo_backend!()>>::apply_updates(
+                <<div as maomi::backend::SupportBackend<todo_backend!()>>::Target as maomi::backend::BackendComponent<todo_backend!()>>::apply_updates(
                     __m_child,
                     __m_backend_context,
                     __m_parent_element,
-                    __m_changed,
+                    |__m_child, __m_update_ctx| {
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.title,
+                            &self.todo_hello_title,
+                            __m_update_ctx,
+                        );        
+                    },
                     |__m_slot_change| {
                         Ok({
                             match __m_slot_change {
@@ -213,7 +217,7 @@ fn single_slot() {
     }
 
     prepare_env(|ctx| {
-        let _mount_point = ctx.append_attach(|_: &mut TodoComp| Ok(())).unwrap();
+        let _mount_point = ctx.append_attach(|_: &mut TodoComp| {}).unwrap();
         let html = maomi_backend_dom::DomGeneralElement::inner_html(&ctx.root());
         assert_eq!(html, "<div>Hello world!</div>");
     });

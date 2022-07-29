@@ -1,4 +1,4 @@
-use crate::backend::{tree, Backend, BackendGeneralElement, SupportBackend};
+use crate::backend::{tree, Backend, BackendGeneralElement, BackendComponent};
 use crate::component::{Component, ComponentNode};
 use crate::template::ComponentTemplate;
 use crate::error::Error;
@@ -16,18 +16,17 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     fn new_in_backend(
         backend_context: &BackendContext<B>,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
-        init: impl FnOnce(&mut C) -> Result<(), Error>,
+        init: impl FnOnce(&mut C),
     ) -> Result<Self, Error> {
         let (mut component_node, backend_element) =
-            <ComponentNode<B, C> as SupportBackend<B>>::init(backend_context, owner)?;
-        {
-            let mut comp = component_node.component.borrow_mut();
-            init(&mut comp)?;
-        }
-        <ComponentNode<B, C> as SupportBackend<B>>::create(
+            <ComponentNode<B, C> as BackendComponent<B>>::init(backend_context, owner)?;
+        <ComponentNode<B, C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,
             owner,
+            |comp, _| {
+                init(comp)
+            },
             |_, _| Ok(()),
         )?;
         Ok(Self {
@@ -39,7 +38,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     pub(crate) fn append_attach(
         backend_context: &BackendContext<B>,
         parent: &mut tree::ForestNodeMut<B::GeneralElement>,
-        init: impl FnOnce(&mut C) -> Result<(), Error>,
+        init: impl FnOnce(&mut C),
     ) -> Result<Self, Error> {
         let this = Self::new_in_backend(backend_context, parent, init)?;
         <B::GeneralElement as BackendGeneralElement>::append(parent, this.backend_element.clone());
