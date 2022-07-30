@@ -124,6 +124,12 @@ impl Drop for ForestToken {
     }
 }
 
+impl Debug for ForestToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ForestToken").finish()
+    }
+}
+
 pub struct ForestNode<'a, T> {
     inner: &'a SliceRc<ForestRel<T>, SLICE_ITEMS>,
 }
@@ -193,7 +199,7 @@ impl<'a, T> ForestNode<'a, T> {
         }
     }
 
-    /// Get the parent node
+    /// Get the `ForestNodeRc` of current node
     #[inline]
     pub fn rc(&self) -> ForestNodeRc<T> {
         ForestNodeRc {

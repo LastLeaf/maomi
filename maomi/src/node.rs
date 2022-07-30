@@ -1,15 +1,43 @@
-use crate::{error::Error, backend::{SupportBackend, Backend}};
+use crate::{error::Error, backend::{tree, SupportBackend, Backend}};
 
 /// A helper type for a node with child nodes
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct Node<B: Backend, N: SupportBackend<B>, C> {
-    pub node: N::Target,
+    pub tag: N::Target,
     pub child_nodes: SlotChildren<C>,
+}
+
+/// A helper type for control flow node such as "if" node
+#[derive(Debug)]
+pub struct ControlNode<C> {
+    pub forest_token: tree::ForestToken,
+    pub content: C,
+}
+
+macro_rules! gen_branch_node {
+    ($t: ident, $($n: ident),*) => {
+        /// A helper type for "if" and "match" node
+        #[derive(Debug, Clone, PartialEq)]
+        pub enum $t<$($n),*> {
+            $($n($n),)*
+        }
+    };
+}
+gen_branch_node!(Branch1, B0);
+gen_branch_node!(Branch2, B0, B1);
+gen_branch_node!(Branch3, B0, B1, B2);
+gen_branch_node!(Branch4, B0, B1, B2, B3);
+
+/// A helper type for "for" node
+#[derive(Debug)]
+pub struct Loop<C> {
+    pub count: usize,
+    pub items: Vec<C>,
 }
 
 /// A helper type for store slot children
 // Since rust GAT is not stable yet, we cannot make it a trait - use enum instead
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum SlotChildren<C> {
     None,
     Single(C),

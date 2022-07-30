@@ -95,8 +95,15 @@ where
 #[allow(non_camel_case_types)]
 pub struct div {
     backend_element_token: ForestToken,
+    elem: web_sys::Element,
     pub title: DomStrAttr,
     pub hidden: DomBoolAttr,
+}
+
+impl div {
+    pub fn dom_element(&self) -> &web_sys::Element {
+        &self.elem
+    }
 }
 
 impl BackendComponent<DomBackend> for div {
@@ -116,6 +123,7 @@ impl BackendComponent<DomBackend> for div {
             crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
         let this = Self {
             backend_element_token: backend_element.token(),
+            elem,
             title: DomStrAttr {
                 attr_name: "title",
                 inner: String::new(),

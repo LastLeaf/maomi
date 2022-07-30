@@ -99,10 +99,13 @@ pub trait Component: 'static {
 ///
 /// This trait is auto-implemented by `#[component]` .
 pub trait ComponentExt<B: Backend, C> {
-    type TemplateField;
+    type TemplateStructure;
 
-    /// Get a reference of the template field of the component
-    fn template(&self) -> &Self::TemplateField;
+    /// Get a template structure
+    ///
+    /// The components in the template can be visited within the structure.
+    /// If the component has not been fully created yet, `None` is returned.
+    fn template_structure(&self) -> Option<&Self::TemplateStructure>;
 
     /// Manually trigger an update for the template
     fn schedule_update(&mut self)
@@ -113,7 +116,7 @@ pub trait ComponentExt<B: Backend, C> {
     /// Get a `ComponentRc` for the component
     ///
     /// The `ComponentRc` can move across async steps.
-    /// It is useful for doing updates after async tasks such as network requests.
+    /// It is useful for doing updates after async steps such as network requests.
     fn rc(&self) -> ComponentRc<C>
     where
         C: 'static,
@@ -121,12 +124,14 @@ pub trait ComponentExt<B: Backend, C> {
 }
 
 impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
-    type TemplateField = T::TemplateField;
+    type TemplateStructure = T::TemplateStructure;
 
-    fn template(&self) -> &Self::TemplateField {
-        <Self as ComponentTemplate<B>>::template(self)
+    #[inline]
+    fn template_structure(&self) -> Option<&Self::TemplateStructure> {
+        <Self as ComponentTemplate<B>>::template(self).structure()
     }
 
+    #[inline]
     fn schedule_update(&mut self)
     where
         T: 'static,
@@ -134,6 +139,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
         <Self as ComponentTemplate<B>>::template_mut(self).mark_dirty();
     }
 
+    #[inline]
     fn rc(&self) -> ComponentRc<Self>
     where
         T: 'static,
@@ -172,9 +178,19 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B,
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
+    /// Get a `ComponentRc` for the component
+    ///
+    /// The `ComponentRc` can move across async steps.
+    /// It is useful for doing updates after async steps such as network requests.
+    #[inline]
+    pub fn rc(&self) -> ComponentRc<C> {
+        let component = Box::new(self.clone());
+        ComponentRc::new(component)
+    }
+
     /// Get a weak reference
     #[inline]
-    fn weak_ref(&self) -> ComponentNodeWeak<B, C> {
+    pub fn weak_ref(&self) -> ComponentNodeWeak<B, C> {
         ComponentNodeWeak {
             component: Rc::downgrade(&self.component),
             backend_context: self.backend_context.clone(),
@@ -226,14 +242,16 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler
 }
 
 /// A node that wraps a component instance
-struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component> {
+pub struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component> {
     component: Weak<RefCell<C>>,
     backend_context: BackendContext<B>,
     backend_element: ForestNodeRc<B::GeneralElement>,
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeWeak<B, C> {
-    fn upgrade(&self) -> Option<ComponentNode<B, C>> {
+    /// Upgrade to a strong reference
+    #[inline]
+    pub fn upgrade(&self) -> Option<ComponentNode<B, C>> {
         if let Some(component) = self.component.upgrade() {
             Some(ComponentNode {
                 component,

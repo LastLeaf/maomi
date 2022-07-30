@@ -35,10 +35,11 @@ fn single_slot() {
     // main impl
     impl maomi::template::ComponentTemplate<todo_backend!()> for TodoComp {
         type TemplateField = maomi::template::Template<
-            TodoComp,
-            (maomi::node::Node<todo_backend!(), div, (maomi::text_node::TextNode,)>,),
-            (),
+            Self,
+            Self::TemplateStructure,
+            Self::SlotData,
         >;
+        type TemplateStructure = (maomi::node::Node<todo_backend!(), div, (maomi::text_node::TextNode,)>,);
         type SlotData = ();
 
         #[inline]
@@ -76,7 +77,7 @@ fn single_slot() {
             // create initial tree
             let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
             let mut __m_parent_element = __m_backend_element;
-            self.todo_template.structure = Some({
+            self.todo_template.__m_structure = Some({
                 // create children
                 ({
                     let (mut __m_child, __m_backend_element) =
@@ -117,7 +118,7 @@ fn single_slot() {
                     )?;
                     <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
                     maomi::node::Node {
-                        node: __m_child,
+                        tag: __m_child,
                         child_nodes: __m_slot_children,
                     }
                 },)
@@ -148,13 +149,13 @@ fn single_slot() {
             let mut __m_parent_element = __m_backend_element;
             let __m_children = self
                 .todo_template
-                .structure
+                .__m_structure
                 .as_mut()
                 .ok_or(maomi::error::Error::TreeNotCreated)?;
             {
                 // update children
                 let maomi::node::Node {
-                    node: ref mut __m_child,
+                    tag: ref mut __m_child,
                     child_nodes: ref mut __m_slot_children,
                 } = __m_children.0;
                 let mut __m_children_i = 0usize;

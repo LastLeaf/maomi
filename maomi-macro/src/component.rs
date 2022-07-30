@@ -47,6 +47,7 @@ impl Parse for ComponentAttr {
 
 struct ComponentBody {
     inner: ItemStruct,
+    component_name: proc_macro2::TokenStream,
     backend_param: proc_macro2::TokenStream,
     backend_param_in_impl: Option<GenericParam>,
     template: Result<Template>,
@@ -77,72 +78,6 @@ impl ComponentBody {
             ComponentAttr::Backend { .. } => None,
         };
 
-        // find `template!` invoke
-        let mut template = None;
-        let mut template_field = None;
-        let mut template_ty = None;
-        if let Fields::Named(fields) = &mut inner.fields {
-            for field in &mut fields.named {
-                let mut has_template = false;
-                if let Type::Macro(m) = &mut field.ty {
-                    if m.mac.path.is_ident("template") {
-                        if template.is_some() {
-                            Err(syn::Error::new(m.span(), "a component struct can only contain one `template!` field"))?;
-                            continue;
-                        }
-                        has_template = true;
-                    }
-                }
-                if has_template {
-                    thread_local! {
-                        static EMPTY_TY: Type = parse_str("()").unwrap();
-                    }
-                    if let Type::Macro(m) = &mut field.ty {
-                        let tokens = m.mac.tokens.clone();
-                        let t = Template::parse.parse2(tokens);
-                        field.ty = match t.as_ref() {
-                            Ok(x) => x.gen_type(&backend_param, &m.mac.delimiter),
-                            Err(_) => parse_quote! { () },
-                        };
-                        template_ty = Some(field.ty.clone());
-                        template = Some(t);
-                        template_field = field.ident.clone();
-                    } else {
-                        unreachable!()
-                    }
-                }
-            }
-        } else {
-            Err(syn::Error::new(inner.span(), "a component struct must be a named struct"))?;
-        }
-        let template = if let Some(t) = template {
-            t
-        } else {
-            return Err(syn::Error::new(inner.span(), "a component struct must contain a `template!` field"));
-        };
-
-        Ok(Self {
-            inner,
-            backend_param,
-            backend_param_in_impl,
-            template,
-            template_field: template_field.unwrap(),
-            template_ty: template_ty.unwrap(),
-        })
-    }
-}
-
-impl ToTokens for ComponentBody {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self {
-            inner,
-            backend_param,
-            backend_param_in_impl,
-            template,
-            template_field,
-            template_ty,
-        } = self;
-
         // find component name and type params
         let component_name = {
             let component_name_ident = &inner.ident;
@@ -168,6 +103,77 @@ impl ToTokens for ComponentBody {
             }
         };
 
+        // find `template!` invoke
+        let mut template = None;
+        let mut template_field = None;
+        let mut template_ty = None;
+        if let Fields::Named(fields) = &mut inner.fields {
+            for field in &mut fields.named {
+                let mut has_template = false;
+                if let Type::Macro(m) = &mut field.ty {
+                    if m.mac.path.is_ident("template") {
+                        if template.is_some() {
+                            Err(syn::Error::new(m.span(), "a component struct can only contain one `template!` field"))?;
+                            continue;
+                        }
+                        has_template = true;
+                    }
+                }
+                if has_template {
+                    thread_local! {
+                        static EMPTY_TY: Type = parse_str("()").unwrap();
+                    }
+                    if let Type::Macro(m) = &mut field.ty {
+                        let tokens = m.mac.tokens.clone();
+                        let t = Template::parse.parse2(tokens);
+                        let structure_ty = match t.as_ref() {
+                            Ok(x) => x.gen_type(&backend_param, &m.mac.delimiter),
+                            Err(_) => parse_quote! { () },
+                        };
+                        field.ty = parse_quote! {
+                            maomi::template::Template<#component_name, #structure_ty, ()> // TODO slot data ty
+                        };
+                        template_ty = Some(structure_ty);
+                        template = Some(t);
+                        template_field = field.ident.clone();
+                    } else {
+                        unreachable!()
+                    }
+                }
+            }
+        } else {
+            Err(syn::Error::new(inner.span(), "a component struct must be a named struct"))?;
+        }
+        let template = if let Some(t) = template {
+            t
+        } else {
+            return Err(syn::Error::new(inner.span(), "a component struct must contain a `template!` field"));
+        };
+
+        Ok(Self {
+            inner,
+            component_name,
+            backend_param,
+            backend_param_in_impl,
+            template,
+            template_field: template_field.unwrap(),
+            template_ty: template_ty.unwrap(),
+        })
+    }
+}
+
+impl ToTokens for ComponentBody {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self {
+            inner,
+            component_name,
+            backend_param,
+            backend_param_in_impl,
+            template,
+            template_field,
+            template_ty,
+        } = self;
+
         // find generics for impl
         let impl_type_params = {
             let items = inner
@@ -187,7 +193,8 @@ impl ToTokens for ComponentBody {
                 let template_update = template.to_update(&backend_param);
                 quote! {
                     impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
-                        type TemplateField = #template_ty;
+                        type TemplateField = maomi::template::Template<Self, Self::TemplateStructure, Self::SlotData>;
+                        type TemplateStructure = #template_ty;
                         type SlotData = ();
 
                         #[inline]
@@ -223,8 +230,8 @@ impl ToTokens for ComponentBody {
                             Self: Sized,
                         {
                             let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
-                            let mut __m_parent_element = __m_backend_element;
-                            self.#template_field.structure = Some(#template_create);
+                            let __m_parent_element = __m_backend_element;
+                            self.#template_field.__m_structure = Some(#template_create);
                             Ok(__m_slot)
                         }
 
@@ -248,10 +255,10 @@ impl ToTokens for ComponentBody {
                             Self: Sized,
                         {
                             // update tree
-                            let mut __m_parent_element = __m_backend_element;
+                            let __m_parent_element = __m_backend_element;
                             let __m_children = self
                                 .#template_field
-                                .structure
+                                .__m_structure
                                 .as_mut()
                                 .ok_or(maomi::error::Error::TreeNotCreated)?;
                             #template_update

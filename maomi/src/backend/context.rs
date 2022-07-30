@@ -110,8 +110,9 @@ impl<B: Backend> BackendContext<B> {
     {
         let (fut, cb) = AsyncCallback::new();
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
-            f(&mut entered);
+            let ret = f(&mut entered);
             self.exec_queue(&mut entered);
+            cb(ret);
         } else {
             self.inner
                 .event_queue

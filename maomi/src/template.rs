@@ -15,7 +15,7 @@ pub struct TemplateInit<C: ?Sized> {
 }
 
 /// Some helper functions for the template type
-pub trait TemplateHelper<C: ?Sized, D>: Default {
+pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     fn mark_dirty(&mut self)
     where
         C: 'static;
@@ -23,6 +23,7 @@ pub trait TemplateHelper<C: ?Sized, D>: Default {
     where
         C: 'static;
     fn is_initialized(&self) -> bool;
+    fn structure(&self) -> Option<&S>;
     fn component_rc(&self) -> Result<ComponentRc<C>, Error>
     where
         C: 'static + Sized;
@@ -38,11 +39,11 @@ pub struct Template<C, S, D> {
     /// The template node tree structure
     ///
     /// Caution: do not modify anything inside node tree unless you really understand how templates works.
-    pub structure: Option<S>,
+    pub __m_structure: Option<S>,
     /// The slot scope data
     ///
     /// Caution: do not modify anything inside node tree unless you really understand how templates works.
-    pub slot_scopes: SlotChildren<(ForestToken, D)>,
+    pub __m_slot_scopes: SlotChildren<(ForestToken, D)>,
 }
 
 impl<C, S, D> Default for Template<C, S, D> {
@@ -50,8 +51,8 @@ impl<C, S, D> Default for Template<C, S, D> {
         Self {
             updater: None,
             dirty: false,
-            structure: None,
-            slot_scopes: SlotChildren::None,
+            __m_structure: None,
+            __m_slot_scopes: SlotChildren::None,
         }
     }
 }
@@ -63,13 +64,13 @@ impl<C, S, D> Template<C, S, D> {
     }
 }
 
-impl<C, S, D> TemplateHelper<C, D> for Template<C, S, D> {
+impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     #[inline]
     fn mark_dirty(&mut self)
     where
         C: 'static,
     {
-        if self.structure.is_some() && !self.dirty {
+        if self.__m_structure.is_some() && !self.dirty {
             self.dirty = true;
         }
     }
@@ -86,7 +87,12 @@ impl<C, S, D> TemplateHelper<C, D> for Template<C, S, D> {
 
     #[inline]
     fn is_initialized(&self) -> bool {
-        self.structure.is_some()
+        self.__m_structure.is_some()
+    }
+
+    #[inline]
+    fn structure(&self) -> Option<&S> {
+        self.__m_structure.as_ref()
     }
 
     #[inline]
@@ -102,7 +108,7 @@ impl<C, S, D> TemplateHelper<C, D> for Template<C, S, D> {
     }
 
     fn slot_scopes(&self) -> &SlotChildren<(ForestToken, D)> {
-        &self.slot_scopes
+        &self.__m_slot_scopes
     }
 }
 
@@ -110,7 +116,8 @@ impl<C, S, D> TemplateHelper<C, D> for Template<C, S, D> {
 ///
 /// It is auto-implemented by `#[component]` .
 pub trait ComponentTemplate<B: Backend> {
-    type TemplateField: TemplateHelper<Self, Self::SlotData>;
+    type TemplateField: TemplateHelper<Self, Self::TemplateStructure, Self::SlotData>;
+    type TemplateStructure;
     type SlotData;
 
     /// Get a reference of the template field of the component

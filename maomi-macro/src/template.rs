@@ -4,17 +4,19 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
+fn get_branch_ty(len: usize) -> Ident {
+    Ident::new(&format!("Branch{}", len), proc_macro2::Span::call_site())
+}
+
+fn get_branch_selected(index: usize) -> Ident {
+    Ident::new(&format!("B{}", index), proc_macro2::Span::call_site())
+}
+
 pub(super) struct Template {
     children: Vec<TemplateNode>,
 }
 
 impl Template {
-    pub(super) fn empty() -> Self {
-        Self {
-            children: vec![],
-        }
-    }
-
     pub(super) fn gen_type(
         &self,
         backend_param: &TokenStream,
@@ -27,7 +29,7 @@ impl Template {
             MacroDelimiter::Bracket(x) => x.span,
         };
         let children = children.iter().map(|c| c.gen_type(backend_param));
-        parse_quote_spanned!(span=> maomi::template::Template<Self, (#(#children,)*), ()> )
+        parse_quote_spanned!(span=> (#(#children,)*) )
     }
 
     pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateCreate<'a> {
@@ -89,8 +91,8 @@ pub(super) enum TemplateNode {
         #[allow(dead_code)]
         end_tag_gt_token: token::Gt,
     },
-    Branches {
-        branches: Vec<TemplateBranch>,
+    IfElse {
+        branches: Vec<TemplateIfElse>,
     },
     Match {
         match_token: token::Match,
@@ -103,32 +105,19 @@ pub(super) enum TemplateNode {
         pat: Pat,
         in_token: token::In,
         expr: Box<Expr>,
-        children: Vec<TemplateNode>,
-    },
-}
-
-enum TemplateBranch {
-    If {
-        if_token: token::If,
-        cond: Box<Expr>,
-        brace_token: token::Brace,
-        children: Vec<TemplateNode>,
-    },
-    ElseIf {
-        else_token: token::Else,
-        if_token: token::If,
-        cond: Box<Expr>,
-        brace_token: token::Brace,
-        children: Vec<TemplateNode>,
-    },
-    Else {
-        else_token: token::Else,
         brace_token: token::Brace,
         children: Vec<TemplateNode>,
     },
 }
 
-struct TemplateMatchArm {
+pub(super) struct TemplateIfElse {
+    else_token: Option<token::Else>,
+    if_cond: Option<(token::If, Box<Expr>)>,
+    brace_token: token::Brace,
+    children: Vec<TemplateNode>,
+}
+
+pub(super) struct TemplateMatchArm {
     pat: Pat,
     guard: Option<(token::If, Expr)>,
     fat_arrow_token: token::FatArrow,
@@ -155,12 +144,33 @@ impl TemplateNode {
                 let span = tag_name.span();
                 parse_quote_spanned!(span=> maomi::node::Node<#backend_param, #tag_name, ()> )
             }
-            Self::Tag {
-                tag_name, children, ..
-            } => {
+            Self::Tag { tag_name, children, .. } => {
                 let span = tag_name.span();
                 let children = children.iter().map(|c| c.gen_type(backend_param));
                 parse_quote_spanned!(span=> maomi::node::Node<#backend_param, #tag_name, (#(#children,)*)> )
+            }
+            Self::IfElse { branches } => {
+                let branch_ty = get_branch_ty(branches.len());
+                let branches = branches.iter().map(|x| {
+                    let span = x.brace_token.span;
+                    let children = x.children.iter().map(|c| c.gen_type(backend_param));
+                    quote_spanned!(span=> (#(#children,)*) )
+                });
+                parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
+            }
+            Self::Match { arms, .. } => {
+                let branch_ty = get_branch_ty(arms.len());
+                let branches = arms.iter().map(|x| {
+                    let span = x.brace_token.span;
+                    let children = x.children.iter().map(|c| c.gen_type(backend_param));
+                    quote_spanned!(span=> (#(#children,)*) )
+                });
+                parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
+            }
+            Self::ForLoop { brace_token, children, .. } => {
+                let span = brace_token.span;
+                let children = children.iter().map(|c| c.gen_type(backend_param));
+                parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::node::LoopNode<(#(#children,)*)>> )
             }
         }
     }
@@ -170,15 +180,18 @@ impl Parse for TemplateNode {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
         let ret = if la.peek(LitStr) {
+            // parse static text node
             TemplateNode::StaticText {
                 content: input.parse()?,
             }
         } else if la.peek(token::Brace) {
+            // parse dynamic text node
             let content;
             let brace_token = braced!(content in input);
             let expr = content.parse()?;
             TemplateNode::DynamicText { brace_token, expr }
         } else if la.peek(token::Lt) {
+            // parse a tag
             let tag_lt_token = input.parse()?;
             let tag_name = input.parse()?;
             let mut attrs = vec![];
@@ -205,7 +218,7 @@ impl Parse for TemplateNode {
             } else if la.peek(token::Gt) {
                 let tag_gt_token = input.parse()?;
                 let mut children = vec![];
-                while !input.peek(token::Lt) && !input.peek2(token::Div) {
+                while !input.peek(token::Lt) || !input.peek2(token::Div) {
                     let child = input.parse()?;
                     children.push(child);
                 }
@@ -237,6 +250,83 @@ impl Parse for TemplateNode {
             } else {
                 return Err(la.error());
             }
+        } else if la.peek(token::If) {
+            // parse if expr
+            let mut branches = vec![];
+            let mut else_token = None;
+            loop {
+                let if_cond = if input.peek(token::If) {
+                    Some((input.parse()?, input.parse()?))
+                } else {
+                    None
+                };
+                let content;
+                let brace_token = braced!(content in input);
+                let mut children = vec![];
+                while !content.is_empty() {
+                    children.push(content.parse()?);
+                }
+                branches.push(TemplateIfElse {
+                    else_token,
+                    if_cond,
+                    brace_token,
+                    children,
+                });
+                if input.peek(token::Else) {
+                    else_token = Some(input.parse()?);
+                } else {
+                    break
+                }
+            }
+            TemplateNode::IfElse { branches }
+        } else if la.peek(token::Match) {
+            // parse match expr
+            let match_token = input.parse()?;
+            let expr = input.parse()?;
+            let content;
+            let brace_token = braced!(content in input);
+            let mut arms = vec![];
+            {
+                let input = content;
+                while !input.is_empty() {
+                    let pat = input.parse()?;
+                    let guard = if input.peek(token::If) {
+                        Some((input.parse()?, input.parse()?))
+                    } else {
+                        None
+                    };
+                    let fat_arrow_token = input.parse()?;
+                    let content;
+                    let brace_token = braced!(content in input);
+                    let mut children = vec![];
+                    while !content.is_empty() {
+                        children.push(content.parse()?);
+                    }
+                    let comma = input.parse()?;
+                    arms.push(TemplateMatchArm {
+                        pat,
+                        guard,
+                        fat_arrow_token,
+                        brace_token,
+                        children,
+                        comma,
+                    })
+                }
+            }
+            TemplateNode::Match { match_token, expr, brace_token, arms }
+        } else if la.peek(token::For) {
+            // parse for expr
+            let for_token = input.parse()?;
+            let pat = input.parse()?;
+            let in_token = input.parse()?;
+            let expr = input.parse()?;
+            let content;
+            let brace_token = braced!(content in input);
+            let mut children = vec![];
+            while !content.is_empty() {
+                children.push(content.parse()?);
+            }
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children }
         } else {
             return Err(la.error());
         };
@@ -372,10 +462,10 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let span = content.span();
                 quote_spanned! {span=>
                     let (__m_child, __m_backend_element) =
-                    maomi::text_node::TextNode::create::<#backend_param>(
-                        __m_parent_element,
-                        #content,
-                    )?;
+                        maomi::text_node::TextNode::create::<#backend_param>(
+                            __m_parent_element,
+                            #content,
+                        )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
                     __m_child
                 }
@@ -384,10 +474,10 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let span = brace_token.span;
                 quote_spanned! {span=>
                     let (__m_child, __m_backend_element) =
-                    maomi::text_node::TextNode::create::<#backend_param>(
-                        __m_parent_element,
-                        #expr,
-                    )?;
+                        maomi::text_node::TextNode::create::<#backend_param>(
+                            __m_parent_element,
+                            #expr,
+                        )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
                     __m_child
                 }
@@ -410,9 +500,9 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         },
                         |__m_parent_element, __m_scope| Ok(()),
                     )?;
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
                     maomi::node::Node {
-                        node: __m_child,
+                        tag: __m_child,
                         child_nodes: __m_slot_children,
                     }
                 }
@@ -438,12 +528,47 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             Ok((#({#children},)*))
                         },
                     )?;
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
                     maomi::node::Node {
-                        node: __m_child,
+                        tag: __m_child,
                         child_nodes: __m_slot_children,
                     }
                 }
+            }
+            TemplateNode::IfElse { branches } => {
+                let branch_ty = get_branch_ty(branches.len());
+                let branches = branches.iter().enumerate().map(|(index, x)| {
+                    let branch_selected = get_branch_selected(index);
+                    let TemplateIfElse { else_token, if_cond, children, .. } = x;
+                    let if_cond = match if_cond {
+                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        None => quote! {},
+                    };
+                    let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    quote! {
+                        #else_token #if_cond {
+                            maomi::node::#branch_ty::#branch_selected((#({#children},)*))
+                        }
+                    }
+                });
+                quote! {
+                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                    let __m_slot_children = {
+                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        #(#branches)*
+                    };
+                    let __m_backend_element_token = __m_backend_element.token();
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);                    maomi::node::ControlNode {
+                        forest_token: __m_backend_element_token,
+                        content: __m_slot_children,
+                    }
+                }
+            }
+            TemplateNode::Match { match_token, expr, brace_token, arms } => {
+                todo!()
+            }
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children } => {
+                todo!()
             }
         }.to_tokens(tokens);
     }
@@ -505,7 +630,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let attrs = attrs.into_iter().map(|attr| TemplateAttributeUpdate { attr });
                 quote_spanned! {span=>
                     let maomi::node::Node {
-                        node: ref mut __m_child,
+                        tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
                     let mut __m_children_i = 0usize;
@@ -552,7 +677,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     });
                 quote_spanned! {span=>
                     let maomi::node::Node {
-                        node: ref mut __m_child,
+                        tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
                     let mut __m_children_i = 0usize;
@@ -585,6 +710,59 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         },
                     )?;
                 }
+            }
+            TemplateNode::IfElse { branches } => {
+                let branch_ty = get_branch_ty(branches.len());
+                let branches = branches.iter().enumerate().map(|(index, x)| {
+                    let branch_selected = get_branch_selected(index);
+                    let TemplateIfElse { else_token, if_cond, children, .. } = x;
+                    let if_cond = match if_cond {
+                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        None => quote! {},
+                    };
+                    let create_children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    let update_children = children.iter()
+                        .enumerate()
+                        .map(|(index, x)| TemplateNodeUpdate {
+                            child_index: Index::from(index),
+                            template_node: x,
+                            backend_param,
+                        });
+                    quote! {
+                        #else_token #if_cond {
+                            if let maomi::node::#branch_ty::#branch_selected(__m_children) = __m_slot_children {
+                                let __m_parent_element = &mut __m_backend_element;
+                                #({#update_children})*
+                            } else {
+                                let __m_backend_element_new = {
+                                    let __m_parent_element = &mut __m_backend_element;
+                                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                                    *__m_backend_element_token = __m_backend_element.token();
+                                    *__m_slot_children = {
+                                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                                        maomi::node::#branch_ty::#branch_selected((#({#create_children},)*))
+                                    };
+                                    __m_backend_element
+                                };
+                                <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::replace_with(__m_backend_element, __m_backend_element_new);
+                            }
+                        }
+                    }
+                });
+                quote! {
+                    let maomi::node::ControlNode {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token);
+                    #(#branches)*
+                }
+            }
+            TemplateNode::Match { match_token, expr, brace_token, arms } => {
+                todo!()
+            }
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children } => {
+                todo!()
             }
         }.to_tokens(tokens);
     }

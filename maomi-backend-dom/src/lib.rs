@@ -3,6 +3,7 @@ use maomi::{
     backend::{tree::*, *},
     error::Error,
 };
+use wasm_bindgen::{JsValue, JsCast};
 
 pub mod element;
 use element::DomElement;
@@ -19,6 +20,14 @@ thread_local! {
             window.document().expect("Cannot init DOM backend when document is not ready")
         })
     };
+}
+
+fn log_js_error(err: &JsValue) {
+    if let Some(err) = err.dyn_ref::<js_sys::Error>() {
+        log::error!("{}", err.message());
+    } else {
+        log::error!("(JavaScript Error)");
+    }
 }
 
 /// A common async runner for DOM environment
@@ -255,14 +264,23 @@ impl BackendGeneralElement for DomGeneralElement {
 
     fn insert<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        sibling: ForestNodeRc<
+        target: &'b ForestNodeRc<
             <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
         >,
     ) where
         Self: Sized,
     {
-        this.insert(&sibling);
-        todo!();
+        this.insert(&target);
+        let target = this.as_ref().borrow(&target);
+        if let Some(parent) = composing::find_nearest_dom_ancestor(target.clone()) {
+            let child = target.last_child_rc().unwrap();
+            let child = target.borrow(&child);
+            let before = composing::find_next_dom_sibling(child.clone());
+            let child_frag = composing::collect_child_frag(child);
+            if let Some(child_frag) = child_frag.dom() {
+                parent.insert_before(child_frag, before.as_ref()).unwrap();
+            }
+        }
     }
 
     fn detach(
@@ -271,7 +289,13 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        this.detach();
-        todo!();
+        {
+            let this = this.as_ref();
+            if let Some(parent) = composing::find_nearest_dom_ancestor(this.clone()) {
+                composing::remove_all_children(&parent, this);
+            }
+        }
+        let ret = this.detach();
+        ret
     }
 }

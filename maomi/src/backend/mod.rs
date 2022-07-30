@@ -26,7 +26,7 @@ pub trait Backend: 'static {
 /// * A `TextNode` is a text node.
 /// * The backend can define other types of elements.
 pub trait BackendGeneralElement: 'static {
-    type BaseBackend: Backend;
+    type BaseBackend: Backend<GeneralElement = Self>;
 
     /// Try casting to slot
     fn as_virtual_element_mut<'b>(
@@ -76,7 +76,7 @@ pub trait BackendGeneralElement: 'static {
     /// Insert an element before this element
     fn insert<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        sibling: ForestNodeRc<
+        target: &'b ForestNodeRc<
             <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
         >,
     ) where
@@ -88,6 +88,19 @@ pub trait BackendGeneralElement: 'static {
     ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
     where
         Self: Sized;
+
+    /// Replace an element before this element
+    fn replace_with(
+        mut this: ForestNodeMut<Self>,
+        replacer: ForestNodeRc<
+            <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
+        >,
+    ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    where
+        Self: Sized {
+        Self::insert(&mut this, &replacer);
+        Self::detach(this)
+    }
 }
 
 /// A virtual element in the backend
