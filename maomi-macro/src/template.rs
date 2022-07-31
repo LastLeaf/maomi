@@ -260,6 +260,7 @@ impl Parse for TemplateNode {
                 } else {
                     None
                 };
+                let has_if = if_cond.is_some();
                 let content;
                 let brace_token = braced!(content in input);
                 let mut children = vec![];
@@ -275,6 +276,15 @@ impl Parse for TemplateNode {
                 if input.peek(token::Else) {
                     else_token = Some(input.parse()?);
                 } else {
+                    // add an else branch if it is not ended with 
+                    if has_if {
+                        branches.push(TemplateIfElse {
+                            else_token: Some(Default::default()),
+                            if_cond: None,
+                            brace_token: Default::default(),
+                            children: vec![],
+                        })
+                    }
                     break
                 }
             }
@@ -558,7 +568,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         #(#branches)*
                     };
                     let __m_backend_element_token = __m_backend_element.token();
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);                    maomi::node::ControlNode {
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    maomi::node::ControlNode {
                         forest_token: __m_backend_element_token,
                         content: __m_slot_children,
                     }

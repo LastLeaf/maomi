@@ -82,7 +82,7 @@ async fn child_component() {
 }
 
 #[wasm_bindgen_test]
-async fn template_if() {
+async fn template_if_else() {
     #[component(for DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
@@ -93,6 +93,68 @@ async fn template_if() {
                 } else if self.text.len() == 0 {
                     <div> "(empty)" </div>
                 } else {
+                    <div> { &self.text } </div>
+                }
+            </div>
+        },
+        text: String,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                text: "".into(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div>(empty)</div>"#,
+                    );
+                    this.text = "hello".into();
+                }).await.unwrap();
+                this.get_mut(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div>hello</div>"#,
+                    );
+                    this.text = "long........".into();
+                    this.schedule_update();
+                }).await.unwrap();
+                this.get_mut(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div>(too long)</div>"#,
+                    );
+                    (this.callback.take().unwrap())();
+                }).await.unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn template_lonely_if() {
+    #[component(for DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                if self.text.len() > 0 {
                     <div> { &self.text } </div>
                 }
             </div>
