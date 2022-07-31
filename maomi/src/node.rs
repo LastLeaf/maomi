@@ -30,8 +30,8 @@ gen_branch_node!(Branch4, B0, B1, B2, B3);
 
 /// A helper type for "for" node
 #[derive(Debug)]
-pub struct Loop<C> {
-    pub count: usize,
+pub struct Loop<A, C> {
+    pub list_diff_algo: A,
     pub items: Vec<C>,
 }
 

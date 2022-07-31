@@ -273,10 +273,8 @@ impl BackendGeneralElement for DomGeneralElement {
         this.insert(&target);
         let target = this.as_ref().borrow(&target);
         if let Some(parent) = composing::find_nearest_dom_ancestor(target.clone()) {
-            let child = target.last_child_rc().unwrap();
-            let child = target.borrow(&child);
-            let before = composing::find_next_dom_sibling(child.clone());
-            let child_frag = composing::collect_child_frag(child);
+            let before = composing::find_next_dom_sibling(target.clone());
+            let child_frag = composing::collect_child_frag(target);
             if let Some(child_frag) = child_frag.dom() {
                 parent.insert_before(child_frag, before.as_ref()).unwrap();
             }

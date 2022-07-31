@@ -177,6 +177,75 @@ async fn template_lonely_if() {
                 this.update(|this| {
                     assert_eq!(
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#""#,
+                    );
+                    this.text = "hello".into();
+                }).await.unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div>hello</div>"#,
+                    );
+                    this.text = "".into();
+                }).await.unwrap();
+                this.get_mut(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#""#,
+                    );
+                    (this.callback.take().unwrap())();
+                }).await.unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn template_match() {
+    #[component(for DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                match self.text.len() {
+                    11.. => {
+                        <div> "(too long)" </div>
+                    },
+                    0 => {
+                        <div> "(empty)" </div>
+                    }
+                    _ => {
+                        <div> { &self.text } </div>
+                    }
+                }
+            </div>
+        },
+        text: String,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                text: "".into(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
                         r#"<div>(empty)</div>"#,
                     );
                     this.text = "hello".into();
@@ -193,6 +262,79 @@ async fn template_lonely_if() {
                     assert_eq!(
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
                         r#"<div>(too long)</div>"#,
+                    );
+                    (this.callback.take().unwrap())();
+                }).await.unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn template_for() {
+    #[component(for DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                for (index, item) in self.list.iter().enumerate() key ListKey<usize> {
+                    <div title={ index.to_string() }> { item.to_string() } </div>
+                }
+            </div>
+        },
+        list: Vec<usize>,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                list: vec![
+                    123,
+                    456,
+                ],
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div title="0">123</div><div title="1">456</div>"#,
+                    );
+                    this.list.push(789);
+                }).await.unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div title="0">123</div><div title="1">456</div><div title="2">789</div>"#,
+                    );
+                    this.list.pop();
+                    this.list.pop();
+                }).await.unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#"<div title="0">123</div><div title="1">456</div><div title="2">789</div>"#,
+                    );
+                    this.list.pop();
+                    this.list.pop();
+                }).await.unwrap();
+                this.get_mut(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        r#""#,
                     );
                     (this.callback.take().unwrap())();
                 }).await.unwrap();

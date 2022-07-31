@@ -575,8 +575,37 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     }
                 }
             }
-            TemplateNode::Match { match_token, expr, brace_token, arms } => {
-                todo!()
+            TemplateNode::Match { match_token, expr, arms, .. } => {
+                let branch_ty = get_branch_ty(arms.len());
+                let branches = arms.iter().enumerate().map(|(index, x)| {
+                    let branch_selected = get_branch_selected(index);
+                    let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
+                    let guard = match guard {
+                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        None => quote! {},
+                    };
+                    let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    quote! {
+                        #pat #guard #fat_arrow_token {
+                            maomi::node::#branch_ty::#branch_selected((#({#children},)*))
+                        } #comma
+                    }
+                });
+                quote! {
+                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                    let __m_slot_children = {
+                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        #match_token #expr {
+                            #(#branches)*
+                        }
+                    };
+                    let __m_backend_element_token = __m_backend_element.token();
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    maomi::node::ControlNode {
+                        forest_token: __m_backend_element_token,
+                        content: __m_slot_children,
+                    }
+                }
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children } => {
                 todo!()
@@ -708,6 +737,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                         __m_children_i += 1;
                                     }
                                     maomi::diff::ListItemChange::Unchanged(__m_parent_element, __m_scope) => {
+                                        // TODO handling relationship correctly
                                         let __m_children =
                                             __m_slot_children.get_mut(__m_children_i)?;
                                         #({#update_children})*
@@ -769,8 +799,54 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     #(#branches)*
                 }
             }
-            TemplateNode::Match { match_token, expr, brace_token, arms } => {
-                todo!()
+            TemplateNode::Match { match_token, expr, arms, .. } => {
+                let branch_ty = get_branch_ty(arms.len());
+                let branches = arms.iter().enumerate().map(|(index, x)| {
+                    let branch_selected = get_branch_selected(index);
+                    let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
+                    let guard = match guard {
+                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        None => quote! {},
+                    };
+                    let create_children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    let update_children = children.iter()
+                        .enumerate()
+                        .map(|(index, x)| TemplateNodeUpdate {
+                            child_index: Index::from(index),
+                            template_node: x,
+                            backend_param,
+                        });
+                    quote! {
+                        #pat #guard #fat_arrow_token {
+                            if let maomi::node::#branch_ty::#branch_selected(__m_children) = __m_slot_children {
+                                let __m_parent_element = &mut __m_backend_element;
+                                #({#update_children})*
+                            } else {
+                                let __m_backend_element_new = {
+                                    let __m_parent_element = &mut __m_backend_element;
+                                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                                    *__m_backend_element_token = __m_backend_element.token();
+                                    *__m_slot_children = {
+                                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                                        maomi::node::#branch_ty::#branch_selected((#({#create_children},)*))
+                                    };
+                                    __m_backend_element
+                                };
+                                <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::replace_with(__m_backend_element, __m_backend_element_new);
+                            }
+                        } #comma
+                    }
+                });
+                quote! {
+                    let maomi::node::ControlNode {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token);
+                    #match_token #expr {
+                        #(#branches)*
+                    }
+                }
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children } => {
                 todo!()
