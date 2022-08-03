@@ -105,6 +105,7 @@ pub(super) enum TemplateNode {
         pat: Pat,
         in_token: token::In,
         expr: Box<Expr>,
+        key: Option<(token::Use, Option<token::Paren>, Box<Expr>, Path)>,
         brace_token: token::Brace,
         children: Vec<TemplateNode>,
     },
@@ -167,10 +168,14 @@ impl TemplateNode {
                 });
                 parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
             }
-            Self::ForLoop { brace_token, children, .. } => {
+            Self::ForLoop { brace_token, children, key, .. } => {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type(backend_param));
-                parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::node::LoopNode<(#(#children,)*)>> )
+                let key_ty = match key {
+                    Some((_, _, _, key_ty)) => quote!(#key_ty),
+                    None => quote!(),
+                };
+                parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::node::Loop<#key_ty, (#(#children,)*)>> )
             }
         }
     }
@@ -330,13 +335,32 @@ impl Parse for TemplateNode {
             let pat = input.parse()?;
             let in_token = input.parse()?;
             let expr = input.parse()?;
+            let key = if input.peek(token::Use) {
+                let use_token = input.parse()?;
+                let la = input.lookahead1();
+                let (paren, key_expr) = if la.peek(token::Paren) {
+                    let content;
+                    let paren = parenthesized!(content in input);
+                    (Some(paren), content.parse()?)
+                } else if let Pat::Ident(x) = &pat {
+                    let ident = &x.ident;
+                    let span = ident.span();
+                    (None, parse_quote_spanned! {span=> #ident })
+                } else {
+                    return Err(la.error());
+                };
+                let path = input.parse()?;
+                Some((use_token, paren, key_expr, path))
+            } else {
+                None
+            };
             let content;
             let brace_token = braced!(content in input);
             let mut children = vec![];
             while !content.is_empty() {
                 children.push(content.parse()?);
             }
-            TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children }
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, key, brace_token, children }
         } else {
             return Err(la.error());
         };
@@ -607,8 +631,45 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     }
                 }
             }
-            TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children } => {
-                todo!()
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
+                let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                if let Some((_, __m_list_update_iter, key_expr, key_ty)) = key.as_ref() {
+                    quote! {
+                        let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
+                        let mut __m_slot_children = Vec::with_capacity({
+                            let size_hint = __m_list.size_hint();
+                            size_hint.1.unwrap_or(size_hint.0)
+                        });
+                        let __m_list_diff_algo = maomi::diff::key::ListKeyAlgo::list_diff_new();
+                        let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                        let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
+                            &mut __m_slot_children,
+                            &mut __m_parent_element.borrow_mut(&__m_backend_element),
+                        );
+                        #for_token #pat #in_token __m_list {
+                            __m_list_update_iter.next(
+                                <#key_ty as maomi::diff::AsListDiff>::as_list_diff(&(#key_expr)),
+                                |__m_parent_element| {
+                                    Ok((#({#children},)*))
+                                },
+                                |_, __m_parent_element| {
+                                    unreachable!()
+                                },
+                            )?;
+                        }
+                        __m_list_update_iter.end()?;
+                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                        maomi::node::ControlNode {
+                            forest_token: __m_backend_element.token(),
+                            content: maomi::node::Loop {
+                                list_diff_algo: __m_list_diff_algo,
+                                items: __m_slot_children,
+                            },
+                        }
+                    }
+                } else {
+                    todo!()
+                }
             }
         }.to_tokens(tokens);
     }
@@ -848,8 +909,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     }
                 }
             }
-            TemplateNode::ForLoop { for_token, pat, in_token, expr, brace_token, children } => {
-                todo!()
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
+                quote! {
+                    todo!()
+                }
             }
         }.to_tokens(tokens);
     }

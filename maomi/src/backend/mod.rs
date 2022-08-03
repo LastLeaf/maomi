@@ -11,6 +11,7 @@ pub trait Backend: 'static {
     type GeneralElement: BackendGeneralElement<BaseBackend = Self>;
     type VirtualElement: BackendVirtualElement<BaseBackend = Self>;
     type TextNode: BackendTextNode<BaseBackend = Self>;
+    // type Class: BackendClass<BaseBackend = Self>;
 
     /// Get the root element
     fn root(&self) -> ForestNode<Self::GeneralElement>;
@@ -114,6 +115,14 @@ pub trait BackendTextNode {
 
     /// Set the text content
     fn set_text(&mut self, content: &str);
+}
+
+/// An element class that can be used in the backend
+pub trait BackendClass {
+    type BaseBackend: Backend<GeneralElement = Self>;
+
+    /// Create a new instance
+    fn new() -> Self;
 }
 
 /// A trait that indicates a component or a backend-implemented element for the backend

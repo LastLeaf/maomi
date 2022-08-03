@@ -1,6 +1,6 @@
 use wasm_bindgen_test::*;
 
-use maomi::prelude::*;
+use maomi::{prelude::*, diff::key::ListKey};
 use maomi_backend_dom::{element::*, DomBackend, async_task};
 
 mod env;
@@ -280,13 +280,21 @@ async fn template_match() {
 
 #[wasm_bindgen_test]
 async fn template_for() {
+    struct MyList(usize);
+
+    impl AsListKey<usize> for MyList {
+        fn as_list_key(&self) -> &usize {
+            &self.0
+        }
+    }
+
     #[component(for DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
             <div>
-                for (index, item) in self.list.iter().enumerate() key ListKey<usize> {
-                    <div title={ index.to_string() }> { item.to_string() } </div>
+                for (index, item) in self.list.iter().enumerate() use(item) usize {
+                    <div title={ &index.to_string() }> { &item.to_string() } </div>
                 }
             </div>
         },

@@ -1,5 +1,5 @@
 use crate::{error::Error, backend::{tree::*, Backend}};
-mod key;
+pub mod key;
 
 /// A helper type for list changes
 // Since rust GAT is not stable yet, we cannot make it a trait - use enum instead

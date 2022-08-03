@@ -12,5 +12,6 @@ pub use backend::context::{BackendContext, AsyncCallback};
 pub mod prelude {
     pub use super::component::{Component, ComponentExt};
     pub use super::prop::Prop;
+    pub use super::diff::key::AsListKey;
     pub use maomi_macro::*;
 }
