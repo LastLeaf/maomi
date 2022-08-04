@@ -1,88 +1,99 @@
-use std::{hash::Hash, collections::HashMap, marker::PhantomData};
+use std::{hash::Hash, collections::HashMap, marker::PhantomData, borrow::Borrow};
 
+use crate::backend::BackendGeneralElement;
 use super::*;
 
-/// A key type that can be used for key-diff algorithm
-pub struct ListKey<K: Eq + Hash> {
-    key: K,
+pub trait AsListKey {
+    type ListKey: Eq + Hash + ToOwned + ?Sized;
+
+    fn as_list_key(&self) -> &Self::ListKey;
 }
 
-struct ListKeyRef<'a, R: Eq + Hash + ToOwned + ?Sized> {
-    key: &'a R,
-}
+impl<T: AsListKey> AsListKey for &'_ T {
+    type ListKey = T::ListKey;
 
-impl<'a, R: Eq + Hash + ToOwned + ?Sized> ListDiffRef<'a> for ListKeyRef<'a, R>
-where
-    <R as ToOwned>::Owned: Eq + Hash
-{
-    type Owned = ListKey<<R as ToOwned>::Owned>;
-
-    fn to_owned_list_diff(&self) -> Self::Owned {
-        ListKey {
-            key: self.key.to_owned(),
-        }
+    fn as_list_key(&self) -> &Self::ListKey {
+        <T as AsListKey>::as_list_key(self)
     }
 }
 
-pub trait AsListKey<R: Eq + Hash + ToOwned + ?Sized> {
-    fn as_list_key(&self) -> &R;
+pub struct ListKeyAlgo<B: Backend, K: Eq + Hash> {
+    map: HashMap<K, (usize, ForestToken)>,
+    _phantom: PhantomData<B>,
 }
 
-impl<'a, R: Eq + Hash + ToOwned + ?Sized, T: AsListKey<R>> AsListDiff<'a, ListKeyRef<'a, R>> for T
-where
-    <R as ToOwned>::Owned: Eq + Hash
-{
-    fn as_list_diff(&'a self) -> ListKeyRef<'a, R> {
-        ListKeyRef {
-            key: self.as_list_key(),
-        }
-    }
-}
-
-impl<K: Eq + Hash> ListDiff for ListKey<K> {}
-
-pub struct ListKeyAlgo<K: Eq + Hash> {
-    map: HashMap<K, usize>,
-}
-
-impl<K: Eq + Hash> ListKeyAlgo<K> {
+impl<B: Backend, K: Eq + Hash> ListKeyAlgo<B, K> {
     pub fn list_diff_new() -> Self {
-        todo!()
+        Self { map: HashMap::new(), _phantom: PhantomData }
     }
 
-    pub fn list_diff_update<'a, B: Backend, C>(
+    pub fn list_diff_update<'a, 'b, C>(
         &'a mut self,
-        items: &mut Vec<C>,
-        parent: &mut ForestNodeMut<B::GeneralElement>,
-    ) -> ListKeyAlgoUpdate<'a, K, B, C> {
-        todo!()
+        items: &'a mut Vec<C>,
+        backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
+        size_hint: usize,
+    ) -> ListKeyAlgoUpdate<'a, 'b, K, B, C> {
+        ListKeyAlgoUpdate {
+            old_map: &mut self.map,
+            stable_pos: Vec::with_capacity(size_hint),
+            items,
+            backend_element,
+            _phantom: PhantomData,
+        }
     }
+}
+
+enum KeyChange<B: Backend, C> {
+    OldPos(usize, ForestToken),
+    NewChild(C, ForestNodeRc<B::GeneralElement>),
 }
 
 pub struct ListKeyAlgoUpdate<
     'a,
+    'b,
     K: Eq + Hash,
     B: Backend,
     C,
 > {
-    map: &'a mut HashMap<K, usize>,
+    old_map: &'a mut HashMap<K, (usize, ForestToken)>,
+    stable_pos: Vec<KeyChange<B, C>>,
     items: &'a mut Vec<C>,
+    backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
     _phantom: PhantomData<B>,
 }
 
 impl<
     'a,
+    'b,
     K: Eq + Hash,
     B: Backend,
     C,
-> ListKeyAlgoUpdate<'a, K, B, C> {
-    pub fn next<'b>(
+> ListKeyAlgoUpdate<'a, 'b, K, B, C> {
+    pub fn next<R>(
         &mut self,
-        list_diff: impl ListDiffRef<'b, Owned = ListKey<K>>,
+        list_key: impl AsListKey<ListKey = R>,
         create_fn: impl FnOnce(&mut ForestNodeMut<B::GeneralElement>) -> Result<C, Error>,
         update_fn: impl FnOnce(&mut C, &mut ForestNodeMut<B::GeneralElement>) -> Result<(), Error>,
-    ) -> Result<(), Error> {
-        todo!()
+    ) -> Result<(), Error>
+    where
+        R: Eq + Hash + ToOwned<Owned = K> + ?Sized,
+        K: Borrow<R>,
+    {
+        let new_key_ref = list_key.as_list_key();
+        if let Some((pos, forest_token)) = self.old_map.remove(new_key_ref) {
+            update_fn(
+                self.items.get_mut(pos).ok_or(Error::ListChangeWrong)?,
+                &mut self.backend_element.borrow_mut_token(&forest_token),
+            )?;
+            self.stable_pos.push(KeyChange::OldPos(pos, forest_token));
+        } else {
+            let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
+            let c = create_fn(
+                &mut self.backend_element.borrow_mut(&backend_element),
+            )?;
+            self.stable_pos.push(KeyChange::NewChild(c, backend_element));
+        }
+        Ok(())
     }
 
     pub fn end(self) -> Result<(), Error> {

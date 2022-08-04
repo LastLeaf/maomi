@@ -172,7 +172,7 @@ impl TemplateNode {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type(backend_param));
                 let key_ty = match key {
-                    Some((_, _, _, key_ty)) => quote!(#key_ty),
+                    Some((_, _, _, key_ty)) => quote!(maomi::diff::key::ListKeyAlgo<#backend_param, #key_ty>),
                     None => quote!(),
                 };
                 parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::node::Loop<#key_ty, (#(#children,)*)>> )
@@ -636,31 +636,37 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 if let Some((_, __m_list_update_iter, key_expr, key_ty)) = key.as_ref() {
                     quote! {
                         let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
-                        let mut __m_slot_children = Vec::with_capacity({
+                        let __m_size_hint = {
                             let size_hint = __m_list.size_hint();
                             size_hint.1.unwrap_or(size_hint.0)
-                        });
-                        let __m_list_diff_algo = maomi::diff::key::ListKeyAlgo::list_diff_new();
+                        };
+                        let mut __m_slot_children = Vec::with_capacity(__m_size_hint);
+                        let mut __m_list_diff_algo = maomi::diff::key::ListKeyAlgo::<#backend_param, #key_ty>::list_diff_new();
                         let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
-                        let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
-                            &mut __m_slot_children,
-                            &mut __m_parent_element.borrow_mut(&__m_backend_element),
-                        );
-                        #for_token #pat #in_token __m_list {
-                            __m_list_update_iter.next(
-                                <#key_ty as maomi::diff::AsListDiff>::as_list_diff(&(#key_expr)),
-                                |__m_parent_element| {
-                                    Ok((#({#children},)*))
-                                },
-                                |_, __m_parent_element| {
-                                    unreachable!()
-                                },
-                            )?;
+                        {
+                            let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                            let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
+                                &mut __m_slot_children,
+                                __m_parent_element,
+                                __m_size_hint,
+                            );
+                            #for_token #pat #in_token __m_list {
+                                __m_list_update_iter.next(
+                                    #key_expr,
+                                    |__m_parent_element| {
+                                        Ok((#({#children},)*))
+                                    },
+                                    |_, __m_parent_element| {
+                                        unreachable!()
+                                    },
+                                )?;
+                            }
+                            __m_list_update_iter.end()?;
                         }
-                        __m_list_update_iter.end()?;
+                        let __m_backend_element_token = __m_backend_element.token();
                         <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
                         maomi::node::ControlNode {
-                            forest_token: __m_backend_element.token(),
+                            forest_token: __m_backend_element_token,
                             content: maomi::node::Loop {
                                 list_diff_algo: __m_list_diff_algo,
                                 items: __m_slot_children,
@@ -911,7 +917,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
                 quote! {
-                    todo!()
+                    todo!();
                 }
             }
         }.to_tokens(tokens);

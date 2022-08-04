@@ -281,6 +281,14 @@ impl BackendGeneralElement for DomGeneralElement {
         }
     }
 
+    fn temp_detach(
+        this: ForestNodeMut<Self>,
+    ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    where
+        Self: Sized {
+        this.detach()
+    }
+
     fn detach(
         this: ForestNodeMut<Self>,
     ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>

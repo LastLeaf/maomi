@@ -1,6 +1,6 @@
 use wasm_bindgen_test::*;
 
-use maomi::{prelude::*, diff::key::ListKey};
+use maomi::{prelude::*, diff::key::AsListKey};
 use maomi_backend_dom::{element::*, DomBackend, async_task};
 
 mod env;
@@ -282,7 +282,9 @@ async fn template_match() {
 async fn template_for() {
     struct MyList(usize);
 
-    impl AsListKey<usize> for MyList {
+    impl AsListKey for MyList {
+        type ListKey = usize;
+
         fn as_list_key(&self) -> &usize {
             &self.0
         }
@@ -294,11 +296,14 @@ async fn template_for() {
         template: template! {
             <div>
                 for (index, item) in self.list.iter().enumerate() use(item) usize {
-                    <div title={ &index.to_string() }> { &item.to_string() } </div>
+                    <div> { &index.to_string() } </div>
+                }
+                for item in self.list.iter() use usize {
+                    <div> { &item.0.to_string() } </div>
                 }
             </div>
         },
-        list: Vec<usize>,
+        list: Vec<MyList>,
     }
 
     impl Component for Parent {
@@ -307,8 +312,8 @@ async fn template_for() {
                 callback: None,
                 template: Default::default(),
                 list: vec![
-                    123,
-                    456,
+                    MyList(123),
+                    MyList(456),
                 ],
             }
         }
@@ -321,7 +326,7 @@ async fn template_for() {
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
                         r#"<div title="0">123</div><div title="1">456</div>"#,
                     );
-                    this.list.push(789);
+                    this.list.push(MyList(789));
                 }).await.unwrap();
                 this.update(|this| {
                     assert_eq!(

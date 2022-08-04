@@ -83,7 +83,14 @@ pub trait BackendGeneralElement: 'static {
     ) where
         Self: Sized;
 
-    /// Detach this element
+    /// Detach this element temporarily
+    fn temp_detach(
+        this: ForestNodeMut<Self>,
+    ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
+    where
+        Self: Sized;
+
+    /// Remove this element
     fn detach(
         this: ForestNodeMut<Self>,
     ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
