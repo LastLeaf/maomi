@@ -172,10 +172,10 @@ impl TemplateNode {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type(backend_param));
                 let key_ty = match key {
-                    Some((_, _, _, key_ty)) => quote!(maomi::diff::key::ListKeyAlgo<#backend_param, #key_ty>),
-                    None => quote!(),
+                    Some((_, _, _, key_ty)) => Some(key_ty),
+                    None => None,
                 };
-                parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::node::Loop<#key_ty, (#(#children,)*)>> )
+                parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::diff::key::KeyList<#backend_param, #key_ty, (#(#children,)*)>> )
             }
         }
     }

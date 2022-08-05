@@ -41,7 +41,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
         init: impl FnOnce(&mut C),
     ) -> Result<Self, Error> {
         let this = Self::new_in_backend(backend_context, parent, init)?;
-        <B::GeneralElement as BackendGeneralElement>::append(parent, this.backend_element.clone());
+        <B::GeneralElement as BackendGeneralElement>::append(parent, &this.backend_element);
         Ok(this)
     }
 

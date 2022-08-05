@@ -283,10 +283,10 @@ async fn template_for() {
     struct MyList(usize);
 
     impl AsListKey for MyList {
-        type ListKey = usize;
+        type ListKey = str;
 
-        fn as_list_key(&self) -> &usize {
-            &self.0
+        fn as_list_key(&self) -> &str {
+            "test"
         }
     }
 
@@ -295,7 +295,7 @@ async fn template_for() {
         callback: Option<ComponentTestCb>,
         template: template! {
             <div>
-                for (index, item) in self.list.iter().enumerate() use(item) usize {
+                for (index, item) in self.list.iter().enumerate() use(item) String {
                     <div> { &index.to_string() } </div>
                 }
                 for item in self.list.iter() use usize {

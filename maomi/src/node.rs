@@ -28,13 +28,6 @@ gen_branch_node!(Branch2, B0, B1);
 gen_branch_node!(Branch3, B0, B1, B2);
 gen_branch_node!(Branch4, B0, B1, B2, B3);
 
-/// A helper type for "for" node
-#[derive(Debug)]
-pub struct Loop<A, C> {
-    pub list_diff_algo: A,
-    pub items: Vec<C>,
-}
-
 /// A helper type for store slot children
 // Since rust GAT is not stable yet, we cannot make it a trait - use enum instead
 #[derive(Debug)]
