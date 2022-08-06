@@ -500,7 +500,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             __m_parent_element,
                             #content,
                         )?;
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     __m_child
                 }
             }
@@ -512,7 +512,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             __m_parent_element,
                             #expr,
                         )?;
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     __m_child
                 }
             }
@@ -534,7 +534,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         },
                         |__m_parent_element, __m_scope| Ok(()),
                     )?;
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     maomi::node::Node {
                         tag: __m_child,
                         child_nodes: __m_slot_children,
@@ -562,7 +562,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             Ok((#({#children},)*))
                         },
                     )?;
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     maomi::node::Node {
                         tag: __m_child,
                         child_nodes: __m_slot_children,
@@ -574,12 +574,13 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let branches = branches.iter().enumerate().map(|(index, x)| {
                     let branch_selected = get_branch_selected(index);
                     let TemplateIfElse { else_token, if_cond, children, .. } = x;
+                    let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
                     let if_cond = match if_cond {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
                     let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
-                    quote! {
+                    quote_spanned! {span=>
                         #else_token #if_cond {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
                         }
@@ -592,7 +593,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         #(#branches)*
                     };
                     let __m_backend_element_token = __m_backend_element.token();
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     maomi::node::ControlNode {
                         forest_token: __m_backend_element_token,
                         content: __m_slot_children,
@@ -615,7 +616,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         } #comma
                     }
                 });
-                quote! {
+                let span = match_token.span();
+                quote_spanned! {span=>
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_slot_children = {
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
@@ -624,7 +626,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         }
                     };
                     let __m_backend_element_token = __m_backend_element.token();
-                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     maomi::node::ControlNode {
                         forest_token: __m_backend_element_token,
                         content: __m_slot_children,
@@ -632,21 +634,20 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 }
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
+                let span = for_token.span();
                 let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
                 if let Some((_, __m_list_update_iter, key_expr, key_ty)) = key.as_ref() {
-                    quote! {
+                    quote_spanned! {span=>
                         let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
                         let __m_size_hint = {
                             let size_hint = __m_list.size_hint();
                             size_hint.1.unwrap_or(size_hint.0)
                         };
-                        let mut __m_slot_children = Vec::with_capacity(__m_size_hint);
-                        let mut __m_list_diff_algo = maomi::diff::key::ListKeyAlgo::<#backend_param, #key_ty>::list_diff_new();
+                        let mut __m_list_diff_algo = maomi::diff::key::KeyList::<#backend_param, #key_ty, _>::list_diff_new();
                         let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                         {
                             let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                            let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
-                                &mut __m_slot_children,
+                            let mut __m_list_update_iter: maomi::diff::key::ListKeyAlgoUpdate<#backend_param, #key_ty, _> = __m_list_diff_algo.list_diff_update(
                                 __m_parent_element,
                                 __m_size_hint,
                             );
@@ -664,13 +665,10 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             __m_list_update_iter.end()?;
                         }
                         let __m_backend_element_token = __m_backend_element.token();
-                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                         maomi::node::ControlNode {
                             forest_token: __m_backend_element_token,
-                            content: maomi::node::Loop {
-                                list_diff_algo: __m_list_diff_algo,
-                                items: __m_slot_children,
-                            },
+                            content: __m_list_diff_algo,
                         }
                     }
                 } else {

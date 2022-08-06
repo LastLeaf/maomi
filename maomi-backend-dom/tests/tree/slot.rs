@@ -110,13 +110,13 @@ fn single_slot() {
                                             __m_parent_element,
                                             &self.todo_hello_text,
                                         )?;
-                                    <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                                    <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                                     __m_child
                                 },)
                             })
                         },
                     )?;
-                    <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, __m_backend_element);
+                    <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(&mut __m_parent_element, &__m_backend_element);
                     maomi::node::Node {
                         tag: __m_child,
                         child_nodes: __m_slot_children,
@@ -184,7 +184,7 @@ fn single_slot() {
                                                 __m_parent_element,
                                                 &self.todo_hello_text,
                                             )?;
-                                        <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, __m_backend_element);
+                                        <<todo_backend!() as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                                         __m_child
                                     },);
                                     __m_slot_children.add(__m_children_i, __m_children)?;

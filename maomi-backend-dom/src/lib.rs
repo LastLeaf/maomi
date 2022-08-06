@@ -243,7 +243,7 @@ impl BackendGeneralElement for DomGeneralElement {
 
     fn append<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        child: ForestNodeRc<
+        child: &'b ForestNodeRc<
             <<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement,
         >,
     ) where

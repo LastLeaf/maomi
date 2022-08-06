@@ -30,15 +30,11 @@ impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
         }
     }
 
-    fn generate_children_list(&self) -> Vec<K> {
-        todo!()
-    }
-
     pub fn list_diff_update<'a, 'b>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
-    ) -> ListKeyAlgoUpdate<'a, 'b, K, B, C> {
+    ) -> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
         ListKeyAlgoUpdate {
             map: &mut self.map,
             new_map: HashMap::with_capacity(size_hint),
@@ -50,15 +46,15 @@ impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
 }
 
 enum KeyChange<B: Backend> {
-    OldPos(usize, ForestToken),
+    OldPos(ForestNodeRc<B::GeneralElement>, usize),
     NewChild(ForestNodeRc<B::GeneralElement>),
 }
 
 pub struct ListKeyAlgoUpdate<
     'a,
     'b,
-    K: Eq + Hash,
     B: Backend,
+    K: Eq + Hash,
     C,
 > {
     map: &'a mut HashMap<K, (usize, C, ForestToken)>,
@@ -71,10 +67,10 @@ pub struct ListKeyAlgoUpdate<
 impl<
     'a,
     'b,
-    K: Eq + Hash,
     B: Backend,
+    K: Eq + Hash,
     C,
-> ListKeyAlgoUpdate<'a, 'b, K, B, C> {
+> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
     pub fn next<R>(
         &mut self,
         list_key: impl AsListKey<ListKey = R>,
@@ -87,32 +83,33 @@ impl<
     {
         let new_pos = self.stable_pos.len();
         let new_key_ref = list_key.as_list_key();
-        if let Some((pos, c, forest_token)) = self.map.remove(new_key_ref) {
+        if let Some((pos, mut c, forest_token)) = self.map.remove(new_key_ref) {
             update_fn(
                 &mut c,
                 &mut self.backend_element.borrow_mut_token(&forest_token),
             )?;
-            self.stable_pos.push(KeyChange::OldPos(pos, forest_token));
+            let rc = self.backend_element.resolve_token(&forest_token);
+            self.stable_pos.push(KeyChange::OldPos(rc, pos));
             self.new_map.insert(new_key_ref.to_owned(), (new_pos, c, forest_token));
         } else {
             let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
             let c = create_fn(
                 &mut self.backend_element.borrow_mut(&backend_element),
             )?;
-            self.stable_pos.push(KeyChange::NewChild(backend_element));
             self.new_map.insert(new_key_ref.to_owned(), (new_pos, c, backend_element.token()));
+            self.stable_pos.push(KeyChange::NewChild(backend_element));
         }
         Ok(())
     }
 
     pub fn end(self) -> Result<(), Error> {
-        let Self { map, stable_pos, new_map, backend_element, .. } = self;
+        let Self { map, mut stable_pos, new_map, .. } = self;
 
         // calc the longest increasing subsequence and use it as the unchanged items
         let mut min_index_for_seq_len = Vec::<usize>::with_capacity(stable_pos.len());
         let mut seq_back_ptr = Vec::with_capacity(stable_pos.len());
         for item in stable_pos.iter() {
-            if let KeyChange::OldPos(pos, _) = item {
+            if let KeyChange::OldPos(_, pos) = item {
                 let pos = *pos;
                 let mut left = 0;
                 let mut right = min_index_for_seq_len.len();
@@ -152,7 +149,7 @@ impl<
                 self.backend_element.borrow_mut_token(forest_token),
             );
         }
-        std::mem::replace(map, new_map);
+        *map = new_map;
 
         // scan the list and find out moved ones
         let mut list_iter = stable_pos.iter_mut();
@@ -163,12 +160,12 @@ impl<
                     None => break,
                 };
                 let rc = match item {
-                    KeyChange::OldPos(pos, forest_token) => {
+                    KeyChange::OldPos(rc, pos) => {
                         if pos == old_pos {
                             break;
                         }
                         let rc = <B::GeneralElement as BackendGeneralElement>::temp_detach(
-                            self.backend_element.borrow_mut_token(forest_token),
+                            self.backend_element.borrow_mut(rc),
                         );
                         rc
                     }
@@ -179,11 +176,11 @@ impl<
         }
 
         // do insertion in the list
-        let stable_pos_iter = stable_pos.iter();
+        let mut stable_pos_iter = stable_pos.iter();
         for item in stable_pos.iter() {
             match item {
-                KeyChange::OldPos(_, forest_token) => {
-                    let rel = &mut self.backend_element.borrow_mut_token(forest_token);
+                KeyChange::OldPos(rc, _) => {
+                    let rel = &mut self.backend_element.borrow_mut(rc);
                     while let Some(KeyChange::NewChild(rc)) = stable_pos_iter.next() {
                         <B::GeneralElement as BackendGeneralElement>::insert(
                             rel,
@@ -205,38 +202,35 @@ impl<
     }
 }
 
-pub struct KeyListIter<'a, B: Backend, K: Eq + Hash, C> {
-    list: &'a KeyList<B, K, C>,
-    children: Vec<K>,
-    cur: usize,
+pub struct KeyListIter<'a, C> {
+    children: std::vec::IntoIter<Option<&'a C>>,
 }
 
-impl<'a, B: Backend, K: Eq + Hash, C> Iterator for KeyListIter<'a, B, K, C> {
+impl<'a, C> Iterator for KeyListIter<'a, C> {
     type Item = &'a C;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let ret = self.list.children.get(self.cur).and_then(|x| {
-            self.list.map.get(k)
-        });
-        self.cur += 1;
-        ret
+        self.children.next().and_then(|x| x)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.list.children.len() - self.cur;
-        (len, Some(len))
+        self.children.size_hint()
     }
 }
 
 impl<'a, B: Backend, K: Eq + Hash, C> IntoIterator for &'a KeyList<B, K, C> {
     type Item = &'a C;
-    type IntoIter = KeyListIter<'a, B, K, C>;
+    type IntoIter = KeyListIter<'a, C>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.generate_children_cache();
+        let len = self.map.len();
+        let mut arr = Vec::with_capacity(len);
+        arr.resize(len, None);
+        for (index, c, _) in self.map.values() {
+            arr[*index] = Some(c);
+        }
         KeyListIter {
-            list: self,
-            cur: 0,
+            children: arr.into_iter(),
         }
     }
 }

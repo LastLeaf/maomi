@@ -283,10 +283,10 @@ async fn template_for() {
     struct MyList(usize);
 
     impl AsListKey for MyList {
-        type ListKey = str;
+        type ListKey = usize;
 
-        fn as_list_key(&self) -> &str {
-            "test"
+        fn as_list_key(&self) -> &usize {
+            &self.0
         }
     }
 
@@ -295,7 +295,7 @@ async fn template_for() {
         callback: Option<ComponentTestCb>,
         template: template! {
             <div>
-                for (index, item) in self.list.iter().enumerate() use(item) String {
+                for (index, item) in self.list.iter().enumerate() use (item) usize {
                     <div> { &index.to_string() } </div>
                 }
                 for item in self.list.iter() use usize {
@@ -324,14 +324,14 @@ async fn template_for() {
                 this.update(|this| {
                     assert_eq!(
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
-                        r#"<div title="0">123</div><div title="1">456</div>"#,
+                        r#"<div>0</div><div>1</div><div>123</div><div>456</div>"#,
                     );
                     this.list.push(MyList(789));
                 }).await.unwrap();
                 this.update(|this| {
                     assert_eq!(
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
-                        r#"<div title="0">123</div><div title="1">456</div><div title="2">789</div>"#,
+                        r#"<div>0</div><div>1</div><div>2</div><div>123</div><div>456</div><div>789</div>"#,
                     );
                     this.list.pop();
                     this.list.pop();
@@ -339,7 +339,7 @@ async fn template_for() {
                 this.update(|this| {
                     assert_eq!(
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
-                        r#"<div title="0">123</div><div title="1">456</div><div title="2">789</div>"#,
+                        r#"<div>0</div><div>123</div>"#,
                     );
                     this.list.pop();
                     this.list.pop();
