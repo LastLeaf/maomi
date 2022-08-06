@@ -97,6 +97,7 @@ pub(super) enum TemplateNode {
     Match {
         match_token: token::Match,
         expr: Box<Expr>,
+        #[allow(dead_code)]
         brace_token: token::Brace,
         arms: Vec<TemplateMatchArm>,
     },
@@ -171,11 +172,12 @@ impl TemplateNode {
             Self::ForLoop { brace_token, children, key, .. } => {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type(backend_param));
-                let key_ty = match key {
-                    Some((_, _, _, key_ty)) => Some(key_ty),
-                    None => None,
+                let ty = if let Some((_, _, _, key_ty)) = key.as_ref() {
+                    quote!(maomi::diff::key::KeyList<#backend_param, #key_ty, (#(#children,)*)>)
+                } else {
+                    quote!(maomi::diff::keyless::KeylessList<#backend_param, (#(#children,)*)>)
                 };
-                parse_quote_spanned!(span=> maomi::node::ControlNode<maomi::diff::key::KeyList<#backend_param, #key_ty, (#(#children,)*)>> )
+                parse_quote_spanned!(span=> maomi::node::ControlNode<#ty> )
             }
         }
     }
@@ -636,43 +638,46 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
                 let span = for_token.span();
                 let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
-                if let Some((_, __m_list_update_iter, key_expr, key_ty)) = key.as_ref() {
-                    quote_spanned! {span=>
-                        let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
-                        let __m_size_hint = {
-                            let size_hint = __m_list.size_hint();
-                            size_hint.1.unwrap_or(size_hint.0)
-                        };
-                        let mut __m_list_diff_algo = maomi::diff::key::KeyList::<#backend_param, #key_ty, _>::list_diff_new();
-                        let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
-                        {
-                            let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                            let mut __m_list_update_iter: maomi::diff::key::ListKeyAlgoUpdate<#backend_param, #key_ty, _> = __m_list_diff_algo.list_diff_update(
-                                __m_parent_element,
-                                __m_size_hint,
-                            );
-                            #for_token #pat #in_token __m_list {
-                                __m_list_update_iter.next(
-                                    #key_expr,
-                                    |__m_parent_element| {
-                                        Ok((#({#children},)*))
-                                    },
-                                    |_, __m_parent_element| {
-                                        unreachable!()
-                                    },
-                                )?;
-                            }
-                            __m_list_update_iter.end()?;
-                        }
-                        let __m_backend_element_token = __m_backend_element.token();
-                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                        maomi::node::ControlNode {
-                            forest_token: __m_backend_element_token,
-                            content: __m_list_diff_algo,
-                        }
-                    }
+                let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
+                    (
+                        quote!(maomi::diff::key::KeyList::<#backend_param, #key_ty, _>),
+                        quote!(#key_expr,),
+                    )
                 } else {
-                    todo!()
+                    (
+                        quote!(maomi::diff::keyless::KeylessList::<#backend_param, _>),
+                        quote!(),
+                    )
+                };
+                quote_spanned! {span=>
+                    let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
+                    let __m_size_hint = {
+                        let size_hint = __m_list.size_hint();
+                        size_hint.1.unwrap_or(size_hint.0)
+                    };
+                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                    let __m_list_diff_algo = {
+                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        let mut __m_list_update_iter = #algo::list_diff_new(
+                            __m_parent_element,
+                            __m_size_hint,
+                        );
+                        #for_token #pat #in_token __m_list {
+                            __m_list_update_iter.next(
+                                #next_arg
+                                |__m_parent_element| {
+                                    Ok((#({#children},)*))
+                                },
+                            )?;
+                        }
+                        __m_list_update_iter.end()
+                    };
+                    let __m_backend_element_token = __m_backend_element.token();
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                    maomi::node::ControlNode {
+                        forest_token: __m_backend_element_token,
+                        content: __m_list_diff_algo,
+                    }
                 }
             }
         }.to_tokens(tokens);
@@ -914,8 +919,52 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 }
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
-                quote! {
-                    todo!();
+                let span = for_token.span();
+                let create_children = children.into_iter()
+                    .map(|x| TemplateNodeCreate {
+                        template_node: x,
+                        backend_param,
+                    });
+                let update_children = children.into_iter()
+                    .enumerate()
+                    .map(|(index, x)| TemplateNodeUpdate {
+                        child_index: Index::from(index),
+                        template_node: x,
+                        backend_param,
+                    });
+                let next_arg = if let Some((_, _, key_expr, _)) = key.as_ref() {
+                    quote!(#key_expr,)
+                } else {
+                    quote!()
+                };
+                quote_spanned! {span=>
+                    let maomi::node::ControlNode {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_list_diff_algo,
+                    } = __m_children.#child_index;
+                    let mut __m_parent_element = &mut __m_parent_element.borrow_mut_token(&__m_backend_element_token);
+                    let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
+                    let __m_size_hint = {
+                        let size_hint = __m_list.size_hint();
+                        size_hint.1.unwrap_or(size_hint.0)
+                    };
+                    let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
+                        __m_parent_element,
+                        __m_size_hint,
+                    );
+                    #for_token #pat #in_token __m_list {
+                        __m_list_update_iter.next(
+                            #next_arg
+                            |__m_parent_element| {
+                                Ok((#({#create_children},)*))
+                            },
+                            |__m_children, __m_parent_element| {
+                                #({#update_children})*
+                                Ok(())
+                            },
+                        )?;
+                    }
+                    __m_list_update_iter.end()?;
                 }
             }
         }.to_tokens(tokens);

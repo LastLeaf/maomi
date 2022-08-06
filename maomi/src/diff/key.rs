@@ -23,9 +23,14 @@ pub struct KeyList<B: Backend, K: Eq + Hash, C> {
 }
 
 impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
-    pub fn list_diff_new() -> Self {
-        Self {
-            map: HashMap::new(),
+    pub fn list_diff_new<'a, 'b>(
+        backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
+        size_hint: usize,
+    ) -> ListKeyAlgoNew<'a, 'b, B, K, C> {
+        ListKeyAlgoNew {
+            cur_len: 0,
+            map: HashMap::with_capacity(size_hint),
+            backend_element,
             _phantom: PhantomData,
         }
     }
@@ -45,9 +50,64 @@ impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct OldPos(usize);
+
 enum KeyChange<B: Backend> {
-    OldPos(ForestNodeRc<B::GeneralElement>, usize),
+    OldPos(ForestNodeRc<B::GeneralElement>, OldPos),
     NewChild(ForestNodeRc<B::GeneralElement>),
+}
+
+pub struct ListKeyAlgoNew<
+    'a,
+    'b,
+    B: Backend,
+    K: Eq + Hash,
+    C,
+> {
+    cur_len: usize,
+    map: HashMap<K, (usize, C, ForestToken)>,
+    backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
+    _phantom: PhantomData<B>,
+}
+
+impl<
+    'a,
+    'b,
+    B: Backend,
+    K: Eq + Hash,
+    C,
+> ListKeyAlgoNew<'a, 'b, B, K, C> {
+    pub fn next<R>(
+        &mut self,
+        list_key: impl AsListKey<ListKey = R>,
+        create_fn: impl FnOnce(&mut ForestNodeMut<B::GeneralElement>) -> Result<C, Error>,
+    ) -> Result<(), Error>
+    where
+        R: Eq + Hash + ToOwned<Owned = K> + ?Sized,
+        K: Borrow<R>,
+    {
+        let new_pos = self.cur_len;
+        let new_key_ref = list_key.as_list_key();
+        let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
+        let c = create_fn(
+            &mut self.backend_element.borrow_mut(&backend_element),
+        )?;
+        self.map.insert(new_key_ref.to_owned(), (new_pos, c, backend_element.token()));
+        <B::GeneralElement as BackendGeneralElement>::append(
+            self.backend_element,
+            &backend_element,
+        );
+        self.cur_len += 1;
+        Ok(())
+    }
+
+    pub fn end(self) -> KeyList<B, K, C> {
+        KeyList {
+            map: self.map,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 pub struct ListKeyAlgoUpdate<
@@ -89,7 +149,7 @@ impl<
                 &mut self.backend_element.borrow_mut_token(&forest_token),
             )?;
             let rc = self.backend_element.resolve_token(&forest_token);
-            self.stable_pos.push(KeyChange::OldPos(rc, pos));
+            self.stable_pos.push(KeyChange::OldPos(rc, OldPos(pos)));
             self.new_map.insert(new_key_ref.to_owned(), (new_pos, c, forest_token));
         } else {
             let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
@@ -106,39 +166,44 @@ impl<
         let Self { map, mut stable_pos, new_map, .. } = self;
 
         // calc the longest increasing subsequence and use it as the unchanged items
-        let mut min_index_for_seq_len = Vec::<usize>::with_capacity(stable_pos.len());
-        let mut seq_back_ptr = Vec::with_capacity(stable_pos.len());
-        for item in stable_pos.iter() {
+        #[derive(Debug, Clone, Copy, PartialEq)]
+        struct SeqPos {
+            pos: OldPos,
+            index: usize,
+        }
+        let mut min_index_for_seq_len = Vec::<SeqPos>::with_capacity(stable_pos.len());
+        let mut seq_back_ptr = Vec::<SeqPos>::with_capacity(stable_pos.len());
+        for (index, item) in stable_pos.iter().enumerate() {
             if let KeyChange::OldPos(_, pos) = item {
                 let pos = *pos;
                 let mut left = 0;
                 let mut right = min_index_for_seq_len.len();
                 while left < right {
                     let mid = (left + right) / 2;
-                    if min_index_for_seq_len[mid] < pos {
+                    if min_index_for_seq_len[mid].pos.0 < pos.0 {
                         left = mid + 1;
                     } else {
                         right = mid;
                     }
                 }
                 if left < min_index_for_seq_len.len() {
-                    min_index_for_seq_len[left] = pos;
+                    min_index_for_seq_len[left] = SeqPos { pos, index };
                 } else {
-                    min_index_for_seq_len.push(pos);
+                    min_index_for_seq_len.push(SeqPos { pos, index });
                 }
                 if left == 0 {
-                    seq_back_ptr.push(usize::MAX);
+                    seq_back_ptr.push(SeqPos { pos: OldPos(0), index: 0 });
                 } else {
-                    seq_back_ptr.push(min_index_for_seq_len[left - 1]);
+                    seq_back_ptr.push(min_index_for_seq_len[left - 1].clone());
                 }
             } else {
-                seq_back_ptr.push(usize::MAX);
+                seq_back_ptr.push(SeqPos { pos: OldPos(0), index: 0 });
             }
         }
-        if let Some(mut pos) = min_index_for_seq_len.last().cloned() {
+        if let Some(mut pos) = min_index_for_seq_len.last().map(|x| x.pos) {
             for item in min_index_for_seq_len.iter_mut().rev() {
-                *item = pos;
-                pos = seq_back_ptr[pos];
+                item.pos = pos;
+                pos = seq_back_ptr[item.index].pos;
             }
         }
         let seq = min_index_for_seq_len;
@@ -161,7 +226,7 @@ impl<
                 };
                 let rc = match item {
                     KeyChange::OldPos(rc, pos) => {
-                        if pos == old_pos {
+                        if *pos == old_pos.pos {
                             break;
                         }
                         let rc = <B::GeneralElement as BackendGeneralElement>::temp_detach(
@@ -172,6 +237,14 @@ impl<
                     KeyChange::NewChild(_) => continue,
                 };
                 *item = KeyChange::NewChild(rc);
+            }
+        }
+        while let Some(x) = list_iter.next() {
+            if let KeyChange::OldPos(rc, _) = x {
+                let rc = <B::GeneralElement as BackendGeneralElement>::temp_detach(
+                    self.backend_element.borrow_mut(rc),
+                );
+                *x = KeyChange::NewChild(rc);
             }
         }
 
