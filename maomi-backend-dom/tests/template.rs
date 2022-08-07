@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
-use maomi::{prelude::*, diff::key::AsListKey};
-use maomi_backend_dom::{element::*, DomBackend, async_task};
+use maomi::{prelude::*, diff::key::AsListKey, prop::ListPropertyItem};
+use maomi_backend_dom::{element::*, DomBackend, async_task, class_list::DomClassList};
 
 mod env;
 use env::*;
@@ -506,6 +506,149 @@ async fn template_for() {
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
                         vec![],
+                    );
+                    (this.callback.take().unwrap())();
+                }).await.unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn class_attr() {
+    // TODO impl css parsing
+
+    #[allow(non_camel_case_types)]
+    struct static_class();
+
+    impl ListPropertyItem<DomClassList, bool> for static_class {
+        type Value = &'static str;
+
+        #[inline(always)]
+        fn item_value(
+            _dest: &mut DomClassList,
+            _index: usize,
+            _s: &bool,
+            _ctx: &mut <DomClassList as maomi::prop::ListPropertyUpdate<bool>>::UpdateContext,
+        ) -> Self::Value {
+            "static_class"
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    struct dyn_class();
+
+    impl ListPropertyItem<DomClassList, bool> for dyn_class {
+        type Value = &'static str;
+
+        #[inline(always)]
+        fn item_value(
+            _dest: &mut DomClassList,
+            _index: usize,
+            _s: &bool,
+            _ctx: &mut <DomClassList as maomi::prop::ListPropertyUpdate<bool>>::UpdateContext,
+        ) -> Self::Value {
+            "dyn_class"
+        }
+    }
+
+    #[component(for DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div class:static_class class:dyn_class={&self.v} />
+        },
+        v: bool,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                v: false,
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        r#"<div class="static_class"></div>"#,
+                    );
+                    this.v = true;
+                }).await.unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        r#"<div class="static_class dyn_class"></div>"#,
+                    );
+                    this.v = false;
+                }).await.unwrap();
+                this.get_mut(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        r#"<div class="static_class"></div>"#,
+                    );
+                    (this.callback.take().unwrap())();
+                }).await.unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn style_attr() {
+    #[component(for DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div style={&format!("color: {};", self.color)} />
+        },
+        color: String,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                color: "red".into(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        r#"<div style="color: red;"></div>"#,
+                    );
+                    this.color = "blue".into();
+                }).await.unwrap();
+                this.get_mut(|this| {
+                    assert_eq!(
+                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        r#"<div style="color: blue;"></div>"#,
                     );
                     (this.callback.take().unwrap())();
                 }).await.unwrap();

@@ -74,30 +74,33 @@ pub trait ListPropertyUpdate<S: ?Sized> {
     /// Must be `bool` if used in components
     type UpdateContext;
 
+    /// The updater return value
+    type ItemValue;
+
     /// The initiator with item count provided
-    fn init_list(dest: &mut Self, count: usize);
+    fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext);
 
     /// The updater
     ///
     /// If used in components, `ctx` must be set to true if updated
-    fn compare_and_set_item_ref<U: ListPropertyUpdateItem<Self, S, UpdateContext = Self::UpdateContext>>(
+    fn compare_and_set_item_ref<U: ListPropertyItem<Self, S, Value = Self::ItemValue>>(
         dest: &mut Self,
         index: usize,
         src: &S,
         ctx: &mut Self::UpdateContext,
-    ) where Self: Sized {
-        U::compare_and_set_ref(dest, index, src, ctx)
-    }
+    ) where Self: Sized;
 }
 
-pub trait ListPropertyUpdateItem<L: ListPropertyUpdate<S>, S: ?Sized> {
-    /// Must be `bool` if used in components
-    type UpdateContext;
+pub trait ListPropertyItem<L: ListPropertyUpdate<S>, S: ?Sized> {
+    type Value: ?Sized;
 
-    /// The updater
-    ///
-    /// If used in components, `ctx` must be set to true if updated
-    fn compare_and_set_ref(list: &mut L, index: usize, s: &S, ctx: &mut Self::UpdateContext);
+    /// Generate the item value
+    fn item_value(
+        dest: &mut L,
+        index: usize,
+        s: &S,
+        ctx: &mut L::UpdateContext,
+    ) -> Self::Value;
 }
 
 pub struct ListProp<T: Default> {
@@ -132,20 +135,38 @@ impl<T: Default> Borrow<[T]> for ListProp<T> {
 
 impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyUpdate<S> for ListProp<T> {
     type UpdateContext = bool;
+    type ItemValue = ();
 
-    fn init_list(dest: &mut Self, count: usize) {
+    #[inline]
+    fn init_list(dest: &mut Self, count: usize, _ctx: &mut bool) {
         dest.inner.resize_with(count, T::default);
+    }
+
+    #[inline]
+    fn compare_and_set_item_ref<U: ListPropertyItem<Self, S, Value = ()>>(
+        dest: &mut Self,
+        index: usize,
+        src: &S,
+        ctx: &mut Self::UpdateContext,
+    ) where Self: Sized {
+        U::item_value(dest, index, src, ctx);
     }
 }
 
-impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyUpdateItem<ListProp<T>, S> for ListProp<T> {
-    type UpdateContext = bool;
+impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyItem<ListProp<T>, S> for ListProp<T> {
+    type Value = ();
 
-    fn compare_and_set_ref(list: &mut ListProp<T>, index: usize, src: &S, ctx: &mut Self::UpdateContext) {
-        if list.inner[index].property_as_ref() == src {
+    #[inline]
+    fn item_value(
+        dest: &mut Self,
+        index: usize,
+        src: &S,
+        ctx: &mut bool,
+    ) -> Self::Value {
+        if dest.inner[index].property_as_ref() == src {
             return;
         }
-        list.inner[index] = PropAsRef::property_to_owned(src);
+        dest.inner[index] = PropAsRef::property_to_owned(src);
         *ctx = true;
     }
 }

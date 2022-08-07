@@ -28,6 +28,7 @@ features = [
   "DocumentFragment",
   "Element",
   "Text",
+  "DomTokenList",
   "EventListener",
   "EventTarget",
   "Event",

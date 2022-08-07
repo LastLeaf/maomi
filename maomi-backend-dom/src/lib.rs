@@ -11,6 +11,7 @@ pub mod virtual_element;
 pub use virtual_element::DomVirtualElement;
 pub mod text_node;
 pub use text_node::DomTextNode;
+pub mod class_list;
 mod composing;
 
 thread_local! {

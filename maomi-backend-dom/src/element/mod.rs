@@ -4,7 +4,7 @@ use maomi::{
 };
 use std::{borrow::Borrow, ops::Deref};
 
-use crate::{tree::*, DomBackend, DomGeneralElement};
+use crate::{tree::*, DomBackend, DomGeneralElement, class_list::DomClassList};
 
 pub struct DomElement(pub(crate) web_sys::Element);
 
@@ -52,9 +52,9 @@ where
             return;
         }
         dest.inner = src.to_owned();
-        ctx
-            .set_attribute(dest.attr_name, &dest.inner)
-            .unwrap();
+        if let Err(err) = ctx.set_attribute(dest.attr_name, &dest.inner) {
+            crate::log_js_error(&err);
+        }
     }
 }
 
@@ -83,9 +83,13 @@ where
         }
         dest.inner = src.to_owned();
         if dest.inner {
-            ctx.set_attribute(dest.attr_name, "").unwrap();
+            if let Err(err) = ctx.set_attribute(dest.attr_name, "") {
+                crate::log_js_error(&err);
+            }
         } else {
-            ctx.remove_attribute(dest.attr_name).unwrap();
+            if let Err(err) = ctx.remove_attribute(dest.attr_name) {
+                crate::log_js_error(&err);
+            }
         }
     }
 }
@@ -96,6 +100,8 @@ where
 pub struct div {
     backend_element_token: ForestToken,
     elem: web_sys::Element,
+    pub class: DomClassList,
+    pub style: DomStrAttr,
     pub title: DomStrAttr,
     pub hidden: DomBoolAttr,
 }
@@ -123,7 +129,11 @@ impl BackendComponent<DomBackend> for div {
             crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
         let this = Self {
             backend_element_token: backend_element.token(),
-            elem,
+            class: DomClassList::new(elem.class_list()),
+            style: DomStrAttr {
+                attr_name: "style",
+                inner: String::new(),
+            },
             title: DomStrAttr {
                 attr_name: "title",
                 inner: String::new(),
@@ -132,6 +142,7 @@ impl BackendComponent<DomBackend> for div {
                 attr_name: "hidden",
                 inner: false,
             },
+            elem,
         };
         Ok((this, backend_element))
     }

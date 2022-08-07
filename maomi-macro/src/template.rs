@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::parse::*;
@@ -373,6 +375,7 @@ impl Parse for TemplateNode {
 pub(super) enum TemplateAttribute {
     StaticProperty {
         name: Ident,
+        list_updater: Option<(token::Colon, Path)>,
         #[allow(dead_code)]
         eq_token: token::Eq,
         value: Lit,
@@ -380,6 +383,7 @@ pub(super) enum TemplateAttribute {
     DynamicProperty {
         ref_token: Option<token::And>,
         name: Ident,
+        list_updater: Option<(token::Colon, Path)>,
         #[allow(dead_code)]
         eq_token: token::Eq,
         #[allow(dead_code)]
@@ -398,45 +402,77 @@ pub(super) enum TemplateAttribute {
     },
 }
 
+impl TemplateAttribute {
+    fn list_ident(&self) -> Option<&Ident> {
+        match self {
+            Self::StaticProperty { name, list_updater, .. } => {
+                list_updater.as_ref().map(|_| name)
+            }
+            Self::DynamicProperty { name, list_updater, .. } => {
+                list_updater.as_ref().map(|_| name)
+            }
+            Self::Event { .. } => None,
+        }
+    }
+}
+
 impl Parse for TemplateAttribute {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
         let ret = if la.peek(Ident) {
             let name = input.parse()?;
-            let eq_token = input.parse()?;
-            let la = input.lookahead1();
-            if la.peek(Lit) {
-                let value = input.parse()?;
-                TemplateAttribute::StaticProperty {
-                    name,
-                    eq_token,
-                    value,
-                }
-            } else if la.peek(token::And) {
-                let ref_token = input.parse()?;
-                let content;
-                let brace_token = braced!(content in input);
-                let expr = content.parse()?;
-                TemplateAttribute::DynamicProperty {
-                    ref_token: Some(ref_token),
-                    name,
-                    eq_token,
-                    brace_token,
-                    expr,
-                }
-            } else if la.peek(token::Brace) {
-                let content;
-                let brace_token = braced!(content in input);
-                let expr = content.parse()?;
-                TemplateAttribute::DynamicProperty {
-                    ref_token: None,
-                    name,
-                    eq_token,
-                    brace_token,
-                    expr,
+            let list_updater = if input.peek(token::Colon) {
+                Some((input.parse()?, input.parse()?))
+            } else {
+                None
+            };
+            if input.peek(token::Eq) {
+                let eq_token = input.parse()?;
+                let la = input.lookahead1();
+                if la.peek(Lit) {
+                    let value = input.parse()?;
+                    TemplateAttribute::StaticProperty {
+                        name,
+                        list_updater,
+                        eq_token,
+                        value,
+                    }
+                } else if la.peek(token::And) {
+                    let ref_token = input.parse()?;
+                    let content;
+                    let brace_token = braced!(content in input);
+                    let expr = content.parse()?;
+                    TemplateAttribute::DynamicProperty {
+                        ref_token: Some(ref_token),
+                        name,
+                        list_updater,
+                        eq_token,
+                        brace_token,
+                        expr,
+                    }
+                } else if la.peek(token::Brace) {
+                    let content;
+                    let brace_token = braced!(content in input);
+                    let expr = content.parse()?;
+                    TemplateAttribute::DynamicProperty {
+                        ref_token: None,
+                        name,
+                        list_updater,
+                        eq_token,
+                        brace_token,
+                        expr,
+                    }
+                } else {
+                    return Err(la.error());
                 }
             } else {
-                return Err(la.error());
+                let span = name.span();
+                TemplateAttribute::StaticProperty {
+                    name,
+                    list_updater,
+                    eq_token: parse_quote_spanned! {span=> = },
+                    value: parse_quote_spanned! {span=> true },
+                }
             }
         } else if la.peek(token::At) {
             let at_token = input.parse()?;
@@ -520,7 +556,27 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
-                let attrs = attrs.into_iter().map(|attr| TemplateAttributeCreate { attr });
+                let mut list_prop_count = HashMap::new();
+                let attrs = attrs.into_iter().map(|attr| {
+                    let list_index = if let Some(x) = attr.list_ident() {
+                        *list_prop_count.entry(x)
+                            .and_modify(|x| *x += 1)
+                            .or_insert(1) - 1
+                    } else {
+                        0
+                    };
+                    TemplateAttributeCreate { attr, list_index }
+                }).collect::<Vec<_>>();
+                let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) = list_prop_count.iter().unzip();
+                let attrs_list_init = quote_spanned! {span=>
+                    #(
+                        maomi::prop::ListPropertyUpdate::init_list(
+                            &mut __m_child.#list_prop_name,
+                            #list_prop_count,
+                            __m_update_ctx,
+                        );
+                    )*
+                };
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
                         <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
@@ -532,6 +588,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_backend_context,
                         __m_parent_element,
                         |__m_child, __m_update_ctx| {
+                            #attrs_list_init
                             #(#attrs)*
                         },
                         |__m_parent_element, __m_scope| Ok(()),
@@ -545,7 +602,27 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
-                let attrs = attrs.into_iter().map(|attr| TemplateAttributeCreate { attr });
+                let mut list_prop_count = HashMap::new();
+                let attrs = attrs.into_iter().map(|attr| {
+                    let list_index = if let Some(x) = attr.list_ident() {
+                        *list_prop_count.entry(x)
+                            .and_modify(|x| *x += 1)
+                            .or_insert(1) - 1
+                    } else {
+                        0
+                    };
+                    TemplateAttributeCreate { attr, list_index }
+                }).collect::<Vec<_>>();
+                let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) = list_prop_count.iter().unzip();
+                let attrs_list_init = quote_spanned! {span=>
+                    #(
+                        maomi::prop::ListPropertyUpdate::init_list(
+                            &mut __m_child.#list_prop_name,
+                            #list_prop_count,
+                            __m_update_ctx,
+                        );
+                    )*
+                };
                 let children = children.into_iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
@@ -558,6 +635,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_backend_context,
                         __m_parent_element,
                         |__m_child, __m_update_ctx| {
+                            #attrs_list_init
                             #(#attrs)*
                         },
                         |__m_parent_element, __m_scope| {
@@ -737,7 +815,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
                 let span = tag_lt_token.span();
-                let attrs = attrs.into_iter().map(|attr| TemplateAttributeUpdate { attr });
+                let mut list_prop_count = HashMap::new();
+                let attrs = attrs.into_iter().map(|attr| {
+                    let list_index = if let Some(x) = attr.list_ident() {
+                        *list_prop_count.entry(x)
+                            .and_modify(|x| *x += 1)
+                            .or_insert(1) - 1
+                    } else {
+                        0
+                    };
+                    TemplateAttributeUpdate { attr, list_index }
+                });
                 quote_spanned! {span=>
                     let maomi::node::Node {
                         tag: ref mut __m_child,
@@ -772,7 +860,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
-                let attrs = attrs.into_iter().map(|attr| TemplateAttributeUpdate { attr });
+                let mut list_prop_count = HashMap::new();
+                let attrs = attrs.into_iter().map(|attr| {
+                    let list_index = if let Some(x) = attr.list_ident() {
+                        *list_prop_count.entry(x)
+                            .and_modify(|x| *x += 1)
+                            .or_insert(1) - 1
+                    } else {
+                        0
+                    };
+                    TemplateAttributeUpdate { attr, list_index }
+                });
                 let create_children = children.into_iter()
                     .map(|x| TemplateNodeCreate {
                         template_node: x,
@@ -973,31 +1071,62 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
 
 pub(super) struct TemplateAttributeCreate<'a> {
     attr: &'a TemplateAttribute,
+    list_index: usize,
 }
 
 impl<'a> ToTokens for TemplateAttributeCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { attr } = self;
+        let Self { attr, list_index } = self;
         match attr {
-            TemplateAttribute::StaticProperty { name, value, .. } => {
+            TemplateAttribute::StaticProperty { name, list_updater, value, .. } => {
                 let span = value.span();
                 let ref_sign = match value {
                     Lit::Str(_) | Lit::ByteStr(_) => quote! {},
                     _ => quote!{ & },
                 };
-                quote_spanned! {span=>
-                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #ref_sign #value, __m_update_ctx);
-                }
-            }
-            TemplateAttribute::DynamicProperty { ref_token, name, expr, .. } => {
-                let span = expr.span();
-                if ref_token.is_some() {
+                if let Some((_, updater)) = list_updater {
+                    let index = Index::from(*list_index);
                     quote_spanned! {span=>
-                        maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, &(#expr), __m_update_ctx);
+                        maomi::prop::ListPropertyUpdate::compare_and_set_item_ref::<#updater>(
+                            &mut __m_child.#name,
+                            #index,
+                            #ref_sign #value,
+                            __m_update_ctx,
+                        );
                     }
                 } else {
                     quote_spanned! {span=>
-                        maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #expr, __m_update_ctx);
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.#name,
+                            #ref_sign #value,
+                            __m_update_ctx,
+                        );
+                    }
+                }
+            }
+            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, .. } => {
+                let span = expr.span();
+                let expr = match ref_token {
+                    Some(ref_sign) => quote!(#ref_sign(#expr)),
+                    None => quote!(#expr),
+                };
+                if let Some((_, updater)) = list_updater {
+                    let index = Index::from(*list_index);
+                    quote_spanned! {span=>
+                        maomi::prop::ListPropertyUpdate::compare_and_set_item_ref::<#updater>(
+                            &mut __m_child.#name,
+                            #index,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }
+                } else {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.#name,
+                            #expr,
+                            __m_update_ctx,
+                        );
                     }
                 }
             }
@@ -1014,19 +1143,40 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
 
 pub(super) struct TemplateAttributeUpdate<'a> {
     attr: &'a TemplateAttribute,
+    list_index: usize,
 }
 
 impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let Self { attr } = self;
+        let Self { attr, list_index } = self;
         match attr {
             TemplateAttribute::StaticProperty { .. } => {
                 quote! {}
             }
-            TemplateAttribute::DynamicProperty { ref_token, name, expr, .. } => {
+            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, .. } => {
                 let span = expr.span();
-                quote_spanned! {span=>
-                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #ref_token #expr, __m_update_ctx);
+                let expr = match ref_token {
+                    Some(ref_sign) => quote!(#ref_sign(#expr)),
+                    None => quote!(#expr),
+                };
+                if let Some((_, updater)) = list_updater {
+                    let index = Index::from(*list_index);
+                    quote_spanned! {span=>
+                        maomi::prop::ListPropertyUpdate::compare_and_set_item_ref::<#updater>(
+                            &mut __m_child.#name,
+                            #index,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }
+                } else {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.#name,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }
                 }
             }
             TemplateAttribute::Event { .. } => {
