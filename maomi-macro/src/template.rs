@@ -19,11 +19,7 @@ pub(super) struct Template {
 }
 
 impl Template {
-    pub(super) fn gen_type(
-        &self,
-        backend_param: &TokenStream,
-        md: &MacroDelimiter,
-    ) -> Type {
+    pub(super) fn gen_type(&self, backend_param: &TokenStream, md: &MacroDelimiter) -> Type {
         let Self { children } = self;
         let span = match md {
             MacroDelimiter::Paren(x) => x.span,
@@ -131,10 +127,7 @@ pub(super) struct TemplateMatchArm {
 }
 
 impl TemplateNode {
-    fn gen_type(
-        &self,
-        backend_param: &TokenStream,
-    ) -> Type {
+    fn gen_type(&self, backend_param: &TokenStream) -> Type {
         match self {
             Self::StaticText { content } => {
                 let span = content.span();
@@ -148,7 +141,9 @@ impl TemplateNode {
                 let span = tag_name.span();
                 parse_quote_spanned!(span=> maomi::node::Node<#backend_param, #tag_name, ()> )
             }
-            Self::Tag { tag_name, children, .. } => {
+            Self::Tag {
+                tag_name, children, ..
+            } => {
                 let span = tag_name.span();
                 let children = children.iter().map(|c| c.gen_type(backend_param));
                 parse_quote_spanned!(span=> maomi::node::Node<#backend_param, #tag_name, (#(#children,)*)> )
@@ -171,7 +166,12 @@ impl TemplateNode {
                 });
                 parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
             }
-            Self::ForLoop { brace_token, children, key, .. } => {
+            Self::ForLoop {
+                brace_token,
+                children,
+                key,
+                ..
+            } => {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type(backend_param));
                 let ty = if let Some((_, _, _, key_ty)) = key.as_ref() {
@@ -285,7 +285,7 @@ impl Parse for TemplateNode {
                 if input.peek(token::Else) {
                     else_token = Some(input.parse()?);
                 } else {
-                    // add an else branch if it is not ended with 
+                    // add an else branch if it is not ended with
                     if has_if {
                         branches.push(TemplateIfElse {
                             else_token: Some(Default::default()),
@@ -294,7 +294,7 @@ impl Parse for TemplateNode {
                             children: vec![],
                         })
                     }
-                    break
+                    break;
                 }
             }
             TemplateNode::IfElse { branches }
@@ -332,7 +332,12 @@ impl Parse for TemplateNode {
                     })
                 }
             }
-            TemplateNode::Match { match_token, expr, brace_token, arms }
+            TemplateNode::Match {
+                match_token,
+                expr,
+                brace_token,
+                arms,
+            }
         } else if la.peek(token::For) {
             // parse for expr
             let for_token = input.parse()?;
@@ -364,7 +369,15 @@ impl Parse for TemplateNode {
             while !content.is_empty() {
                 children.push(content.parse()?);
             }
-            TemplateNode::ForLoop { for_token, pat, in_token, expr, key, brace_token, children }
+            TemplateNode::ForLoop {
+                for_token,
+                pat,
+                in_token,
+                expr,
+                key,
+                brace_token,
+                children,
+            }
         } else {
             return Err(la.error());
         };
@@ -405,12 +418,12 @@ pub(super) enum TemplateAttribute {
 impl TemplateAttribute {
     fn list_ident(&self) -> Option<&Ident> {
         match self {
-            Self::StaticProperty { name, list_updater, .. } => {
-                list_updater.as_ref().map(|_| name)
-            }
-            Self::DynamicProperty { name, list_updater, .. } => {
-                list_updater.as_ref().map(|_| name)
-            }
+            Self::StaticProperty {
+                name, list_updater, ..
+            } => list_updater.as_ref().map(|_| name),
+            Self::DynamicProperty {
+                name, list_updater, ..
+            } => list_updater.as_ref().map(|_| name),
             Self::Event { .. } => None,
         }
     }
@@ -1153,7 +1166,13 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
             TemplateAttribute::StaticProperty { .. } => {
                 quote! {}
             }
-            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, .. } => {
+            TemplateAttribute::DynamicProperty {
+                ref_token,
+                name,
+                list_updater,
+                expr,
+                ..
+            } => {
                 let span = expr.span();
                 let expr = match ref_token {
                     Some(ref_sign) => quote!(#ref_sign(#expr)),

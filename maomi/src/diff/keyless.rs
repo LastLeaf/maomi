@@ -1,14 +1,16 @@
 use std::marker::PhantomData;
 
-use crate::backend::BackendGeneralElement;
 use super::*;
+use crate::backend::BackendGeneralElement;
 
+/// The repeated list which will be updated through the keyless-list-update algorithm
 pub struct KeylessList<B: Backend, C> {
     list: Vec<(C, ForestToken)>,
     _phantom: PhantomData<B>,
 }
 
 impl<B: Backend, C> KeylessList<B, C> {
+    #[doc(hidden)]
     pub fn list_diff_new<'a, 'b>(
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
@@ -20,6 +22,7 @@ impl<B: Backend, C> KeylessList<B, C> {
         }
     }
 
+    #[doc(hidden)]
     pub fn list_diff_update<'a, 'b>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
@@ -37,31 +40,23 @@ impl<B: Backend, C> KeylessList<B, C> {
     }
 }
 
-pub struct ListKeylessAlgoNew<
-    'a,
-    'b,
-    B: Backend,
-    C,
-> {
+#[doc(hidden)]
+pub struct ListKeylessAlgoNew<'a, 'b, B: Backend, C> {
     list: Vec<(C, ForestToken)>,
     backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
     _phantom: PhantomData<B>,
 }
 
-impl<
-    'a,
-    'b,
-    B: Backend,
-    C,
-> ListKeylessAlgoNew<'a, 'b, B, C> {
+impl<'a, 'b, B: Backend, C> ListKeylessAlgoNew<'a, 'b, B, C> {
+    #[doc(hidden)]
     pub fn next(
         &mut self,
         create_fn: impl FnOnce(&mut ForestNodeMut<B::GeneralElement>) -> Result<C, Error>,
     ) -> Result<(), Error> {
-        let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
-        let c = create_fn(
-            &mut self.backend_element.borrow_mut(&backend_element),
+        let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(
+            self.backend_element,
         )?;
+        let c = create_fn(&mut self.backend_element.borrow_mut(&backend_element))?;
         self.list.push((c, backend_element.token()));
         <B::GeneralElement as BackendGeneralElement>::append(
             self.backend_element,
@@ -70,6 +65,7 @@ impl<
         Ok(())
     }
 
+    #[doc(hidden)]
     pub fn end(self) -> KeylessList<B, C> {
         KeylessList {
             list: self.list,
@@ -78,39 +74,29 @@ impl<
     }
 }
 
-pub struct ListKeylessAlgoUpdate<
-    'a,
-    'b,
-    B: Backend,
-    C,
-> {
+#[doc(hidden)]
+pub struct ListKeylessAlgoUpdate<'a, 'b, B: Backend, C> {
     cur_index: usize,
     list: &'a mut Vec<(C, ForestToken)>,
     backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
     _phantom: PhantomData<B>,
 }
 
-impl<
-    'a,
-    'b,
-    B: Backend,
-    C,
-> ListKeylessAlgoUpdate<'a, 'b, B, C> {
+impl<'a, 'b, B: Backend, C> ListKeylessAlgoUpdate<'a, 'b, B, C> {
+    #[doc(hidden)]
     pub fn next(
         &mut self,
         create_fn: impl FnOnce(&mut ForestNodeMut<B::GeneralElement>) -> Result<C, Error>,
         update_fn: impl FnOnce(&mut C, &mut ForestNodeMut<B::GeneralElement>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Some((ref mut c, forest_token)) = self.list.get_mut(self.cur_index) {
-            update_fn(
-                c,
-                &mut self.backend_element.borrow_mut_token(&forest_token),
-            )?;
+            update_fn(c, &mut self.backend_element.borrow_mut_token(&forest_token))?;
         } else {
-            let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
-            let c = create_fn(
-                &mut self.backend_element.borrow_mut(&backend_element),
-            )?;
+            let backend_element =
+                <B::GeneralElement as BackendGeneralElement>::create_virtual_element(
+                    self.backend_element,
+                )?;
+            let c = create_fn(&mut self.backend_element.borrow_mut(&backend_element))?;
             self.list.push((c, backend_element.token()));
             <B::GeneralElement as BackendGeneralElement>::append(
                 self.backend_element,
@@ -121,6 +107,7 @@ impl<
         Ok(())
     }
 
+    #[doc(hidden)]
     pub fn end(self) -> Result<(), Error> {
         for (_c, forest_token) in self.list.drain(self.cur_index..) {
             let _ = <B::GeneralElement as BackendGeneralElement>::detach(
@@ -131,6 +118,7 @@ impl<
     }
 }
 
+/// The iterator for a `KeylessList`
 pub struct KeylessListIter<'a, C> {
     children: std::slice::Iter<'a, (C, ForestToken)>,
 }

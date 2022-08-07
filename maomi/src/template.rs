@@ -1,6 +1,6 @@
 use crate::{
-    component::*,
     backend::{tree::*, Backend},
+    component::*,
     diff::ListItemChange,
     error::Error,
     node::SlotChildren,
@@ -15,6 +15,8 @@ pub struct TemplateInit<C: ?Sized> {
 }
 
 /// Some helper functions for the template type
+/// 
+/// This struct is auto-managed by `#[component]` and should not be called directly.
 pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     fn mark_dirty(&mut self)
     where
@@ -134,10 +136,7 @@ pub trait ComponentTemplate<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(
-            &mut ForestNodeMut<B::GeneralElement>,
-            &Self::SlotData,
-        ) -> Result<R, Error>,
+        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error>
     where
         Self: Sized;

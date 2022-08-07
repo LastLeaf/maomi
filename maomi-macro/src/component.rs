@@ -113,7 +113,10 @@ impl ComponentBody {
                 if let Type::Macro(m) = &mut field.ty {
                     if m.mac.path.is_ident("template") {
                         if template.is_some() {
-                            Err(syn::Error::new(m.span(), "a component struct can only contain one `template!` field"))?;
+                            Err(syn::Error::new(
+                                m.span(),
+                                "a component struct can only contain one `template!` field",
+                            ))?;
                             continue;
                         }
                         has_template = true;
@@ -142,12 +145,18 @@ impl ComponentBody {
                 }
             }
         } else {
-            Err(syn::Error::new(inner.span(), "a component struct must be a named struct"))?;
+            Err(syn::Error::new(
+                inner.span(),
+                "a component struct must be a named struct",
+            ))?;
         }
         let template = if let Some(t) = template {
             t
         } else {
-            return Err(syn::Error::new(inner.span(), "a component struct must contain a `template!` field"));
+            return Err(syn::Error::new(
+                inner.span(),
+                "a component struct must contain a `template!` field",
+            ));
         };
 
         Ok(Self {
@@ -267,9 +276,7 @@ impl ToTokens for ComponentBody {
                     }
                 }
             }
-            Err(err) => {
-                err.to_compile_error()
-            }
+            Err(err) => err.to_compile_error(),
         };
 
         quote! {
@@ -283,14 +290,10 @@ impl ToTokens for ComponentBody {
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let component_attr = parse_macro_input!(attr as ComponentAttr);
     match ComponentBody::new(component_attr, parse_macro_input!(item as ItemStruct)) {
-        Ok(component_body) => {
-            quote! {
-                #component_body
-            }
-            .into()
+        Ok(component_body) => quote! {
+            #component_body
         }
-        Err(err) => {
-            err.to_compile_error().into()
-        }
+        .into(),
+        Err(err) => err.to_compile_error().into(),
     }
 }

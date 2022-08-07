@@ -1,8 +1,11 @@
-use std::{hash::Hash, collections::HashMap, marker::PhantomData, borrow::Borrow};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash, marker::PhantomData};
 
-use crate::backend::BackendGeneralElement;
 use super::*;
+use crate::backend::BackendGeneralElement;
 
+/// Generate the key for list items
+/// 
+/// The key will be used in the key-list-update algorithm.
 pub trait AsListKey {
     type ListKey: Eq + Hash + ToOwned + ?Sized;
 
@@ -17,12 +20,14 @@ impl<T: AsListKey> AsListKey for &'_ T {
     }
 }
 
+/// The repeated list which will be updated through the key-list-update algorithm
 pub struct KeyList<B: Backend, K: Eq + Hash, C> {
     map: HashMap<K, (usize, C, ForestToken)>,
     _phantom: PhantomData<B>,
 }
 
 impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
+    #[doc(hidden)]
     pub fn list_diff_new<'a, 'b>(
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
@@ -35,6 +40,7 @@ impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
         }
     }
 
+    #[doc(hidden)]
     pub fn list_diff_update<'a, 'b>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
@@ -58,26 +64,16 @@ enum KeyChange<B: Backend> {
     NewChild(ForestNodeRc<B::GeneralElement>),
 }
 
-pub struct ListKeyAlgoNew<
-    'a,
-    'b,
-    B: Backend,
-    K: Eq + Hash,
-    C,
-> {
+#[doc(hidden)]
+pub struct ListKeyAlgoNew<'a, 'b, B: Backend, K: Eq + Hash, C> {
     cur_len: usize,
     map: HashMap<K, (usize, C, ForestToken)>,
     backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
     _phantom: PhantomData<B>,
 }
 
-impl<
-    'a,
-    'b,
-    B: Backend,
-    K: Eq + Hash,
-    C,
-> ListKeyAlgoNew<'a, 'b, B, K, C> {
+impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoNew<'a, 'b, B, K, C> {
+    #[doc(hidden)]
     pub fn next<R>(
         &mut self,
         list_key: impl AsListKey<ListKey = R>,
@@ -89,11 +85,14 @@ impl<
     {
         let new_pos = self.cur_len;
         let new_key_ref = list_key.as_list_key();
-        let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
-        let c = create_fn(
-            &mut self.backend_element.borrow_mut(&backend_element),
+        let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(
+            self.backend_element,
         )?;
-        self.map.insert(new_key_ref.to_owned(), (new_pos, c, backend_element.token()));
+        let c = create_fn(&mut self.backend_element.borrow_mut(&backend_element))?;
+        self.map.insert(
+            new_key_ref.to_owned(),
+            (new_pos, c, backend_element.token()),
+        );
         <B::GeneralElement as BackendGeneralElement>::append(
             self.backend_element,
             &backend_element,
@@ -102,6 +101,7 @@ impl<
         Ok(())
     }
 
+    #[doc(hidden)]
     pub fn end(self) -> KeyList<B, K, C> {
         KeyList {
             map: self.map,
@@ -110,13 +110,8 @@ impl<
     }
 }
 
-pub struct ListKeyAlgoUpdate<
-    'a,
-    'b,
-    B: Backend,
-    K: Eq + Hash,
-    C,
-> {
+#[doc(hidden)]
+pub struct ListKeyAlgoUpdate<'a, 'b, B: Backend, K: Eq + Hash, C> {
     map: &'a mut HashMap<K, (usize, C, ForestToken)>,
     new_map: HashMap<K, (usize, C, ForestToken)>,
     stable_pos: Vec<KeyChange<B>>,
@@ -124,13 +119,8 @@ pub struct ListKeyAlgoUpdate<
     _phantom: PhantomData<B>,
 }
 
-impl<
-    'a,
-    'b,
-    B: Backend,
-    K: Eq + Hash,
-    C,
-> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
+impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
+    #[doc(hidden)]
     pub fn next<R>(
         &mut self,
         list_key: impl AsListKey<ListKey = R>,
@@ -150,20 +140,31 @@ impl<
             )?;
             let rc = self.backend_element.resolve_token(&forest_token);
             self.stable_pos.push(KeyChange::OldPos(rc, OldPos(pos)));
-            self.new_map.insert(new_key_ref.to_owned(), (new_pos, c, forest_token));
+            self.new_map
+                .insert(new_key_ref.to_owned(), (new_pos, c, forest_token));
         } else {
-            let backend_element = <B::GeneralElement as BackendGeneralElement>::create_virtual_element(self.backend_element)?;
-            let c = create_fn(
-                &mut self.backend_element.borrow_mut(&backend_element),
-            )?;
-            self.new_map.insert(new_key_ref.to_owned(), (new_pos, c, backend_element.token()));
+            let backend_element =
+                <B::GeneralElement as BackendGeneralElement>::create_virtual_element(
+                    self.backend_element,
+                )?;
+            let c = create_fn(&mut self.backend_element.borrow_mut(&backend_element))?;
+            self.new_map.insert(
+                new_key_ref.to_owned(),
+                (new_pos, c, backend_element.token()),
+            );
             self.stable_pos.push(KeyChange::NewChild(backend_element));
         }
         Ok(())
     }
 
+    #[doc(hidden)]
     pub fn end(self) -> Result<(), Error> {
-        let Self { map, mut stable_pos, new_map, .. } = self;
+        let Self {
+            map,
+            mut stable_pos,
+            new_map,
+            ..
+        } = self;
 
         // calc the longest increasing subsequence and use it as the unchanged items
         #[derive(Debug, Clone, Copy, PartialEq)]
@@ -192,12 +193,18 @@ impl<
                     min_index_for_seq_len.push(SeqPos { pos, index });
                 }
                 if left == 0 {
-                    seq_back_ptr.push(SeqPos { pos: OldPos(0), index: 0 });
+                    seq_back_ptr.push(SeqPos {
+                        pos: OldPos(0),
+                        index: 0,
+                    });
                 } else {
                     seq_back_ptr.push(min_index_for_seq_len[left - 1].clone());
                 }
             } else {
-                seq_back_ptr.push(SeqPos { pos: OldPos(0), index: 0 });
+                seq_back_ptr.push(SeqPos {
+                    pos: OldPos(0),
+                    index: 0,
+                });
             }
         }
         if let Some(mut pos) = min_index_for_seq_len.last().map(|x| x.pos) {
@@ -255,26 +262,21 @@ impl<
                 KeyChange::OldPos(rc, _) => {
                     let rel = &mut self.backend_element.borrow_mut(rc);
                     while let Some(KeyChange::NewChild(rc)) = stable_pos_iter.next() {
-                        <B::GeneralElement as BackendGeneralElement>::insert(
-                            rel,
-                            rc,
-                        );
+                        <B::GeneralElement as BackendGeneralElement>::insert(rel, rc);
                     }
                 }
                 KeyChange::NewChild(_) => continue,
             }
         }
         while let Some(KeyChange::NewChild(rc)) = stable_pos_iter.next() {
-            <B::GeneralElement as BackendGeneralElement>::append(
-                self.backend_element,
-                rc,
-            );
+            <B::GeneralElement as BackendGeneralElement>::append(self.backend_element, rc);
         }
 
         Ok(())
     }
 }
 
+/// The iterator for a `KeyList`
 pub struct KeyListIter<'a, C> {
     children: std::vec::IntoIter<Option<&'a C>>,
 }

@@ -3,12 +3,14 @@ use crate::{
     error::Error,
 };
 
+/// A text node
 pub struct TextNode {
     backend_element_token: tree::ForestToken,
     content: String,
 }
 
 impl TextNode {
+    #[doc(hidden)]
     #[inline]
     pub fn create<B: Backend>(
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
@@ -26,7 +28,7 @@ impl TextNode {
         Ok((this, elem))
     }
 
-    /// Get the backend element
+    #[doc(hidden)]
     #[inline]
     pub fn backend_element_rc<'b, B: Backend>(
         &'b mut self,
@@ -35,6 +37,7 @@ impl TextNode {
         Ok(owner.resolve_token(&self.backend_element_token))
     }
 
+    #[doc(hidden)]
     #[inline]
     pub fn set_text<B: Backend>(
         &mut self,

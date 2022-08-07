@@ -1,7 +1,7 @@
-use crate::backend::{tree, Backend, BackendGeneralElement, BackendComponent};
+use crate::backend::{tree, Backend, BackendComponent, BackendGeneralElement};
 use crate::component::{Component, ComponentNode};
-use crate::template::ComponentTemplate;
 use crate::error::Error;
+use crate::template::ComponentTemplate;
 use crate::BackendContext;
 
 /// A mount point which can generate a "root" component and mounted to the whole page
@@ -24,9 +24,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
             &mut component_node,
             backend_context,
             owner,
-            |comp, _| {
-                init(comp)
-            },
+            |comp, _| init(comp),
             |_, _| Ok(()),
         )?;
         Ok(Self {

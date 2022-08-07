@@ -2,6 +2,7 @@ use web_sys::DomTokenList;
 
 use maomi::prop::ListPropertyUpdate;
 
+/// The manager for DOM `ClassList`
 pub struct DomClassList {
     class_list: DomTokenList,
     enabled: Vec<bool>,
@@ -9,7 +10,10 @@ pub struct DomClassList {
 
 impl DomClassList {
     pub fn new(class_list: DomTokenList) -> Self {
-        Self { class_list, enabled: Vec::with_capacity(0) }
+        Self {
+            class_list,
+            enabled: Vec::with_capacity(0),
+        }
     }
 }
 
@@ -22,12 +26,16 @@ impl ListPropertyUpdate<bool> for DomClassList {
         dest.enabled.reserve_exact(0);
     }
 
-    fn compare_and_set_item_ref<U: maomi::prop::ListPropertyItem<Self, bool, Value = Self::ItemValue>>(
+    fn compare_and_set_item_ref<
+        U: maomi::prop::ListPropertyItem<Self, bool, Value = Self::ItemValue>,
+    >(
         dest: &mut Self,
         index: usize,
         src: &bool,
         ctx: &mut Self::UpdateContext,
-    ) where Self: Sized {
+    ) where
+        Self: Sized,
+    {
         let class_name = U::item_value(dest, index, src, ctx);
         let v = *src;
         let old_v = dest.enabled.get_mut(index).unwrap();

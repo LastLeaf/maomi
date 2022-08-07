@@ -45,18 +45,27 @@ impl ChildFrag {
     }
 }
 
-pub(crate) fn remove_all_children<'a>(parent: &web_sys::Node, n: ForestNode<'a, DomGeneralElement>) {
+pub(crate) fn remove_all_children<'a>(
+    parent: &web_sys::Node,
+    n: ForestNode<'a, DomGeneralElement>,
+) {
     fn rec<'a>(parent: &web_sys::Node, n: &ForestNode<'a, DomGeneralElement>) {
         match &**n {
             DomGeneralElement::DomElement(x) => {
-                parent.remove_child(x.dom()).map(|_| ()).unwrap_or_else(|x| {
-                    crate::log_js_error(&x);
-                });
+                parent
+                    .remove_child(x.dom())
+                    .map(|_| ())
+                    .unwrap_or_else(|x| {
+                        crate::log_js_error(&x);
+                    });
             }
             DomGeneralElement::DomText(x) => {
-                parent.remove_child(x.dom()).map(|_| ()).unwrap_or_else(|x| {
-                    crate::log_js_error(&x);
-                });
+                parent
+                    .remove_child(x.dom())
+                    .map(|_| ())
+                    .unwrap_or_else(|x| {
+                        crate::log_js_error(&x);
+                    });
             }
             DomGeneralElement::VirtualElement(_) => {
                 let mut cur_option = n.first_child();

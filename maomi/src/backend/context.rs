@@ -1,17 +1,17 @@
 use std::{
-    cell::{RefCell, Cell},
+    cell::{Cell, RefCell},
     collections::VecDeque,
-    rc::{Rc, Weak},
-    task::{Waker, Context, Poll},
     future::Future,
     pin::Pin,
+    rc::{Rc, Weak},
+    task::{Context, Poll, Waker},
 };
 
 use super::{tree, Backend};
 use crate::component::Component;
-use crate::template::ComponentTemplate;
 use crate::error::Error;
 use crate::mount_point::MountPoint;
+use crate::template::ComponentTemplate;
 
 /// A future that can be resolved with a callback function
 pub struct AsyncCallback<R: 'static> {
@@ -106,7 +106,7 @@ impl<B: Backend> BackendContext<B> {
     #[inline]
     pub fn enter<T: 'static, F>(&self, f: F) -> AsyncCallback<T>
     where
-        F: 'static + FnOnce(&mut EnteredBackendContext<B>) -> T
+        F: 'static + FnOnce(&mut EnteredBackendContext<B>) -> T,
     {
         let (fut, cb) = AsyncCallback::new();
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {

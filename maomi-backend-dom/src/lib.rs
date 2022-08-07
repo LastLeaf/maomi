@@ -3,14 +3,15 @@ use maomi::{
     backend::{tree::*, *},
     error::Error,
 };
-use wasm_bindgen::{JsValue, JsCast};
+use wasm_bindgen::{JsCast, JsValue};
 
+pub mod base_element;
+use base_element::DomElement;
 pub mod element;
-use element::DomElement;
 pub mod virtual_element;
-pub use virtual_element::DomVirtualElement;
+use virtual_element::DomVirtualElement;
 pub mod text_node;
-pub use text_node::DomTextNode;
+use text_node::DomTextNode;
 pub mod class_list;
 mod composing;
 
@@ -68,7 +69,7 @@ impl DomBackend {
     }
 
     fn wrap_root_element(dom_elem: web_sys::Element) -> Self {
-        let root_elem = element::DomElement(dom_elem);
+        let root_elem = DomElement(dom_elem);
         Self {
             tree: tree::ForestNodeRc::new_forest(root_elem.into()),
         }
@@ -89,14 +90,16 @@ impl Backend for DomBackend {
     }
 }
 
+#[doc(hidden)]
 #[enum_dispatch]
 pub trait DomGeneralElementTrait {}
 
+#[doc(hidden)]
 #[enum_dispatch(DomGeneralElementTrait)]
 pub enum DomGeneralElement {
     VirtualElement(DomVirtualElement),
     DomText(DomTextNode),
-    DomElement(element::DomElement),
+    DomElement(DomElement),
 }
 
 impl std::fmt::Debug for DomGeneralElement {
@@ -112,7 +115,7 @@ impl std::fmt::Debug for DomGeneralElement {
 impl DomGeneralElement {
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        elem: element::DomElement,
+        elem: DomElement,
     ) -> ForestNodeRc<DomGeneralElement> {
         this.new_tree(DomGeneralElement::DomElement(elem))
     }
@@ -286,7 +289,8 @@ impl BackendGeneralElement for DomGeneralElement {
         this: ForestNodeMut<Self>,
     ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
     where
-        Self: Sized {
+        Self: Sized,
+    {
         this.detach()
     }
 

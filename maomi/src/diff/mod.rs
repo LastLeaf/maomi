@@ -1,4 +1,7 @@
-use crate::{error::Error, backend::{tree::*, Backend}};
+use crate::{
+    backend::{tree::*, Backend},
+    error::Error,
+};
 pub mod key;
 pub mod keyless;
 

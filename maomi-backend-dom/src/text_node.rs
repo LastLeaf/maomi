@@ -1,5 +1,6 @@
 use maomi::backend::*;
 
+#[doc(hidden)]
 pub struct DomTextNode {
     dom_elem: web_sys::Text,
 }

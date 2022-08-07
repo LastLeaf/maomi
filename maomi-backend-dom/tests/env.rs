@@ -1,6 +1,6 @@
 use std::sync::Once;
 
-use maomi::{prelude::*, AsyncCallback, template::ComponentTemplate};
+use maomi::{prelude::*, template::ComponentTemplate, AsyncCallback};
 use maomi_backend_dom::DomBackend;
 
 static INIT: Once = Once::new();
@@ -31,9 +31,11 @@ pub async fn test_component<T: Component + ComponentTemplate<DomBackend> + Compo
     let fut = backend_context
         .enter_sync(move |ctx| {
             let (fut, cb) = AsyncCallback::new();
-            let _mount_point = ctx.append_attach(move |comp: &mut T| {
-                comp.set_callback(Box::new(|| cb(())));
-            }).unwrap();
+            let _mount_point = ctx
+                .append_attach(move |comp: &mut T| {
+                    comp.set_callback(Box::new(|| cb(())));
+                })
+                .unwrap();
             fut
         })
         .map_err(|_| "Cannot init mount point")

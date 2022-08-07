@@ -1,4 +1,7 @@
-use crate::{error::Error, backend::{tree, SupportBackend, Backend}};
+use crate::{
+    backend::{tree, Backend, SupportBackend},
+    error::Error,
+};
 
 /// A helper type for a node with child nodes
 #[derive(Debug)]
@@ -27,6 +30,18 @@ gen_branch_node!(Branch1, B0);
 gen_branch_node!(Branch2, B0, B1);
 gen_branch_node!(Branch3, B0, B1, B2);
 gen_branch_node!(Branch4, B0, B1, B2, B3);
+gen_branch_node!(Branch5, B0, B1, B2, B3, B4);
+gen_branch_node!(Branch6, B0, B1, B2, B3, B4, B5);
+gen_branch_node!(Branch7, B0, B1, B2, B3, B4, B5, B6);
+gen_branch_node!(Branch8, B0, B1, B2, B3, B4, B5, B6, B7);
+gen_branch_node!(Branch9, B0, B1, B2, B3, B4, B5, B6, B7, B8);
+gen_branch_node!(Branch10, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9);
+gen_branch_node!(Branch11, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10);
+gen_branch_node!(Branch12, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11);
+gen_branch_node!(Branch13, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12);
+gen_branch_node!(Branch14, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13);
+gen_branch_node!(Branch15, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14);
+gen_branch_node!(Branch16, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15);
 
 /// A helper type for store slot children
 // Since rust GAT is not stable yet, we cannot make it a trait - use enum instead

@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
-use maomi::{prelude::*, diff::key::AsListKey, prop::ListPropertyItem};
-use maomi_backend_dom::{element::*, DomBackend, async_task, class_list::DomClassList};
+use maomi::{diff::key::AsListKey, prelude::*, prop::ListPropertyItem};
+use maomi_backend_dom::{async_task, class_list::DomClassList, element::*, DomBackend};
 
 mod env;
 use env::*;
@@ -56,18 +56,32 @@ async fn child_component() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div><div title="Again"></div></div>"#,
                     );
                     this.hello_text = "Hello world again!".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div><div title="Again">Hello world again!</div></div>"#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -114,26 +128,47 @@ async fn template_if_else() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>(empty)</div>"#,
                     );
                     this.text = "hello".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>hello</div>"#,
                     );
                     this.text = "long........".into();
                     this.schedule_update();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>(too long)</div>"#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -176,25 +211,46 @@ async fn template_lonely_if() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#""#,
                     );
                     this.text = "hello".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>hello</div>"#,
                     );
                     this.text = "".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#""#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -245,26 +301,47 @@ async fn template_match() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>(empty)</div>"#,
                     );
                     this.text = "hello".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>hello</div>"#,
                     );
                     this.text = "long........".into();
                     this.schedule_update();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>(too long)</div>"#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -301,10 +378,7 @@ async fn template_for_keyless() {
             Self {
                 callback: None,
                 template: Default::default(),
-                list: vec![
-                    123,
-                    456,
-                ],
+                list: vec![123, 456],
             }
         }
 
@@ -313,11 +387,18 @@ async fn template_for_keyless() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>1</div><div>123</div><div>456</div>"#,
                     );
                     this.list.push(789);
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
                         this.template_structure().unwrap().0.tag.dom_element().inner_html(),
@@ -328,19 +409,33 @@ async fn template_for_keyless() {
                 }).await.unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>123</div>"#,
                     );
                     this.list.pop();
                     this.list.pop();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#""#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -382,7 +477,10 @@ async fn template_for() {
 
     impl Component for Child {
         fn new() -> Self {
-            Self { template: Default::default(), num: Prop::new(0) }
+            Self {
+                template: Default::default(),
+                num: Prop::new(0),
+            }
         }
 
         fn created(&self) {
@@ -411,10 +509,7 @@ async fn template_for() {
             Self {
                 callback: None,
                 template: Default::default(),
-                list: vec![
-                    MyList(12),
-                    MyList(34),
-                ],
+                list: vec![MyList(12), MyList(34)],
             }
         }
 
@@ -423,73 +518,84 @@ async fn template_for() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>1</div>1234"#,
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
                         vec![12, 34],
                     );
-                    this.list = vec![
-                        MyList(78),
-                        MyList(12),
-                        MyList(56),
-                        MyList(34),
-                        MyList(90),
-                    ];
-                }).await.unwrap();
+                    this.list = vec![MyList(78), MyList(12), MyList(56), MyList(34), MyList(90)];
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>7812563490"#,
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
                         vec![78, 56, 90],
                     );
-                    this.list = vec![
-                        MyList(12),
-                        MyList(90),
-                        MyList(56),
-                        MyList(78),
-                        MyList(34),
-                    ];
-                }).await.unwrap();
+                    this.list = vec![MyList(12), MyList(90), MyList(56), MyList(78), MyList(34)];
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>1290567834"#,
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
                         vec![],
                     );
-                    this.list = vec![
-                        MyList(78),
-                        MyList(12),
-                        MyList(56),
-                        MyList(34),
-                        MyList(90),
-                    ];
-                }).await.unwrap();
+                    this.list = vec![MyList(78), MyList(12), MyList(56), MyList(34), MyList(90)];
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>7812563490"#,
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
                         vec![],
                     );
-                    this.list = vec![
-                        MyList(12),
-                        MyList(67),
-                        MyList(34),
-                    ];
-                }).await.unwrap();
+                    this.list = vec![MyList(12), MyList(67), MyList(34)];
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div>126734"#,
                     );
                     assert_eq!(
@@ -497,10 +603,17 @@ async fn template_for() {
                         vec![67],
                     );
                     this.list = vec![];
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
                         r#""#,
                     );
                     assert_eq!(
@@ -508,7 +621,9 @@ async fn template_for() {
                         vec![],
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -583,25 +698,46 @@ async fn class_attr() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div class="static_class"></div>"#,
                     );
                     this.v = true;
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div class="static_class dyn_class"></div>"#,
                     );
                     this.v = false;
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div class="static_class"></div>"#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -640,18 +776,32 @@ async fn style_attr() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div style="color: red;"></div>"#,
                     );
                     this.color = "blue".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 this.get_mut(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().outer_html(),
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
                         r#"<div style="color: blue;"></div>"#,
                     );
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
