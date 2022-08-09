@@ -15,6 +15,11 @@ use text_node::DomTextNode;
 pub mod class_list;
 mod composing;
 
+pub mod prelude {
+    pub use maomi_skin::dom_css;
+    pub use crate::DomBackend;
+}
+
 thread_local! {
     pub(crate) static WINDOW: web_sys::Window = web_sys::window().expect("Cannot init DOM backend outside web page environment");
     pub(crate) static DOCUMENT: web_sys::Document = {

@@ -640,6 +640,18 @@ async fn template_for() {
 #[wasm_bindgen_test]
 async fn class_attr() {
     // TODO impl css parsing
+    // dom_css! {
+    //     @import "a.css";
+
+    //     @pub global {
+    //         (v) => { font-size: v; }
+    //     }
+
+    //     .a {
+    //         global!(16px);
+    //         color: red;
+    //     }
+    // }
 
     #[allow(non_camel_case_types)]
     struct static_class();

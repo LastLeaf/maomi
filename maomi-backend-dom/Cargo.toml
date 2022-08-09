@@ -11,6 +11,7 @@ edition = "2021"
 
 [dependencies]
 maomi = { version = "=0.4.0", path = "../maomi" }
+maomi-skin = { version = "=0.4.0", path = "../maomi-skin" }
 log = "0.4"
 js-sys = "0.3"
 enum_dispatch = "0.3"
