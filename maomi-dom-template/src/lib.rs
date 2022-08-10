@@ -3,7 +3,15 @@ use wasm_bindgen::prelude::*;
 // import maomi core module
 use maomi::{prelude::*, BackendContext};
 // using DOM backend
-use maomi_backend_dom::{element::*, DomBackend};
+use maomi_dom::{element::*, DomBackend, prelude::dom_css};
+
+// write limited CSS
+dom_css!(
+    // only single class selectors are allowed
+    .warn {
+        color: orange;
+    }
+);
 
 // declare a component
 #[component(for DomBackend)]
@@ -19,6 +27,8 @@ struct HelloWorld {
         <div title={ &self.hello }>
             { &self.hello }
         </div>
+        // use classes in `class:xxx` form
+        <div class:warn> "WARN" </div>
     },
     hello: String,
 }
