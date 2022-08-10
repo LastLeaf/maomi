@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 maomi = { version = "=0.4.0", path = "../maomi" }
-maomi-backend-dom = { version = "=0.4.0", path = "../maomi-backend-dom" }
+maomi-dom = { version = "=0.4.0", path = "../maomi-dom" }
 log = "0.4"
 env_logger = "0.9"
 console_log = "0.2"

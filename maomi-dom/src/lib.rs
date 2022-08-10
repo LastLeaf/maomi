@@ -16,7 +16,7 @@ pub mod class_list;
 mod composing;
 
 pub mod prelude {
-    pub use maomi_skin::dom_css;
+    pub use maomi_dom_macro::dom_css;
     pub use crate::DomBackend;
 }
 

@@ -5,7 +5,7 @@ use syn::*;
 
 use super::css_token::*;
 
-pub(super) struct MacroDefinition {
+pub struct MacroDefinition {
     brace_token: token::Brace,
     branches: Vec<MacroBranch>,
 }

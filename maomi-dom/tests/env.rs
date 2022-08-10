@@ -1,7 +1,7 @@
 use std::sync::Once;
 
 use maomi::{prelude::*, template::ComponentTemplate, AsyncCallback};
-use maomi_backend_dom::DomBackend;
+use maomi_dom::prelude::*;
 
 static INIT: Once = Once::new();
 
@@ -26,7 +26,7 @@ pub async fn test_component<T: Component + ComponentTemplate<DomBackend> + Compo
         .create_element("div")
         .unwrap();
     // web_sys::console::log_1(&elem);
-    let dom_backend = maomi_backend_dom::DomBackend::new_with_element(elem).unwrap();
+    let dom_backend = DomBackend::new_with_element(elem).unwrap();
     let backend_context = maomi::BackendContext::new(dom_backend);
     let fut = backend_context
         .enter_sync(move |ctx| {

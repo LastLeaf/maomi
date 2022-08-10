@@ -4,14 +4,14 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-pub(crate) enum Number {
+pub enum Number {
     Int(i64),
     Float(f64),
 }
 
-pub(crate) struct CssIdent {
-    pub(crate) span: Span,
-    pub(crate) name: String,
+pub struct CssIdent {
+    pub span: Span,
+    pub name: String,
 }
 
 impl Spanned for CssIdent {
@@ -26,20 +26,87 @@ impl Parse for CssIdent {
         let mut span = None;
         loop {
             let la = input.lookahead1();
-            if la.peek(token::Sub) {
+            let is_sub = if la.peek(token::Sub) {
                 let t: token::Sub = input.parse()?;
                 if span.is_none() { span = Some(t.span()) }
                 name.push('-');
+                true
             } else if la.peek(Ident) {
                 let t: Ident = input.parse()?;
                 if span.is_none() { span = Some(t.span()) }
-                let s: &str = &input.to_string();
-                s.strip_prefix("r#").unwrap_or(s);
-                name += s;
+                let s: &str = &t.to_string();
+                name += s.strip_prefix("r#").unwrap_or(s);
+                false
             } else {
-                Err(la.error())?;
-            }
-            if !input.peek(token::Sub) {
+                loop {
+                    macro_rules! parse_keyword {
+                        ($x:tt) => {
+                            if la.peek(Token![$x]) {
+                                let t: Token![$x] = input.parse()?;
+                                if span.is_none() { span = Some(t.span()) }
+                                name += stringify!($x);
+                                break false;
+                            }
+                        }
+                    }
+                    parse_keyword!(abstract);
+                    parse_keyword!(as);
+                    parse_keyword!(async);
+                    parse_keyword!(auto);
+                    parse_keyword!(await);
+                    parse_keyword!(become);
+                    parse_keyword!(box);
+                    parse_keyword!(break);
+                    parse_keyword!(const);
+                    parse_keyword!(continue);
+                    parse_keyword!(crate);
+                    parse_keyword!(default);
+                    parse_keyword!(do);
+                    parse_keyword!(dyn);
+                    parse_keyword!(else);
+                    parse_keyword!(enum);
+                    parse_keyword!(extern);
+                    parse_keyword!(final);
+                    parse_keyword!(fn);
+                    parse_keyword!(for);
+                    parse_keyword!(if);
+                    parse_keyword!(impl);
+                    parse_keyword!(in);
+                    parse_keyword!(let);
+                    parse_keyword!(loop);
+                    parse_keyword!(macro);
+                    parse_keyword!(match);
+                    parse_keyword!(mod);
+                    parse_keyword!(move);
+                    parse_keyword!(mut);
+                    parse_keyword!(override);
+                    parse_keyword!(priv);
+                    parse_keyword!(pub);
+                    parse_keyword!(ref);
+                    parse_keyword!(return);
+                    parse_keyword!(Self);
+                    parse_keyword!(self);
+                    parse_keyword!(static);
+                    parse_keyword!(struct);
+                    parse_keyword!(super);
+                    parse_keyword!(trait);
+                    parse_keyword!(try);
+                    parse_keyword!(type);
+                    parse_keyword!(typeof);
+                    parse_keyword!(union);
+                    parse_keyword!(unsafe);
+                    parse_keyword!(unsized);
+                    parse_keyword!(use);
+                    parse_keyword!(virtual);
+                    parse_keyword!(where);
+                    parse_keyword!(while);
+                    parse_keyword!(yield);
+                    return Err(la.error());
+                }
+            };
+            if is_sub || input.peek(token::Sub) {
+                // empty
+            } else {
                 break;
             }
         }
@@ -50,10 +117,10 @@ impl Parse for CssIdent {
     }
 }
 
-pub(crate) struct CssAtKeyword {
-    pub(crate) span: Span,
-    pub(crate) at_token: token::At,
-    pub(crate) name: String,
+pub struct CssAtKeyword {
+    pub span: Span,
+    pub at_token: token::At,
+    pub name: String,
 }
 
 impl Spanned for CssAtKeyword {
@@ -74,8 +141,8 @@ impl Parse for CssAtKeyword {
     }
 }
 
-pub(crate) struct CssString {
-    pub(crate) s: LitStr,
+pub struct CssString {
+    pub s: LitStr,
 }
 
 impl Spanned for CssString {
@@ -92,8 +159,8 @@ impl Parse for CssString {
     }
 }
 
-pub(crate) struct CssColon {
-    pub(crate) span: Span,
+pub struct CssColon {
+    pub span: Span,
 }
 
 impl Spanned for CssColon {
@@ -111,8 +178,8 @@ impl Parse for CssColon {
     }
 }
 
-pub(crate) struct CssSemi {
-    pub(crate) span: Span,
+pub struct CssSemi {
+    pub span: Span,
 }
 
 impl Spanned for CssSemi {
@@ -130,9 +197,9 @@ impl Parse for CssSemi {
     }
 }
 
-pub(crate) struct CssDelim {
-    pub(crate) span: Span,
-    pub(crate) s: &'static str,
+pub struct CssDelim {
+    pub span: Span,
+    pub s: &'static str,
 }
 
 impl Spanned for CssDelim {
@@ -202,9 +269,9 @@ impl Parse for CssDelim {
     }
 }
 
-pub(crate) struct CssNumber {
-    pub(crate) span: Span,
-    pub(crate) num: Number,
+pub struct CssNumber {
+    pub span: Span,
+    pub num: Number,
 }
 
 impl Spanned for CssNumber {
@@ -234,9 +301,9 @@ impl Parse for CssNumber {
     }
 }
 
-pub(crate) struct CssPercentage {
-    pub(crate) span: Span,
-    pub(crate) num: Number,
+pub struct CssPercentage {
+    pub span: Span,
+    pub num: Number,
 }
 
 impl Spanned for CssPercentage {
@@ -256,10 +323,10 @@ impl Parse for CssPercentage {
     }
 }
 
-pub(crate) struct CssDimension {
-    pub(crate) span: Span,
-    pub(crate) num: Number,
-    pub(crate) unit: String,
+pub struct CssDimension {
+    pub span: Span,
+    pub num: Number,
+    pub unit: String,
 }
 
 impl Spanned for CssDimension {
@@ -275,11 +342,11 @@ impl Parse for CssDimension {
     }
 }
 
-pub(crate) struct CssFunction<T> {
-    pub(crate) span: Span,
-    pub(crate) name: String,
-    pub(crate) paren_token: token::Paren,
-    pub(crate) block: T,
+pub struct CssFunction<T> {
+    pub span: Span,
+    pub name: String,
+    pub paren_token: token::Paren,
+    pub block: T,
 }
 
 impl<T> Spanned for CssFunction<T> {
@@ -303,9 +370,9 @@ impl<T: Parse> Parse for CssFunction<T> {
     }
 }
 
-pub(crate) struct CssParen<T> {
-    pub(crate) paren_token: token::Paren,
-    pub(crate) block: T,
+pub struct CssParen<T> {
+    pub paren_token: token::Paren,
+    pub block: T,
 }
 
 impl<T> Spanned for CssParen<T> {
@@ -326,9 +393,9 @@ impl<T: Parse> Parse for CssParen<T> {
     }
 }
 
-pub(crate) struct CssBracket<T> {
-    pub(crate) bracket_token: token::Bracket,
-    pub(crate) block: T,
+pub struct CssBracket<T> {
+    pub bracket_token: token::Bracket,
+    pub block: T,
 }
 
 impl<T> Spanned for CssBracket<T> {
@@ -349,9 +416,9 @@ impl<T: Parse> Parse for CssBracket<T> {
     }
 }
 
-pub(crate) struct CssBrace<T> {
-    pub(crate) brace_token: token::Brace,
-    pub(crate) block: T,
+pub struct CssBrace<T> {
+    pub brace_token: token::Brace,
+    pub block: T,
 }
 
 impl<T> Spanned for CssBrace<T> {
@@ -372,15 +439,99 @@ impl<T: Parse> Parse for CssBrace<T> {
     }
 }
 
-pub(crate) enum CssToken {
+pub struct Repeat<T> {
+    inner: Vec<T>,
+}
+
+impl<T: Parse> Repeat<T> {
+    pub fn parse_while(
+        input: ParseStream,
+        mut f: impl FnMut(ParseStream) -> bool,
+    ) -> Result<Self> {
+        let mut inner = vec![];
+        while f(input) {
+            let x = input.parse()?;
+            inner.push(x);
+        }
+        Ok(Self {
+            inner,
+        })
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.inner.iter()
+    }
+}
+
+impl<T: Parse> Parse for Repeat<T> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Self::parse_while(input, |input| !input.is_empty())
+    }
+}
+
+impl<T> From<Vec<T>> for Repeat<T> {
+    fn from(inner: Vec<T>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Repeat<T> {
+    type IntoIter = std::slice::Iter<'a, T>;
+    type Item = &'a T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+pub enum CssToken {
     Ident(CssIdent),
     AtKeyword(CssAtKeyword),
     String(CssString),
     Delim(CssDelim),
     Colon(CssColon),
     Semi(CssSemi),
-    Function(CssFunction<Vec<CssToken>>),
-    Paren(CssParen<Vec<CssToken>>),
-    Bracket(CssBracket<Vec<CssToken>>),
-    Brace(CssBrace<Vec<CssToken>>),
+    Function(CssFunction<Repeat<CssToken>>),
+    Paren(CssParen<Repeat<CssToken>>),
+    Bracket(CssBracket<Repeat<CssToken>>),
+    Brace(CssBrace<Repeat<CssToken>>),
+}
+
+impl Parse for CssToken {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let item = if input.peek(token::At) {
+            Self::AtKeyword(input.parse()?)
+        } else if input.peek(LitStr) {
+            Self::String(input.parse()?)
+        } else if input.peek(token::Colon) {
+            Self::Colon(input.parse()?)
+        } else if input.peek(token::Semi) {
+            Self::Semi(input.parse()?)
+        } else if input.peek(token::Paren) {
+            Self::Paren(input.parse()?)
+        } else if input.peek(token::Bracket) {
+            Self::Bracket(input.parse()?)
+        } else if input.peek(token::Brace) {
+            Self::Brace(input.parse()?)
+        } else if let Ok(x) = input.parse::<CssIdent>() {
+            if input.peek(token::Paren) {
+                let content;
+                let paren_token = parenthesized!(content in input);
+                let block = content.parse()?;
+                Self::Function(CssFunction {
+                    span: x.span,
+                    name: x.name,
+                    paren_token,
+                    block,
+                })
+            } else {
+                Self::Ident(x)
+            }
+        } else if let Ok(x) = input.parse() {
+            Self::Delim(x)
+        } else {
+            return Err(input.error("Illegal CSS token"));
+        };
+        Ok(item)
+    }
 }

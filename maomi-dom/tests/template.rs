@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
-use maomi::{diff::key::AsListKey, prelude::*, prop::ListPropertyItem};
-use maomi_backend_dom::{async_task, class_list::DomClassList, element::*, DomBackend};
+use maomi::{diff::key::AsListKey, prelude::*};
+use maomi_dom::{prelude::*, async_task, element::*};
 
 mod env;
 use env::*;
@@ -639,51 +639,12 @@ async fn template_for() {
 
 #[wasm_bindgen_test]
 async fn class_attr() {
-    // TODO impl css parsing
-    // dom_css! {
-    //     @import "a.css";
-
-    //     @pub global {
-    //         (v) => { font-size: v; }
-    //     }
-
-    //     .a {
-    //         global!(16px);
-    //         color: red;
-    //     }
-    // }
-
-    #[allow(non_camel_case_types)]
-    struct static_class();
-
-    impl ListPropertyItem<DomClassList, bool> for static_class {
-        type Value = &'static str;
-
-        #[inline(always)]
-        fn item_value(
-            _dest: &mut DomClassList,
-            _index: usize,
-            _s: &bool,
-            _ctx: &mut <DomClassList as maomi::prop::ListPropertyUpdate<bool>>::UpdateContext,
-        ) -> Self::Value {
-            "static_class"
+    dom_css! {
+        .static-class {
+            color: red;
         }
-    }
-
-    #[allow(non_camel_case_types)]
-    struct dyn_class();
-
-    impl ListPropertyItem<DomClassList, bool> for dyn_class {
-        type Value = &'static str;
-
-        #[inline(always)]
-        fn item_value(
-            _dest: &mut DomClassList,
-            _index: usize,
-            _s: &bool,
-            _ctx: &mut <DomClassList as maomi::prop::ListPropertyUpdate<bool>>::UpdateContext,
-        ) -> Self::Value {
-            "dyn_class"
+        .dyn_class {
+            color: blue;
         }
     }
 
@@ -716,7 +677,7 @@ async fn class_attr() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div class="static_class"></div>"#,
+                        r#"<div class="static-class"></div>"#,
                     );
                     this.v = true;
                 })
@@ -730,7 +691,7 @@ async fn class_attr() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div class="static_class dyn_class"></div>"#,
+                        r#"<div class="static-class dyn_class"></div>"#,
                     );
                     this.v = false;
                 })
@@ -744,7 +705,7 @@ async fn class_attr() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div class="static_class"></div>"#,
+                        r#"<div class="static-class"></div>"#,
                     );
                     (this.callback.take().unwrap())();
                 })

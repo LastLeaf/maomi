@@ -4,7 +4,8 @@ members = [
     "maomi-macro",
     "maomi-tree",
     "maomi-skin",
-    "maomi-backend-dom",
+    "maomi-dom",
+    "maomi-dom-macro",
     "maomi-dom-template",
 ]
 
