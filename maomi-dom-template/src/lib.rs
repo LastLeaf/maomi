@@ -10,6 +10,7 @@ dom_css!(
     // only single class selectors are allowed
     .warn {
         color: orange;
+        font-size: 16px;
     }
 );
 

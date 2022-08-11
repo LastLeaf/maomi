@@ -21,6 +21,56 @@ pub trait StyleSheetConstructor {
     ) where Self: Sized;
 }
 
+/// Display as CSS text
+pub trait WriteCss {
+    /// Write CSS text
+    fn write_css(
+        &self,
+        sc: WriteCssSepCond,
+        debug_mode: bool,
+        w: &mut impl std::fmt::Write,
+    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error>;
+}
+
+/// Separator indicator for `WriteCss`
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WriteCssSepCond {
+    /// The CSS string ends with `CssIdent`
+    /// 
+    /// It should not be followed by alphabets, digits, `-`, and `(`
+    Ident,
+    /// The CSS string ends with alphabets or digits (but not an ident nor number), `-` or `#`
+    /// 
+    /// It should not be followed by alphabets, digits, and `-`
+    NonIdentAlpha,
+    /// The CSS string ends with `CssNumber`
+    /// 
+    /// It should not be followed by alphabets, digits, `.`, `-`, and `%`
+    Digit,
+    /// The CSS string ends with `@`
+    /// 
+    /// It should not be followed by alphabets and `-`
+    At,
+    /// The CSS string ends with `.` `+`
+    /// 
+    /// It should not be followed by digits
+    DotOrPlus,
+    /// The CSS string ends with `$` `^` `~` `*`
+    /// 
+    /// It should not be followed by `=`
+    Equalable,
+    /// The CSS string ends with `|`
+    /// 
+    /// It should not be followed by `=` `|` `|=`
+    Bar,
+    /// The CSS string ends with `/`
+    /// 
+    /// It should not be followed by `*` `*=`
+    Slash,
+    /// Always no separators needed
+    Other,
+}
+
 /// A CSS property (name-value pair)
 pub struct Property<V> {
     pub name: CssIdent,
@@ -37,6 +87,20 @@ impl<V: Parse> Parse for Property<V> {
             value: input.parse()?,
             semi_token: input.parse()?,
         })
+    }
+}
+
+impl<V: WriteCss> WriteCss for Property<V> {
+    fn write_css(
+        &self,
+        sc: WriteCssSepCond,
+        debug_mode: bool,
+        w: &mut impl std::fmt::Write,
+    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
+        self.name.write_css(sc, false, w)?;
+        write!(w, ":")?;
+        let sc = self.value.write_css(WriteCssSepCond::Other, debug_mode, w)?;
+        Ok(sc)
     }
 }
 
