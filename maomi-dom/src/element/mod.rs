@@ -1,8 +1,7 @@
 use maomi::{
     backend::{BackendComponent, SupportBackend},
-    diff::ListItemChange,
     error::Error,
-    node::SlotChildren,
+    node::{SlotChange, SlotChildren, SubtreeStatus},
     BackendContext,
 };
 
@@ -17,6 +16,7 @@ macro_rules! define_element {
         #[allow(non_camel_case_types)]
         pub struct $tag_name {
             backend_element_token: ForestToken,
+            subtree_status: SubtreeStatus,
             elem: web_sys::Element,
             pub class: DomClassList,
             pub style: DomStrAttr,
@@ -37,9 +37,11 @@ macro_rules! define_element {
             type UpdateTarget = Self;
             type UpdateContext = web_sys::Element;
 
+            #[inline]
             fn init<'b>(
                 _backend_context: &'b BackendContext<DomBackend>,
                 owner: &'b mut ForestNodeMut<DomGeneralElement>,
+                subtree_status: SubtreeStatus,
             ) -> Result<(Self, ForestNodeRc<DomGeneralElement>), Error>
             where
                 Self: Sized,
@@ -49,6 +51,7 @@ macro_rules! define_element {
                     crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
                 let this = Self {
                     backend_element_token: backend_element.token(),
+                    subtree_status,
                     class: DomClassList::new(elem.class_list()),
                     style: DomStrAttr {
                         inner: String::new(),
@@ -65,6 +68,7 @@ macro_rules! define_element {
                 Ok((this, backend_element))
             }
 
+            #[inline]
             fn create<'b, R>(
                 &'b mut self,
                 _backend_context: &'b BackendContext<DomBackend>,
@@ -73,26 +77,34 @@ macro_rules! define_element {
                 mut slot_fn: impl FnMut(
                     &mut ForestNodeMut<DomGeneralElement>,
                     &Self::SlotData,
+                    &SubtreeStatus,
                 ) -> Result<R, Error>,
             ) -> Result<SlotChildren<R>, Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token);
                 update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
-                let r = slot_fn(&mut node, &())?;
+                let r = slot_fn(&mut node, &(), &self.subtree_status)?;
                 Ok(SlotChildren::Single(r))
             }
 
+            #[inline]
             fn apply_updates<'b>(
                 &'b mut self,
                 _backend_context: &'b BackendContext<DomBackend>,
                 owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
-                update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
+                full_update_fn: Option<impl FnOnce(&mut Self, &mut Self::UpdateContext)>,
                 mut slot_fn: impl FnMut(
-                    ListItemChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
+                    SlotChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
+                    &SubtreeStatus,
                 ) -> Result<(), Error>,
             ) -> Result<(), Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token);
-                update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
-                slot_fn(ListItemChange::Unchanged(&mut node, &()))?;
+                let subtree_dirty = self.subtree_status.clear_slot_content_dirty();
+                if let Some(update_fn) = full_update_fn {
+                    update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
+                    slot_fn(SlotChange::Unchanged(&mut node, &()), &self.subtree_status)?;
+                } else if subtree_dirty {
+                    slot_fn(SlotChange::Unchanged(&mut node, &()), &self.subtree_status)?;
+                }
                 Ok(())
             }
         }

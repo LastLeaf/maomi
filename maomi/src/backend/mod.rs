@@ -1,11 +1,10 @@
 //! The backend protocol that should be implemented by backends
 
-use crate::{error::Error, node::SlotChildren};
 pub use maomi_tree as tree;
 use tree::*;
 
+use crate::{error::Error, node::{SlotChange, SlotChildren, SubtreeStatus}};
 pub mod context;
-use crate::diff::ListItemChange;
 use context::BackendContext;
 
 /// A backend
@@ -136,6 +135,7 @@ pub trait BackendComponent<B: Backend> {
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
+        subtree_status: SubtreeStatus,
     ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized;
@@ -149,6 +149,7 @@ pub trait BackendComponent<B: Backend> {
         slot_fn: impl FnMut(
             &mut tree::ForestNodeMut<B::GeneralElement>,
             &Self::SlotData,
+            &SubtreeStatus,
         ) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error>;
 
@@ -157,9 +158,10 @@ pub trait BackendComponent<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext),
+        full_update_fn: Option<impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext)>,
         slot_fn: impl FnMut(
-            ListItemChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+            SlotChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+            &SubtreeStatus,
         ) -> Result<(), Error>,
     ) -> Result<(), Error>;
 }

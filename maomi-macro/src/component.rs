@@ -240,6 +240,7 @@ impl ToTokens for ComponentBody {
                         {
                             let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
                             let __m_parent_element = __m_backend_element;
+                            let __m_subtree_status = &self.#template_field.__m_root_subtree_status;
                             self.#template_field.__m_structure = Some(#template_create);
                             Ok(__m_slot)
                         }
@@ -247,12 +248,13 @@ impl ToTokens for ComponentBody {
                         #[inline]
                         fn template_update<'__m_b>(
                             &'__m_b mut self,
+                            __m_is_subtree_update: bool,
                             __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
                             >,
                             __m_slot_fn: impl FnMut(
-                                maomi::diff::ListItemChange<
+                                maomi::node::SlotChange<
                                     &mut maomi::backend::tree::ForestNodeMut<
                                         <#backend_param as maomi::backend::Backend>::GeneralElement,
                                     >,

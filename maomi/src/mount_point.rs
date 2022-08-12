@@ -1,6 +1,7 @@
 use crate::backend::{tree, Backend, BackendComponent, BackendGeneralElement};
 use crate::component::{Component, ComponentNode};
 use crate::error::Error;
+use crate::node::SubtreeStatus;
 use crate::template::ComponentTemplate;
 use crate::BackendContext;
 
@@ -19,13 +20,13 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
         init: impl FnOnce(&mut C),
     ) -> Result<Self, Error> {
         let (mut component_node, backend_element) =
-            <ComponentNode<B, C> as BackendComponent<B>>::init(backend_context, owner)?;
+            <ComponentNode<B, C> as BackendComponent<B>>::init(backend_context, owner, SubtreeStatus::new())?;
         <ComponentNode<B, C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,
             owner,
             |comp, _| init(comp),
-            |_, _| Ok(()),
+            |_, _, _| Ok(()),
         )?;
         Ok(Self {
             component_node,

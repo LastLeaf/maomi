@@ -9,9 +9,8 @@ use crate::{
         context::AsyncCallback, tree::*, Backend, BackendComponent, BackendGeneralElement,
         SupportBackend,
     },
-    diff::ListItemChange,
     error::Error,
-    node::SlotChildren,
+    node::{SlotChildren, SubtreeStatus, SlotChange},
     template::*,
     BackendContext,
 };
@@ -204,22 +203,34 @@ pub(crate) trait UpdateSchedulerWeak: 'static {
 
 /// A node that wraps a component instance
 pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component> {
-    pub(crate) component: Rc<RefCell<C>>,
-    backend_context: BackendContext<B>,
-    backend_element: ForestNodeRc<B::GeneralElement>,
+    inner: Rc<(RefCell<C>, BackendContext<B>, ForestNodeRc<B::GeneralElement>, SubtreeStatus)>,
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B, C> {
     fn clone(&self) -> Self {
         Self {
-            component: self.component.clone(),
-            backend_context: self.backend_context.clone(),
-            backend_element: self.backend_element.clone(),
+            inner: self.inner.clone(),
         }
     }
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
+    pub(crate) fn component(&self) -> &RefCell<C> {
+        &self.inner.0
+    }
+
+    fn backend_context(&self) -> &BackendContext<B> {
+        &self.inner.1
+    }
+
+    fn backend_element(&self) -> &ForestNodeRc<B::GeneralElement> {
+        &self.inner.2
+    }
+
+    fn subtree_status(&self) -> &SubtreeStatus {
+        &self.inner.3
+    }
+
     /// Get a `ComponentRc` for the component
     ///
     /// The `ComponentRc` can move across async steps.
@@ -234,9 +245,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
     #[inline]
     pub fn weak_ref(&self) -> ComponentNodeWeak<B, C> {
         ComponentNodeWeak {
-            component: Rc::downgrade(&self.component),
-            backend_context: self.backend_context.clone(),
-            backend_element: self.backend_element.clone(),
+            inner: Rc::downgrade(&self.inner),
         }
     }
 }
@@ -251,8 +260,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
 
     #[inline]
     fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()> {
-        let component = self.component.clone();
-        self.backend_context.enter(move |_| f(&component.borrow()))
+        let inner = self.inner.clone();
+        self.backend_context().enter(move |_| f(&inner.0.borrow()))
     }
 
     #[inline]
@@ -261,27 +270,25 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
         force_schdule_update: bool,
         f: Box<dyn FnOnce(&mut Self::EnterType)>,
     ) -> AsyncCallback<Result<(), Error>> {
-        let backend_element = self.backend_element.clone();
-        let backend_context = self.backend_context.clone();
-        let component = self.component.clone();
-        self.backend_context
+        let inner = self.inner.clone();
+        self.backend_context()
             .enter::<Result<(), Error>, _>(move |_| {
-                let mut comp = component.borrow_mut();
+                let mut comp = inner.0.borrow_mut();
                 f(&mut comp);
                 if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
                     || force_schdule_update
                 {
-                    let mut backend_element = backend_element.borrow_mut();
+                    let mut backend_element = inner.2.borrow_mut();
                     <C as Component>::before_update(&mut comp);
-                    <C as ComponentTemplate<B>>::template_update(
+                    let has_slot_changes = <C as ComponentTemplate<B>>::template_update_store_slot_changes(
                         &mut comp,
-                        &backend_context,
+                        false,
+                        &inner.1,
                         &mut backend_element,
-                        |_| {
-                            // TODO notify slot changes to the owner component
-                            Ok(())
-                        },
                     )?;
+                    if has_slot_changes {
+                        inner.3.mark_slot_content_dirty();
+                    }
                 }
                 Ok(())
             })
@@ -290,20 +297,16 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
 
 /// A node that wraps a component instance
 pub struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component> {
-    component: Weak<RefCell<C>>,
-    backend_context: BackendContext<B>,
-    backend_element: ForestNodeRc<B::GeneralElement>,
+    inner: Weak<(RefCell<C>, BackendContext<B>, ForestNodeRc<B::GeneralElement>, SubtreeStatus)>,
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeWeak<B, C> {
     /// Upgrade to a strong reference
     #[inline]
     pub fn upgrade(&self) -> Option<ComponentNode<B, C>> {
-        if let Some(component) = self.component.upgrade() {
+        if let Some(inner) = self.inner.upgrade() {
             Some(ComponentNode {
-                component,
-                backend_context: self.backend_context.clone(),
-                backend_element: self.backend_element.clone(),
+                inner,
             })
         } else {
             None
@@ -339,21 +342,25 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
+        subtree_status: SubtreeStatus,
     ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized,
     {
         let backend_element = B::GeneralElement::create_virtual_element(owner)?;
         let this = ComponentNode {
-            component: Rc::new(RefCell::new(<C as Component>::new())),
-            backend_context: backend_context.clone(),
-            backend_element: backend_element.clone(),
+            inner: Rc::new((
+                RefCell::new(<C as Component>::new()),
+                backend_context.clone(),
+                backend_element.clone(),
+                subtree_status,
+            ))
         };
         let init = TemplateInit {
             updater: Box::new(this.weak_ref()),
         };
         {
-            let mut comp = this.component.borrow_mut();
+            let mut comp = this.component().borrow_mut();
             <C as ComponentTemplate<B>>::template_init(&mut comp, init);
         }
         Ok((this, backend_element))
@@ -365,17 +372,17 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<<B as Backend>::GeneralElement>,
         update_fn: impl FnOnce(&mut C, &mut bool),
-        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
+        mut slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData, &SubtreeStatus) -> Result<R, Error>,
     ) -> Result<SlotChildren<R>, Error> {
-        if let Ok(mut comp) = self.component.try_borrow_mut() {
-            let mut backend_element = owner.borrow_mut(&self.backend_element);
+        if let Ok(mut comp) = self.component().try_borrow_mut() {
+            let mut backend_element = owner.borrow_mut(&self.backend_element());
             let mut force_dirty = false;
             update_fn(&mut comp, &mut force_dirty);
             let ret = <C as ComponentTemplate<B>>::template_create(
                 &mut comp,
                 backend_context,
                 &mut backend_element,
-                slot_fn,
+                |n, d| slot_fn(n, d, self.subtree_status()),
             )?;
             <C as Component>::created(&mut comp);
             Ok(ret)
@@ -389,29 +396,41 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: impl FnOnce(&mut C, &mut bool),
-        slot_fn: impl FnMut(
-            ListItemChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+        full_update_fn: Option<impl FnOnce(&mut C, &mut bool)>,
+        mut slot_fn: impl FnMut(
+            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+            &SubtreeStatus,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        if let Ok(mut comp) = self.component.try_borrow_mut() {
-            let mut backend_element = owner.borrow_mut(&self.backend_element);
+        if let Ok(mut comp) = self.component().try_borrow_mut() {
+            let mut backend_element = owner.borrow_mut(&self.backend_element());
             let mut force_dirty = false;
-            update_fn(&mut comp, &mut force_dirty);
-            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
-                <C as Component>::before_update(&mut comp);
-                <C as ComponentTemplate<B>>::template_update(
-                    &mut comp,
-                    backend_context,
-                    &mut backend_element,
-                    slot_fn,
-                )
-            } else {
+            if let Some(update_fn) = full_update_fn {
+                update_fn(&mut comp, &mut force_dirty);
+                if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
+                    <C as Component>::before_update(&mut comp);
+                    <C as ComponentTemplate<B>>::template_update(
+                        &mut comp,
+                        false,
+                        backend_context,
+                        &mut backend_element,
+                        |x| slot_fn(x, self.subtree_status()),
+                    )
+                } else {
+                    <C as ComponentTemplate<B>>::for_each_slot_scope(
+                        &mut comp,
+                        &mut backend_element,
+                        |x| slot_fn(x, self.subtree_status()),
+                    )
+                }
+            } else if self.subtree_status().clear_slot_content_dirty() {
                 <C as ComponentTemplate<B>>::for_each_slot_scope(
                     &mut comp,
                     &mut backend_element,
-                    slot_fn,
+                    |x| slot_fn(x, self.subtree_status()),
                 )
+            } else {
+                Ok(())
             }
         } else {
             Err(Error::RecursiveUpdate)
