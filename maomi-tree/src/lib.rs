@@ -113,6 +113,12 @@ impl<T> ForestNodeRc<T> {
     }
 }
 
+/// A stable memory address for a `ForestToken`
+/// 
+/// Can be used as hash key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ForestTokenAddr(*const ());
+
 /// A static ref to a `ForestNodeRc<T>`
 pub struct ForestToken {
     inner: *const (),
@@ -127,6 +133,12 @@ impl Drop for ForestToken {
 impl Debug for ForestToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ForestToken").finish()
+    }
+}
+
+impl ForestToken {
+    pub fn stable_addr(&self) -> ForestTokenAddr {
+        ForestTokenAddr(self.inner)
     }
 }
 
@@ -339,26 +351,26 @@ impl<'a, T> ForestNodeMut<'a, T> {
         }
     }
 
-    /// Borrow another node with a token
+    /// Resolve a token to a `ForestNodeRc`
     ///
     /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
     #[inline]
-    pub fn resolve_token<'b>(&'b mut self, target: &ForestToken) -> ForestNodeRc<T> {
+    pub fn resolve_token<'b>(&'b mut self, target: &ForestToken) -> Option<ForestNodeRc<T>> {
         let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
         weak.clone().leak();
-        let rc = weak.rc().expect("The target node has been released");
-        ForestNodeRc { inner: rc }
+        let rc = weak.rc()?;
+        Some(ForestNodeRc { inner: rc })
     }
 
     /// Borrow another node with a token
     ///
     /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
     #[inline]
-    pub fn borrow_mut_token<'b>(&'b mut self, target: &ForestToken) -> ForestNodeMut<'b, T> {
+    pub fn borrow_mut_token<'b>(&'b mut self, target: &ForestToken) -> Option<ForestNodeMut<'b, T>> {
         let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
         weak.clone().leak();
-        let rc = weak.rc().expect("The target node has been released");
-        unsafe { self.borrow_mut_unchecked(&rc) }
+        let rc = weak.rc()?;
+        Some(unsafe { self.borrow_mut_unchecked(&rc) })
     }
 
     /// Get an immutable reference
@@ -376,6 +388,14 @@ impl<'a, T> ForestNodeMut<'a, T> {
         f: impl FnOnce(&'b mut T) -> &'b mut U,
     ) -> ForestValueMut<'b, U> {
         ForestValueMut { v: f(&mut **self) }
+    }
+
+    /// Get the `ForestNodeRc` of current node
+    #[inline]
+    pub fn rc(&self) -> ForestNodeRc<T> {
+        ForestNodeRc {
+            inner: self.inner.clone(),
+        }
     }
 
     /// Get the parent node

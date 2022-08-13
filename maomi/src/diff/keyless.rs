@@ -90,7 +90,9 @@ impl<'a, 'b, B: Backend, C> ListKeylessAlgoUpdate<'a, 'b, B, C> {
         update_fn: impl FnOnce(&mut C, &mut ForestNodeMut<B::GeneralElement>) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Some((ref mut c, forest_token)) = self.list.get_mut(self.cur_index) {
-            update_fn(c, &mut self.backend_element.borrow_mut_token(&forest_token))?;
+            if let Some(n) = &mut self.backend_element.borrow_mut_token(&forest_token) {
+                update_fn(c, n)?;
+            }
         } else {
             let backend_element =
                 <B::GeneralElement as BackendGeneralElement>::create_virtual_element(
@@ -110,9 +112,9 @@ impl<'a, 'b, B: Backend, C> ListKeylessAlgoUpdate<'a, 'b, B, C> {
     #[doc(hidden)]
     pub fn end(self) -> Result<(), Error> {
         for (_c, forest_token) in self.list.drain(self.cur_index..) {
-            let _ = <B::GeneralElement as BackendGeneralElement>::detach(
-                self.backend_element.borrow_mut_token(&forest_token),
-            );
+            if let Some(n) = self.backend_element.borrow_mut_token(&forest_token) {
+                <B::GeneralElement as BackendGeneralElement>::detach(n);
+            }
         }
         Ok(())
     }

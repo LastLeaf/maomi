@@ -1,9 +1,21 @@
 use crate::backend::{tree, Backend, BackendComponent, BackendGeneralElement};
 use crate::component::{Component, ComponentNode};
 use crate::error::Error;
-use crate::node::SubtreeStatus;
+use crate::node::OwnerWeak;
 use crate::template::ComponentTemplate;
 use crate::BackendContext;
+
+struct DanglingOwner();
+
+impl OwnerWeak for DanglingOwner {
+    fn apply_updates(&self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn clone_owner_weak(&self) -> Box<dyn OwnerWeak> {
+        Box::new(DanglingOwner())
+    }
+}
 
 /// A mount point which can generate a "root" component and mounted to the whole page
 ///
@@ -19,14 +31,15 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         init: impl FnOnce(&mut C),
     ) -> Result<Self, Error> {
+        let owner_weak: Box<dyn OwnerWeak> = Box::new(DanglingOwner());
         let (mut component_node, backend_element) =
-            <ComponentNode<B, C> as BackendComponent<B>>::init(backend_context, owner, SubtreeStatus::new())?;
+            <ComponentNode<B, C> as BackendComponent<B>>::init(backend_context, owner, &owner_weak)?;
         <ComponentNode<B, C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,
             owner,
             |comp, _| init(comp),
-            |_, _, _| Ok(()),
+            |_, _| Ok(()),
         )?;
         Ok(Self {
             component_node,

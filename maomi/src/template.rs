@@ -2,7 +2,7 @@ use crate::{
     backend::{tree::*, Backend},
     component::*,
     error::Error,
-    node::{SlotChildren, SubtreeStatus, SlotChange},
+    node::{SlotChildren, SlotChange, OwnerWeak},
     BackendContext,
 };
 
@@ -23,40 +23,38 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     fn clear_dirty(&mut self) -> bool
     where
         C: 'static;
-    fn clear_subtree_dirty(&mut self) -> bool
-    where
-        C: 'static;
     fn is_initialized(&self) -> bool;
     fn structure(&self) -> Option<&S>;
     fn component_rc(&self) -> Result<ComponentRc<C>, Error>
     where
         C: 'static + Sized;
-    fn slot_scopes(&self) -> &SlotChildren<(ForestToken, D)>;
-    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<ForestToken, SlotId>>>;
+    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, D)>;
+    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<ForestToken, ()>>>;
+    fn self_owner_weak(&self) -> &Box<dyn OwnerWeak>;
 }
 
 /// The template type
 ///
 /// This struct is auto-managed by `#[component]` .
 pub struct Template<C, S, D> {
+    #[doc(hidden)]
+    pub __m_self_owner_weak: Option<Box<dyn OwnerWeak>>,
     updater: Option<Box<dyn UpdateSchedulerWeak<EnterType = C>>>,
     dirty: bool,
     #[doc(hidden)]
-    pub __m_root_subtree_status: SubtreeStatus,
-    #[doc(hidden)]
     pub __m_structure: Option<S>,
     #[doc(hidden)]
-    pub __m_slot_scopes: SlotChildren<(ForestToken, D)>,
+    pub __m_slot_scopes: SlotChildren<ForestTokenAddr, (ForestToken, D)>,
     #[doc(hidden)]
-    pub __m_pending_slot_changes: Option<Vec<SlotChange<ForestToken, SlotId>>>,
+    pub __m_pending_slot_changes: Option<Vec<SlotChange<ForestToken, ()>>>,
 }
 
 impl<C, S, D> Default for Template<C, S, D> {
     fn default() -> Self {
         Self {
-            // updater: None,
+            __m_self_owner_weak: None,
+            updater: None,
             dirty: false,
-            __m_root_subtree_status: SubtreeStatus::new(),
             __m_structure: None,
             __m_slot_scopes: SlotChildren::None,
             __m_pending_slot_changes: None,
@@ -64,10 +62,10 @@ impl<C, S, D> Default for Template<C, S, D> {
     }
 }
 
-impl<C, S, D> Template<C, S, D> {
+impl<C: 'static, S, D> Template<C, S, D> {
     #[inline]
     pub fn init(&mut self, init: TemplateInit<C>) {
-        self.__m_root_subtree_status.attach_notifier(f);
+        self.__m_self_owner_weak = Some(init.updater.to_owner_weak());
         self.updater = Some(init.updater);
     }
 }
@@ -92,16 +90,7 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
             return false;
         }
         self.dirty = false;
-        self.clear_subtree_dirty();
         true
-    }
-
-    #[inline]
-    fn clear_subtree_dirty(&mut self) -> bool
-    where
-        C: 'static,
-    {
-        self.__m_root_subtree_status.clear_slot_content_dirty()
     }
 
     #[inline]
@@ -127,13 +116,18 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     }
 
     #[inline]
-    fn slot_scopes(&self) -> &SlotChildren<(ForestToken, D)> {
+    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, D)> {
         &self.__m_slot_scopes
     }
 
     #[inline]
-    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<ForestToken, D>>> {
+    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<ForestToken, ()>>> {
         self.__m_pending_slot_changes.take()
+    }
+
+    #[inline]
+    fn self_owner_weak(&self) -> &Box<dyn OwnerWeak> {
+        self.__m_self_owner_weak.as_ref().unwrap()
     }
 }
 
@@ -160,14 +154,13 @@ pub trait ComponentTemplate<B: Backend> {
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
         slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
-    ) -> Result<SlotChildren<R>, Error>
+    ) -> Result<SlotChildren<ForestTokenAddr, R>, Error>
     where
         Self: Sized;
 
     /// Update a component
     fn template_update<'b>(
         &'b mut self,
-        is_subtree_update: bool,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
         slot_fn: impl FnMut(
@@ -178,23 +171,32 @@ pub trait ComponentTemplate<B: Backend> {
         Self: Sized;
 
     /// Update a component and store the slot changes
+    #[inline]
     fn template_update_store_slot_changes<'b>(
         &'b mut self,
-        is_subtree_update: bool,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
     ) -> Result<bool, Error>
     where
         Self: Sized
     {
-        let mut has_slot_changes = false;
-        self.template_update(is_subtree_update, backend_context, backend_element, |slot_change| {
-            // TODO
+        let mut slot_changes = Vec::with_capacity(0);
+        self.template_update(backend_context, backend_element, |slot_change| {
+            match slot_change {
+                SlotChange::Unchanged(n, _) => {
+                    let t = n.rc().token();
+                    slot_changes.push(SlotChange::Unchanged(t, ()));
+                }
+                SlotChange::Added(n, _) => slot_changes.push(SlotChange::Added(n.rc().token(), ())),
+                SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.rc().token()))
+            }
+            Ok(())
         })?;
-        Ok(has_slot_changes)
+        Ok(slot_changes.len() > 0)
     }
 
     /// Iterate slots
+    #[inline]
     fn for_each_slot_scope<'b>(
         &'b mut self,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
@@ -202,9 +204,9 @@ pub trait ComponentTemplate<B: Backend> {
             SlotChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        for (t, d) in self.template_mut().slot_scopes() {
+        for (_, (t, d)) in self.template_mut().slot_scopes().iter() {
             slot_fn(SlotChange::Unchanged(
-                &mut backend_element.borrow_mut_token(t),
+                &mut backend_element.borrow_mut_token(t).ok_or(Error::TreeNodeReleased)?,
                 d,
             ))?;
         }

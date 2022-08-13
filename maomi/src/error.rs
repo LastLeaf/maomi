@@ -10,6 +10,10 @@ pub enum Error {
     ///
     /// Generally refers to some bad operation being done directly in the backend.
     TreeNodeTypeWrong,
+    /// The backend tree node has been released
+    ///
+    /// Generally refers to some bad operation being done directly in the backend.
+    TreeNodeReleased,
     /// A list update failed due to wrong changes list
     ListChangeWrong,
     /// A recursive update is detected
@@ -36,6 +40,9 @@ impl std::fmt::Display for Error {
             }
             Error::TreeNodeTypeWrong => {
                 write!(f, "The node type in backend element tree is incorrect")?;
+            }
+            Error::TreeNodeReleased => {
+                write!(f, "The node in backend element tree has been released")?;
             }
             Error::ListChangeWrong => {
                 write!(f, "The list change is incorrect")?;

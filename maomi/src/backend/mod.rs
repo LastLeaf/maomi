@@ -3,7 +3,7 @@
 pub use maomi_tree as tree;
 use tree::*;
 
-use crate::{error::Error, node::{SlotChange, SlotChildren, SubtreeStatus}};
+use crate::{error::Error, node::{SlotChange, SlotChildren, OwnerWeak}};
 pub mod context;
 use context::BackendContext;
 
@@ -135,7 +135,7 @@ pub trait BackendComponent<B: Backend> {
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        subtree_status: SubtreeStatus,
+        owner_weak: &Box<dyn OwnerWeak>,
     ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized;
@@ -149,19 +149,17 @@ pub trait BackendComponent<B: Backend> {
         slot_fn: impl FnMut(
             &mut tree::ForestNodeMut<B::GeneralElement>,
             &Self::SlotData,
-            &SubtreeStatus,
         ) -> Result<R, Error>,
-    ) -> Result<SlotChildren<R>, Error>;
+    ) -> Result<SlotChildren<ForestTokenAddr, R>, Error>;
 
     /// Indicate that the pending updates should be applied
     fn apply_updates<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        full_update_fn: Option<impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext)>,
+        update_fn: impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext),
         slot_fn: impl FnMut(
             SlotChange<&mut tree::ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
-            &SubtreeStatus,
         ) -> Result<(), Error>,
     ) -> Result<(), Error>;
 }

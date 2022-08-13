@@ -34,7 +34,7 @@ impl TextNode {
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<tree::ForestNodeRc<B::GeneralElement>, Error> {
-        Ok(owner.resolve_token(&self.backend_element_token))
+        owner.resolve_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)
     }
 
     #[doc(hidden)]
@@ -46,10 +46,11 @@ impl TextNode {
     ) -> Result<(), Error> {
         if self.content.as_str() != text {
             self.content = text.to_string();
-            let mut text_node = owner.borrow_mut_token(&self.backend_element_token);
-            let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
-                .ok_or(Error::TreeNodeTypeWrong)?;
-            text_node.set_text(&self.content);
+            if let Some(mut text_node) = owner.borrow_mut_token(&self.backend_element_token) {
+                let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
+                    .ok_or(Error::TreeNodeTypeWrong)?;
+                text_node.set_text(&self.content);
+            }
         }
         Ok(())
     }

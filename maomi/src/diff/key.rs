@@ -134,12 +134,13 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
         let new_pos = self.stable_pos.len();
         let new_key_ref = list_key.as_list_key();
         if let Some((pos, mut c, forest_token)) = self.map.remove(new_key_ref) {
-            update_fn(
-                &mut c,
-                &mut self.backend_element.borrow_mut_token(&forest_token),
-            )?;
-            let rc = self.backend_element.resolve_token(&forest_token);
-            self.stable_pos.push(KeyChange::OldPos(rc, OldPos(pos)));
+            if let Some(rc) = self.backend_element.resolve_token(&forest_token) {
+                update_fn(
+                    &mut c,
+                    &mut self.backend_element.borrow_mut(&rc),
+                )?;
+                self.stable_pos.push(KeyChange::OldPos(rc, OldPos(pos)));
+            }
             self.new_map
                 .insert(new_key_ref.to_owned(), (new_pos, c, forest_token));
         } else {
@@ -217,9 +218,9 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
 
         // clear the old map to drop the old items
         for (_, _, forest_token) in map.values() {
-            <B::GeneralElement as BackendGeneralElement>::detach(
-                self.backend_element.borrow_mut_token(forest_token),
-            );
+            if let Some(n) = self.backend_element.borrow_mut_token(forest_token) {
+                <B::GeneralElement as BackendGeneralElement>::detach(n);
+            }
         }
         *map = new_map;
 

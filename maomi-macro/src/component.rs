@@ -234,13 +234,13 @@ impl ToTokens for ComponentBody {
                                 >,
                                 &Self::SlotData,
                             ) -> Result<__MSlot, maomi::error::Error>,
-                        ) -> Result<maomi::node::SlotChildren<__MSlot>, maomi::error::Error>
+                        ) -> Result<maomi::node::SlotChildren<maomi::backend::tree::ForestTokenAddr, __MSlot>, maomi::error::Error>
                         where
                             Self: Sized,
                         {
-                            let mut __m_slot: maomi::node::SlotChildren<__MSlot> = maomi::node::SlotChildren::None;
+                            let mut __m_slot: maomi::node::SlotChildren<maomi::backend::tree::ForestTokenAddr, __MSlot> = maomi::node::SlotChildren::None;
+                            let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;
-                            let __m_subtree_status = &self.#template_field.__m_root_subtree_status;
                             self.#template_field.__m_structure = Some(#template_create);
                             Ok(__m_slot)
                         }
@@ -248,7 +248,6 @@ impl ToTokens for ComponentBody {
                         #[inline]
                         fn template_update<'__m_b>(
                             &'__m_b mut self,
-                            __m_is_subtree_update: bool,
                             __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
@@ -265,7 +264,7 @@ impl ToTokens for ComponentBody {
                         where
                             Self: Sized,
                         {
-                            // update tree
+                            let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;
                             let __m_children = self
                                 .#template_field

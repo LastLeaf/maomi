@@ -591,12 +591,11 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     )*
                 };
                 quote_spanned! {span=>
-                    let __m_subtree_status = __m_subtree_status.new_child();
                     let (mut __m_child, __m_backend_element) =
                         <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
-                            __m_subtree_status,
+                            __m_self_owner_weak,
                         )?;
                     let __m_slot_children = <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
                         &mut __m_child,
@@ -606,7 +605,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             #attrs_list_init
                             #(#attrs)*
                         },
-                        |__m_parent_element, __m_scope, __m_subtree_status| Ok(()),
+                        |__m_parent_element, __m_scope| Ok(()),
                     )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     maomi::node::Node::new(
@@ -644,7 +643,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
-                            __m_subtree_status.new_child(),
+                            __m_self_owner_weak,
                         )?;
                     let __m_slot_children = <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
                         &mut __m_child,
@@ -654,7 +653,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             #attrs_list_init
                             #(#attrs)*
                         },
-                        |__m_parent_element, __m_scope, __m_subtree_status| {
+                        |__m_parent_element, __m_scope| {
                             Ok((#({#children},)*))
                         },
                     )?;
@@ -683,10 +682,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     }
                 });
                 quote! {
-                    let __m_subtree_status = __m_subtree_status.new_child();
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_slot_children = {
-                        let __m_subtree_status = &__m_subtree_status;
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
                         #(#branches)*
                     };
@@ -695,7 +692,6 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     maomi::node::ControlNode::new(
                         __m_backend_element_token,
                         __m_slot_children,
-                        __m_subtree_status,
                     )
                 }
             }
@@ -717,10 +713,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 });
                 let span = match_token.span();
                 quote_spanned! {span=>
-                    let __m_subtree_status = __m_subtree_status.new_child();
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_slot_children = {
-                        let __m_subtree_status = &__m_subtree_status;
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
                         #match_token #expr {
                             #(#branches)*
@@ -731,7 +725,6 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     maomi::node::ControlNode::new(
                         __m_backend_element_token,
                         __m_slot_children,
-                        __m_subtree_status,
                     )
                 }
             }
@@ -750,7 +743,6 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     )
                 };
                 quote_spanned! {span=>
-                    let __m_subtree_status = __m_subtree_status.new_child();
                     let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
                     let __m_size_hint = {
                         let size_hint = __m_list.size_hint();
@@ -758,7 +750,6 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     };
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_list_diff_algo = {
-                        let __m_subtree_status = &__m_subtree_status;
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
                         let mut __m_list_update_iter = #algo::list_diff_new(
                             __m_parent_element,
@@ -779,7 +770,6 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     maomi::node::ControlNode::new(
                         __m_backend_element_token,
                         __m_list_diff_algo,
-                        __m_subtree_status,
                     )
                 }
             }
@@ -856,33 +846,27 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
-                    let mut __m_children_i = 0usize;
                     <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
-                        if __m_is_subtree_update {
-                            None
-                        } else {
-                            Some(|
-                                __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
-                                __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
-                            | {
-                                #(#attrs)*
-                            })
+                        |
+                            __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
+                            __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
+                        | {
+                            #(#attrs)*
                         },
-                        |__m_slot_change, __m_subtree_status| {
+                        |__m_slot_change| {
                             Ok(
                                 match __m_slot_change {
                                     maomi::node::SlotChange::Added(__m_parent_element, __m_scope) => {
-                                        __m_slot_children.add(__m_children_i, ())?;
-                                        __m_children_i += 1;
+                                        __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), ())?;
                                     }
                                     maomi::node::SlotChange::Unchanged(__m_parent_element, __m_scope) => {
-                                        __m_children_i += 1;
+                                        // empty
                                     }
                                     maomi::node::SlotChange::Removed(__m_parent_element) => {
-                                        __m_slot_children.remove(__m_children_i)?;
+                                        __m_slot_children.remove(__m_parent_element.rc().token().stable_addr())?;
                                     }
                                 }
                             )
@@ -920,38 +904,30 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
-                    let mut __m_children_i = 0usize;
                     <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
-                        if __m_is_subtree_update {
-                            None
-                        } else {
-                            Some(|
-                                __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
-                                __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
-                            | {
-                                #(#attrs)*
-                            })
+                        |
+                            __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
+                            __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
+                        | {
+                            #(#attrs)*
                         },
-                        |__m_slot_change, __m_subtree_status| {
+                        |__m_slot_change| {
                             Ok(
                                 match __m_slot_change {
                                     maomi::node::SlotChange::Added(__m_parent_element, __m_scope) => {
                                         let __m_children = (#({#create_children},)*);
-                                        __m_slot_children.add(__m_children_i, __m_children)?;
-                                        __m_children_i += 1;
+                                        __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), __m_children)?;
                                     }
                                     maomi::node::SlotChange::Unchanged(__m_parent_element, __m_scope) => {
-                                        // TODO handling relationship correctly
                                         let __m_children =
-                                            __m_slot_children.get_mut(__m_children_i)?;
+                                            __m_slot_children.get_mut(__m_parent_element.rc().token().stable_addr())?;
                                         #({#update_children})*
-                                        __m_children_i += 1;
                                     }
                                     maomi::node::SlotChange::Removed(__m_parent_element) => {
-                                        __m_slot_children.remove(__m_children_i)?;
+                                        __m_slot_children.remove(__m_parent_element.rc().token().stable_addr())?;
                                     }
                                 }
                             )
@@ -1001,12 +977,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     let maomi::node::ControlNode {
                         forest_token: ref mut __m_backend_element_token,
                         content: ref mut __m_slot_children,
-                        subtree_status: ref mut __m_subtree_status,
                     } = __m_children.#child_index;
-                    if __m_subtree_status.clear_slot_content_dirty() || !__m_is_subtree_update {
-                        let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token);
-                        #(#branches)*
-                    }
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                    #(#branches)*
                 }
             }
             TemplateNode::Match { match_token, expr, arms, .. } => {
@@ -1051,13 +1025,11 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     let maomi::node::ControlNode {
                         forest_token: ref mut __m_backend_element_token,
                         content: ref mut __m_slot_children,
-                        subtree_status: ref mut __m_subtree_status,
                     } = __m_children.#child_index;
-                    if __m_subtree_status.clear_slot_content_dirty() || !__m_is_subtree_update {
-                        let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token);
-                        #match_token #expr {
-                            #(#branches)*
-                        }
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                    #match_token #expr {
+                        #(#branches)*
                     }
                 }
             }
@@ -1084,33 +1056,31 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     let maomi::node::ControlNode {
                         forest_token: ref mut __m_backend_element_token,
                         content: ref mut __m_list_diff_algo,
-                        subtree_status: ref mut __m_subtree_status,
                     } = __m_children.#child_index;
-                    if __m_subtree_status.clear_slot_content_dirty() || !__m_is_subtree_update {
-                        let mut __m_parent_element = &mut __m_parent_element.borrow_mut_token(&__m_backend_element_token);
-                        let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
-                        let __m_size_hint = {
-                            let size_hint = __m_list.size_hint();
-                            size_hint.1.unwrap_or(size_hint.0)
-                        };
-                        let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
-                            __m_parent_element,
-                            __m_size_hint,
-                        );
-                        #for_token #pat #in_token __m_list {
-                            __m_list_update_iter.next(
-                                #next_arg
-                                |__m_parent_element| {
-                                    Ok((#({#create_children},)*))
-                                },
-                                |__m_children, __m_parent_element| {
-                                    #({#update_children})*
-                                    Ok(())
-                                },
-                            )?;
-                        }
-                        __m_list_update_iter.end()?;
+                    let mut __m_parent_element = &mut __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                    let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
+                    let __m_size_hint = {
+                        let size_hint = __m_list.size_hint();
+                        size_hint.1.unwrap_or(size_hint.0)
+                    };
+                    let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
+                        __m_parent_element,
+                        __m_size_hint,
+                    );
+                    #for_token #pat #in_token __m_list {
+                        __m_list_update_iter.next(
+                            #next_arg
+                            |__m_parent_element| {
+                                Ok((#({#create_children},)*))
+                            },
+                            |__m_children, __m_parent_element| {
+                                #({#update_children})*
+                                Ok(())
+                            },
+                        )?;
                     }
+                    __m_list_update_iter.end()?;
                 }
             }
         }.to_tokens(tokens);
