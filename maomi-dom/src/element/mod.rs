@@ -1,7 +1,7 @@
 use maomi::{
     backend::{BackendComponent, SupportBackend},
     error::Error,
-    node::{SlotChange, SlotChildren, OwnerWeak},
+    node::{SlotChange, OwnerWeak},
     BackendContext,
 };
 
@@ -67,7 +67,7 @@ macro_rules! define_element {
             }
 
             #[inline]
-            fn create<'b, R>(
+            fn create<'b>(
                 &'b mut self,
                 _backend_context: &'b BackendContext<DomBackend>,
                 owner: &'b mut ForestNodeMut<DomGeneralElement>,
@@ -75,13 +75,12 @@ macro_rules! define_element {
                 mut slot_fn: impl FnMut(
                     &mut ForestNodeMut<DomGeneralElement>,
                     &Self::SlotData,
-                ) -> Result<R, Error>,
-            ) -> Result<SlotChildren<ForestTokenAddr, R>, Error> {
-                let addr = self.backend_element_token.stable_addr();
+                ) -> Result<(), Error>,
+            ) -> Result<(), Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)?;
                 update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
-                let r = slot_fn(&mut node, &())?;
-                Ok(SlotChildren::Single(addr, r))
+                slot_fn(&mut node, &())?;
+                Ok(())
             }
 
             #[inline]

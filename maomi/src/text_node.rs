@@ -19,11 +19,10 @@ impl TextNode {
     where
         Self: Sized,
     {
-        let content: &str = &content;
         let elem = B::GeneralElement::create_text_node(owner, content)?;
         let this = Self {
             backend_element_token: elem.token(),
-            content: String::new(),
+            content: content.to_string(),
         };
         Ok((this, elem))
     }

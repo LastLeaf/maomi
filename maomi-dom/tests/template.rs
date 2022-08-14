@@ -14,6 +14,7 @@ async fn child_component() {
     struct Child {
         template: template! {
             <div title={ &*self.title }> { &self.text } </div>
+            <slot />
         },
         text: Prop<String>,
         title: Prop<String>,
@@ -34,11 +35,15 @@ async fn child_component() {
         callback: Option<ComponentTestCb>,
         template: template! {
             <div>
-                <Child title={ &self.hello_title } text=&{ self.hello_text } />
+                <Child title={ &self.hello_title } text=&{ self.hello_text }>
+                    { &self.slot_text }
+                    <slot />
+                </Child>
             </div>
         },
         hello_text: String,
         hello_title: String,
+        slot_text: String,
     }
 
     impl Component for Parent {
@@ -48,6 +53,7 @@ async fn child_component() {
                 template: Default::default(),
                 hello_text: "".into(),
                 hello_title: "Again".into(),
+                slot_text: "Hello".into(),
             }
         }
 
@@ -62,9 +68,10 @@ async fn child_component() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div><div title="Again"></div></div>"#,
+                        r#"<div><div title="Again"></div>Hello</div>"#,
                     );
                     this.hello_text = "Hello world again!".into();
+                    this.slot_text = "".into();
                 })
                 .await
                 .unwrap();

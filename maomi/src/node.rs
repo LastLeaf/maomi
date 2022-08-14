@@ -88,7 +88,7 @@ pub enum SlotChildren<K: Hash + Eq, C> {
 }
 
 impl<K: Hash + Eq, C> SlotChildren<K, C> {
-    pub fn add(&mut self, k: K, v: C) -> Result<(), Error> {
+    pub fn add(&mut self, k: K, v: C) {
         if let Self::Single(..) = self {
             if let Self::Single(k2, v2) = std::mem::replace(self, Self::None) {
                 *self = Self::Multiple(HashMap::from_iter([(k2, v2), (k, v)]));
@@ -100,7 +100,6 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         } else {
             *self = Self::Single(k, v);
         }
-        Ok(())
     }
 
     pub fn remove(&mut self, k: K) -> Result<C, Error> {

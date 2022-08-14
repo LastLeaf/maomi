@@ -3,7 +3,7 @@
 pub use maomi_tree as tree;
 use tree::*;
 
-use crate::{error::Error, node::{SlotChange, SlotChildren, OwnerWeak}};
+use crate::{error::Error, node::{SlotChange, OwnerWeak}};
 pub mod context;
 use context::BackendContext;
 
@@ -141,7 +141,7 @@ pub trait BackendComponent<B: Backend> {
         Self: Sized;
 
     /// Indicate that the create process should be finished
-    fn create<'b, R>(
+    fn create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
@@ -149,8 +149,8 @@ pub trait BackendComponent<B: Backend> {
         slot_fn: impl FnMut(
             &mut tree::ForestNodeMut<B::GeneralElement>,
             &Self::SlotData,
-        ) -> Result<R, Error>,
-    ) -> Result<SlotChildren<ForestTokenAddr, R>, Error>;
+        ) -> Result<(), Error>,
+    ) -> Result<(), Error>;
 
     /// Indicate that the pending updates should be applied
     fn apply_updates<'b>(

@@ -222,27 +222,27 @@ impl ToTokens for ComponentBody {
                         }
 
                         #[inline]
-                        fn template_create<'__m_b, __MSlot>(
+                        fn template_create<'__m_b>(
                             &'__m_b mut self,
                             __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
                             >,
-                            __m_slot_fn: impl FnMut(
+                            mut __m_slot_fn: impl FnMut(
                                 &mut maomi::backend::tree::ForestNodeMut<
                                     <#backend_param as maomi::backend::Backend>::GeneralElement,
                                 >,
                                 &Self::SlotData,
-                            ) -> Result<__MSlot, maomi::error::Error>,
-                        ) -> Result<maomi::node::SlotChildren<maomi::backend::tree::ForestTokenAddr, __MSlot>, maomi::error::Error>
+                            ) -> Result<(), maomi::error::Error>,
+                        ) -> Result<(), maomi::error::Error>
                         where
                             Self: Sized,
                         {
-                            let mut __m_slot: maomi::node::SlotChildren<maomi::backend::tree::ForestTokenAddr, __MSlot> = maomi::node::SlotChildren::None;
+                            let __m_slot_scopes = &mut self.#template_field.__m_slot_scopes;
                             let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;
                             self.#template_field.__m_structure = Some(#template_create);
-                            Ok(__m_slot)
+                            Ok(())
                         }
 
                         #[inline]
@@ -252,7 +252,7 @@ impl ToTokens for ComponentBody {
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
                             >,
-                            __m_slot_fn: impl FnMut(
+                            mut __m_slot_fn: impl FnMut(
                                 maomi::node::SlotChange<
                                     &mut maomi::backend::tree::ForestNodeMut<
                                         <#backend_param as maomi::backend::Backend>::GeneralElement,
@@ -264,6 +264,7 @@ impl ToTokens for ComponentBody {
                         where
                             Self: Sized,
                         {
+                            let __m_slot_scopes = &mut self.#template_field.__m_slot_scopes;
                             let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;
                             let __m_children = self

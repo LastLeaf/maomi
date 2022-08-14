@@ -64,14 +64,14 @@ pub(super) enum TemplateNode {
         brace_token: token::Brace,
         expr: Box<Expr>,
     },
-    SelfCloseTag {
+    Slot {
         tag_lt_token: token::Lt,
         tag_name: Path,
-        attrs: Vec<TemplateAttribute>,
-        #[allow(dead_code)]
-        close_token: token::Div,
+        data: Option<TemplateAttribute>,
         #[allow(dead_code)]
         tag_gt_token: token::Gt,
+        #[allow(dead_code)]
+        close_token: token::Div,
     },
     Tag {
         tag_lt_token: token::Lt,
@@ -81,13 +81,7 @@ pub(super) enum TemplateNode {
         tag_gt_token: token::Gt,
         children: Vec<TemplateNode>,
         #[allow(dead_code)]
-        end_tag_lt_token: token::Lt,
-        #[allow(dead_code)]
         close_token: token::Div,
-        #[allow(dead_code)]
-        end_tag_name: Path,
-        #[allow(dead_code)]
-        end_tag_gt_token: token::Gt,
     },
     IfElse {
         branches: Vec<TemplateIfElse>,
@@ -137,9 +131,9 @@ impl TemplateNode {
                 let span = brace_token.span;
                 parse_quote_spanned!(span=> maomi::text_node::TextNode )
             }
-            Self::SelfCloseTag { tag_name, .. } => {
+            Self::Slot { tag_name, .. } => {
                 let span = tag_name.span();
-                parse_quote_spanned!(span=> maomi::node::Node<#backend_param, #tag_name, ()> )
+                parse_quote_spanned!(span=> maomi::node::ControlNode<()> )
             }
             Self::Tag {
                 tag_name, children, ..
@@ -202,62 +196,123 @@ impl Parse for TemplateNode {
         } else if la.peek(token::Lt) {
             // parse a tag
             let tag_lt_token = input.parse()?;
-            let tag_name = input.parse()?;
-            let mut attrs = vec![];
-            let mut la = input.lookahead1();
-            loop {
-                if la.peek(Ident) {
-                    let attr = input.parse()?;
-                    attrs.push(attr);
-                    la = input.lookahead1();
+            let tag_name: Path = input.parse()?;
+            if tag_name.is_ident("slot") {
+                let data = if la.peek(Ident) {
+                    let attr: TemplateAttribute = input.parse()?;
+                    match &attr {
+                        TemplateAttribute::StaticProperty { name, .. }
+                            | TemplateAttribute::DynamicProperty { name, .. } => {
+                                if name.to_string().as_str() != "data" {
+                                    Err(Error::new(
+                                        name.span(),
+                                        "The slot element cannot contain attributes other than `data`",
+                                    ))?;
+                                }
+                            }
+                        TemplateAttribute::Event { eq_token, .. } => {
+                            Err(Error::new(
+                                eq_token.span(),
+                                "Illegal slot element attribute value",
+                            ))?;
+                        }
+                    }
+                    Some(attr)
                 } else {
-                    break;
-                }
-            }
-            if la.peek(token::Div) {
-                let close_token = input.parse()?;
-                let tag_gt_token = input.parse()?;
-                TemplateNode::SelfCloseTag {
-                    tag_lt_token,
-                    tag_name,
-                    attrs,
-                    close_token,
-                    tag_gt_token,
-                }
-            } else if la.peek(token::Gt) {
-                let tag_gt_token = input.parse()?;
-                let mut children = vec![];
-                while !input.peek(token::Lt) || !input.peek2(token::Div) {
-                    let child = input.parse()?;
-                    children.push(child);
-                }
-                let end_tag_lt_token = input.parse()?;
-                let close_token = input.parse()?;
-                let end_tag_name: Path = input.parse()?;
-                let short_tag_name = match tag_name.segments.last() {
-                    None => Ident::new("", tag_name.span()),
-                    Some(x) => x.ident.clone(),
+                    None
                 };
-                if !end_tag_name.is_ident(&short_tag_name) {
-                    return Err(Error::new(
-                        end_tag_name.span(),
-                        "End tag name does not match the start tag name",
-                    ));
-                }
-                let end_tag_gt_token = input.parse()?;
-                TemplateNode::Tag {
-                    tag_lt_token,
-                    tag_name,
-                    attrs,
-                    tag_gt_token,
-                    children,
-                    end_tag_lt_token,
-                    close_token,
-                    end_tag_name,
-                    end_tag_gt_token,
+                let la = input.lookahead1();
+                if la.peek(token::Div) {
+                    let close_token = input.parse()?;
+                    let tag_gt_token = input.parse()?;
+                    TemplateNode::Slot {
+                        tag_lt_token,
+                        tag_name,
+                        data,
+                        tag_gt_token,
+                        close_token,
+                    }
+                } else if la.peek(token::Gt) {
+                    let tag_gt_token = input.parse()?;
+                    let _: token::Lt = input.parse()?;
+                    let close_token = input.parse()?;
+                    if input.parse::<Token![_]>().is_err() {
+                        let end_tag_name: Path = input.parse()?;
+                        if !end_tag_name.is_ident("slot") {
+                            return Err(Error::new(
+                                end_tag_name.span(),
+                                "End tag name does not match the start tag name (consider use `_` instead?)",
+                            ));
+                        }
+                    }
+                    let _: token::Gt = input.parse()?;
+                    TemplateNode::Slot {
+                        tag_lt_token,
+                        tag_name,
+                        data,
+                        tag_gt_token,
+                        close_token,
+                    }
+                } else {
+                    return Err(la.error());
                 }
             } else {
-                return Err(la.error());
+                let mut attrs = vec![];
+                let mut la = input.lookahead1();
+                loop {
+                    if la.peek(Ident) {
+                        let attr = input.parse()?;
+                        attrs.push(attr);
+                        la = input.lookahead1();
+                    } else {
+                        break;
+                    }
+                }
+                if la.peek(token::Div) {
+                    let close_token = input.parse()?;
+                    let tag_gt_token = input.parse()?;
+                    TemplateNode::Tag {
+                        tag_lt_token,
+                        tag_name,
+                        attrs,
+                        tag_gt_token,
+                        children: Vec::with_capacity(0),
+                        close_token,
+                    }
+                } else if la.peek(token::Gt) {
+                    let tag_gt_token = input.parse()?;
+                    let mut children = vec![];
+                    while !input.peek(token::Lt) || !input.peek2(token::Div) {
+                        let child = input.parse()?;
+                        children.push(child);
+                    }
+                    let _: token::Lt = input.parse()?;
+                    let close_token = input.parse()?;
+                    if input.parse::<Token![_]>().is_err() {
+                        let end_tag_name: Path = input.parse()?;
+                        let short_tag_name = match tag_name.segments.last() {
+                            None => Ident::new("", tag_name.span()),
+                            Some(x) => x.ident.clone(),
+                        };
+                        if !end_tag_name.is_ident(&short_tag_name) {
+                            return Err(Error::new(
+                                end_tag_name.span(),
+                                "End tag name does not match the start tag name (consider use `_` instead?)",
+                            ));
+                        }
+                    }
+                    let _: token::Gt = input.parse()?;
+                    TemplateNode::Tag {
+                        tag_lt_token,
+                        tag_name,
+                        attrs,
+                        tag_gt_token,
+                        children,
+                        close_token,
+                    }
+                } else {
+                    return Err(la.error());
+                }
             }
         } else if la.peek(token::If) {
             // parse if expr
@@ -275,6 +330,9 @@ impl Parse for TemplateNode {
                 let mut children = vec![];
                 while !content.is_empty() {
                     children.push(content.parse()?);
+                }
+                if branches.len() >= 16 {
+                    Err(Error::new(brace_token.span, "`if` and `else` group cannot contain more than 16 branches"))?;
                 }
                 branches.push(TemplateIfElse {
                     else_token,
@@ -322,6 +380,9 @@ impl Parse for TemplateNode {
                         children.push(content.parse()?);
                     }
                     let comma = input.parse()?;
+                    if arms.len() >= 16 {
+                        Err(Error::new(brace_token.span, "`match` cannot contain more than 16 branches"))?;
+                    }
                     arms.push(TemplateMatchArm {
                         pat,
                         guard,
@@ -521,6 +582,7 @@ impl<'a> ToTokens for TemplateCreate<'a> {
         } = self;
         let Template { children } = template;
         let children = children.into_iter().map(|x| TemplateNodeCreate {
+            inside_update: false,
             template_node: x,
             backend_param,
         });
@@ -532,6 +594,7 @@ impl<'a> ToTokens for TemplateCreate<'a> {
 }
 
 struct TemplateNodeCreate<'a> {
+    inside_update: bool,
     template_node: &'a TemplateNode,
     backend_param: &'a TokenStream,
 }
@@ -539,9 +602,11 @@ struct TemplateNodeCreate<'a> {
 impl<'a> ToTokens for TemplateNodeCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self {
+            inside_update,
             template_node,
             backend_param,
         } = self;
+        let inside_update = *inside_update;
         match template_node {
             TemplateNode::StaticText { content } => {
                 let span = content.span();
@@ -567,50 +632,26 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     __m_child
                 }
             }
-            TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
+            TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
-                let mut list_prop_count = HashMap::new();
-                let attrs = attrs.into_iter().map(|attr| {
-                    let list_index = if let Some(x) = attr.list_ident() {
-                        *list_prop_count.entry(x)
-                            .and_modify(|x| *x += 1)
-                            .or_insert(1) - 1
-                    } else {
-                        0
-                    };
-                    TemplateAttributeCreate { attr, list_index }
-                }).collect::<Vec<_>>();
-                let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) = list_prop_count.iter().unzip();
-                let attrs_list_init = quote_spanned! {span=>
-                    #(
-                        maomi::prop::ListPropertyUpdate::init_list(
-                            &mut __m_child.#list_prop_name,
-                            #list_prop_count,
-                            __m_update_ctx,
-                        );
-                    )*
+                let create_slot = if inside_update {
+                    quote! { __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &()))?; }
+                } else {
+                    quote! { __m_slot_fn(__m_parent_element, &())?; }
                 };
                 quote_spanned! {span=>
-                    let (mut __m_child, __m_backend_element) =
-                        <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
-                            __m_backend_context,
-                            __m_parent_element,
-                            __m_self_owner_weak,
-                        )?;
-                    let __m_slot_children = <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
-                        &mut __m_child,
-                        __m_backend_context,
-                        __m_parent_element,
-                        |__m_child, __m_update_ctx| {
-                            #attrs_list_init
-                            #(#attrs)*
-                        },
-                        |__m_parent_element, __m_scope| Ok(()),
-                    )?;
+                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                    {
+                        let __m_backend_element_token = __m_backend_element.token();
+                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        #create_slot
+                        __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, ()));
+                    }
+                    let __m_backend_element_token = __m_backend_element.token();
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                    maomi::node::Node::new(
-                        __m_child,
-                        __m_slot_children,
+                    maomi::node::ControlNode::new(
+                        __m_backend_element_token,
+                        (),
                     )
                 }
             }
@@ -637,7 +678,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         );
                     )*
                 };
-                let children = children.into_iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                let children = children.into_iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
                         <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
@@ -645,7 +686,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             __m_parent_element,
                             __m_self_owner_weak,
                         )?;
-                    let __m_slot_children = <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
+                    let mut __m_slot_children = maomi::node::SlotChildren::None;
+                    <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
                         &mut __m_child,
                         __m_backend_context,
                         __m_parent_element,
@@ -654,7 +696,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             #(#attrs)*
                         },
                         |__m_parent_element, __m_scope| {
-                            Ok((#({#children},)*))
+                            __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), (#({#children},)*));
+                            Ok(())
                         },
                     )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
@@ -674,7 +717,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
                     quote_spanned! {span=>
                         #else_token #if_cond {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
@@ -704,7 +747,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
                     quote! {
                         #pat #guard #fat_arrow_token {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
@@ -730,7 +773,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
                 let span = for_token.span();
-                let children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
                 let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
                     (
                         quote!(maomi::diff::key::KeyList::<#backend_param, #key_ty, _>),
@@ -828,50 +871,18 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     __m_child.set_text::<#backend_param>(__m_parent_element, #expr)?;
                 }
             }
-            TemplateNode::SelfCloseTag { tag_lt_token, tag_name, attrs, .. } => {
+            TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
-                let mut list_prop_count = HashMap::new();
-                let attrs = attrs.into_iter().map(|attr| {
-                    let list_index = if let Some(x) = attr.list_ident() {
-                        *list_prop_count.entry(x)
-                            .and_modify(|x| *x += 1)
-                            .or_insert(1) - 1
-                    } else {
-                        0
-                    };
-                    TemplateAttributeUpdate { attr, list_index }
-                });
                 quote_spanned! {span=>
-                    let maomi::node::Node {
-                        tag: ref mut __m_child,
-                        child_nodes: ref mut __m_slot_children,
+                    let maomi::node::ControlNode {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_slot_children,
                     } = __m_children.#child_index;
-                    <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
-                        __m_child,
-                        __m_backend_context,
-                        __m_parent_element,
-                        |
-                            __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
-                            __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
-                        | {
-                            #(#attrs)*
-                        },
-                        |__m_slot_change| {
-                            Ok(
-                                match __m_slot_change {
-                                    maomi::node::SlotChange::Added(__m_parent_element, __m_scope) => {
-                                        __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), ())?;
-                                    }
-                                    maomi::node::SlotChange::Unchanged(__m_parent_element, __m_scope) => {
-                                        // empty
-                                    }
-                                    maomi::node::SlotChange::Removed(__m_parent_element) => {
-                                        __m_slot_children.remove(__m_parent_element.rc().token().stable_addr())?;
-                                    }
-                                }
-                            )
-                        },
-                    )?;
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                    __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &()))?;
+                    __m_slot_scopes.get_mut(__m_backend_element_token.stable_addr())?.1 = (); // TODO update data
+                    // TODO consider slot drop
                 }
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
@@ -889,6 +900,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 });
                 let create_children = children.into_iter()
                     .map(|x| TemplateNodeCreate {
+                        inside_update: true,
                         template_node: x,
                         backend_param,
                     });
@@ -915,22 +927,21 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             #(#attrs)*
                         },
                         |__m_slot_change| {
-                            Ok(
-                                match __m_slot_change {
-                                    maomi::node::SlotChange::Added(__m_parent_element, __m_scope) => {
-                                        let __m_children = (#({#create_children},)*);
-                                        __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), __m_children)?;
-                                    }
-                                    maomi::node::SlotChange::Unchanged(__m_parent_element, __m_scope) => {
-                                        let __m_children =
-                                            __m_slot_children.get_mut(__m_parent_element.rc().token().stable_addr())?;
-                                        #({#update_children})*
-                                    }
-                                    maomi::node::SlotChange::Removed(__m_parent_element) => {
-                                        __m_slot_children.remove(__m_parent_element.rc().token().stable_addr())?;
-                                    }
+                            match __m_slot_change {
+                                maomi::node::SlotChange::Added(__m_parent_element, __m_scope) => {
+                                    let __m_children = (#({#create_children},)*);
+                                    __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), __m_children);
                                 }
-                            )
+                                maomi::node::SlotChange::Unchanged(__m_parent_element, __m_scope) => {
+                                    let __m_children =
+                                        __m_slot_children.get_mut(__m_parent_element.rc().token().stable_addr())?;
+                                    #({#update_children})*
+                                }
+                                maomi::node::SlotChange::Removed(__m_parent_element) => {
+                                    __m_slot_children.remove(__m_parent_element.rc().token().stable_addr())?;
+                                }
+                            }
+                            Ok(())
                         },
                     )?;
                 }
@@ -944,7 +955,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let create_children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param });
                     let update_children = children.iter()
                         .enumerate()
                         .map(|(index, x)| TemplateNodeUpdate {
@@ -992,7 +1003,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let create_children = children.iter().map(|x| TemplateNodeCreate { template_node: x, backend_param });
+                    let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param });
                     let update_children = children.iter()
                         .enumerate()
                         .map(|(index, x)| TemplateNodeUpdate {
@@ -1037,6 +1048,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let span = for_token.span();
                 let create_children = children.into_iter()
                     .map(|x| TemplateNodeCreate {
+                        inside_update: true,
                         template_node: x,
                         backend_param,
                     });

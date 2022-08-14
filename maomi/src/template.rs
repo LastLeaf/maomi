@@ -137,7 +137,7 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
 pub trait ComponentTemplate<B: Backend> {
     type TemplateField: TemplateHelper<Self, Self::TemplateStructure, Self::SlotData>;
     type TemplateStructure;
-    type SlotData: 'static + PartialEq;
+    type SlotData: 'static;
 
     /// Get a reference of the template field of the component
     fn template(&self) -> &Self::TemplateField;
@@ -149,12 +149,12 @@ pub trait ComponentTemplate<B: Backend> {
     fn template_init(&mut self, init: TemplateInit<Self>);
 
     /// Create a component within the specified shadow root
-    fn template_create<'b, R>(
+    fn template_create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
-    ) -> Result<SlotChildren<ForestTokenAddr, R>, Error>
+        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+    ) -> Result<(), Error>
     where
         Self: Sized;
 
@@ -183,10 +183,7 @@ pub trait ComponentTemplate<B: Backend> {
         let mut slot_changes = Vec::with_capacity(0);
         self.template_update(backend_context, backend_element, |slot_change| {
             match slot_change {
-                SlotChange::Unchanged(n, _) => {
-                    let t = n.rc().token();
-                    slot_changes.push(SlotChange::Unchanged(t, ()));
-                }
+                SlotChange::Unchanged(n, _) => slot_changes.push(SlotChange::Unchanged(n.rc().token(), ())),
                 SlotChange::Added(n, _) => slot_changes.push(SlotChange::Added(n.rc().token(), ())),
                 SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.rc().token()))
             }

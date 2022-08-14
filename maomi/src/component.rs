@@ -10,7 +10,7 @@ use crate::{
         SupportBackend,
     },
     error::Error,
-    node::{SlotChildren, SlotChange, OwnerWeak},
+    node::{SlotChange, OwnerWeak},
     template::*,
     BackendContext,
 };
@@ -422,25 +422,25 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
     }
 
     #[inline]
-    fn create<'b, R>(
+    fn create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<<B as Backend>::GeneralElement>,
         update_fn: impl FnOnce(&mut C, &mut bool),
-        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<R, Error>,
-    ) -> Result<SlotChildren<ForestTokenAddr, R>, Error> {
+        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+    ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component().try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element());
             let mut force_dirty = false;
             update_fn(&mut comp, &mut force_dirty);
-            let ret = <C as ComponentTemplate<B>>::template_create(
+            <C as ComponentTemplate<B>>::template_create(
                 &mut comp,
                 backend_context,
                 &mut backend_element,
                 slot_fn,
             )?;
             <C as Component>::created(&mut comp);
-            Ok(ret)
+            Ok(())
         } else {
             Err(Error::RecursiveUpdate)
         }
