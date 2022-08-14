@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
-use maomi_dom::{prelude::*, async_task, element::*};
+use maomi_dom::{async_task, element::*, prelude::*};
 
 mod env;
 use env::*;
@@ -114,7 +114,7 @@ async fn single_dynamic_slot() {
                             <slot />
                         }
                         _ => {
-                            { text }  
+                            { text }
                             <slot />
                         }
                     }
@@ -168,14 +168,15 @@ async fn single_dynamic_slot() {
                             .inner_html(),
                         r#"<div></div>"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_none()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
                     this.hello_text = Some("".into());
                 })
                 .await
@@ -190,14 +191,15 @@ async fn single_dynamic_slot() {
                             .inner_html(),
                         r#"<div><span></span></div>"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_some()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_some());
                     this.hello_text = Some("text".into());
                 })
                 .await
@@ -212,14 +214,15 @@ async fn single_dynamic_slot() {
                             .inner_html(),
                         r#"<div>text<span></span></div>"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_some()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_some());
                     this.hello_text = None;
                 })
                 .await
@@ -234,14 +237,15 @@ async fn single_dynamic_slot() {
                             .inner_html(),
                         r#"<div></div>"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_none()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
                     (this.callback.take().unwrap())();
                 })
                 .await
@@ -316,14 +320,15 @@ async fn multiple_slots() {
                             .inner_html(),
                         r#"12A"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_some()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_some());
                     this.list.push(34);
                 })
                 .await
@@ -338,14 +343,15 @@ async fn multiple_slots() {
                             .inner_html(),
                         r#"12A34A"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_none()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
                     this.list = vec![];
                 })
                 .await
@@ -360,14 +366,15 @@ async fn multiple_slots() {
                             .inner_html(),
                         r#""#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_none()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
                     this.list = vec![12, 34, 56];
                 })
                 .await
@@ -382,14 +389,15 @@ async fn multiple_slots() {
                             .inner_html(),
                         r#"12A34A56A"#,
                     );
-                    assert!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .single_slot().unwrap()
-                            .0
-                            .single_slot().is_none()
-                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
                     (this.callback.take().unwrap())();
                 })
                 .await

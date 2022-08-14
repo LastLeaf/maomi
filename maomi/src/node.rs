@@ -1,10 +1,10 @@
 use std::{collections::HashMap, hash::Hash};
 
-use tree::ForestTokenAddr;
 use crate::{
     backend::{tree, Backend, SupportBackend},
     error::Error,
 };
+use tree::ForestTokenAddr;
 
 /// A weak ref to the owner
 pub trait OwnerWeak {
@@ -21,21 +21,13 @@ pub struct Node<B: Backend, N: SupportBackend<B>, C> {
 
 impl<B: Backend, N: SupportBackend<B>, C> Node<B, N, C> {
     #[inline(always)]
-    pub fn new(
-        tag: N::Target,
-        child_nodes: SlotChildren<ForestTokenAddr, C>,
-    ) -> Self {
-        Self {
-            tag,
-            child_nodes,
-        }
+    pub fn new(tag: N::Target, child_nodes: SlotChildren<ForestTokenAddr, C>) -> Self {
+        Self { tag, child_nodes }
     }
 
     /// Iterator over slots of the node
     #[inline]
-    pub fn iter_slots(
-        &self,
-    ) -> SlotChildrenIter<ForestTokenAddr, C> {
+    pub fn iter_slots(&self) -> SlotChildrenIter<ForestTokenAddr, C> {
         self.child_nodes.iter()
     }
 
@@ -55,10 +47,7 @@ pub struct ControlNode<C> {
 
 impl<C> ControlNode<C> {
     #[inline(always)]
-    pub fn new(
-        forest_token: tree::ForestToken,
-        content: C,
-    ) -> Self {
+    pub fn new(forest_token: tree::ForestToken, content: C) -> Self {
         Self {
             forest_token,
             content,
@@ -257,13 +246,17 @@ impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
             map.insert(k, v);
         } else if let SlotChildren::Single(_, _) = self.old {
             if self.old_single_matched {
-                if let SlotChildren::Single(k2, v2) = std::mem::replace(self.old, SlotChildren::None) {
+                if let SlotChildren::Single(k2, v2) =
+                    std::mem::replace(self.old, SlotChildren::None)
+                {
                     *self.old = SlotChildren::Multiple(HashMap::from_iter([(k2, v2), (k, v)]));
                 } else {
                     unreachable!();
                 }
             } else {
-                if let SlotChildren::Single(k2, v2) = std::mem::replace(self.old, SlotChildren::Single(k, v)) {
+                if let SlotChildren::Single(k2, v2) =
+                    std::mem::replace(self.old, SlotChildren::Single(k, v))
+                {
                     self.removed_old_single = Some((k2, v2));
                 }
                 self.old_single_matched = true;
@@ -284,7 +277,8 @@ impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
                 map.remove(&k)
             } else {
                 unreachable!();
-            }.ok_or(Error::ListChangeWrong)?;
+            }
+            .ok_or(Error::ListChangeWrong)?;
             map.entry(k).or_insert(v)
         } else if let SlotChildren::Single(k2, v) = self.old {
             if self.old_single_matched || *k2 != k {
@@ -303,7 +297,9 @@ impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
     #[inline]
     pub fn finish(self, mut item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
         if let Some(map) = self.cur_map {
-            if let SlotChildren::Multiple(map) = std::mem::replace(self.old, SlotChildren::Multiple(map)) {
+            if let SlotChildren::Multiple(map) =
+                std::mem::replace(self.old, SlotChildren::Multiple(map))
+            {
                 for (k, c) in map {
                     item_fn(k, c)?;
                 }

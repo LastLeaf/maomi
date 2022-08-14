@@ -2,7 +2,7 @@ use crate::{
     backend::{tree::*, Backend},
     component::*,
     error::Error,
-    node::{SlotChildren, SlotChange, OwnerWeak},
+    node::{OwnerWeak, SlotChange, SlotChildren},
     BackendContext,
 };
 
@@ -14,7 +14,7 @@ pub struct TemplateInit<C: ?Sized> {
 }
 
 /// Some helper functions for the template type
-/// 
+///
 /// This struct is auto-managed by `#[component]` and should not be called directly.
 pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     fn mark_dirty(&mut self)
@@ -153,7 +153,11 @@ pub trait ComponentTemplate<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData) -> Result<(), Error>,
+        slot_fn: impl FnMut(
+            &mut ForestNodeMut<B::GeneralElement>,
+            &ForestToken,
+            &Self::SlotData,
+        ) -> Result<(), Error>,
     ) -> Result<(), Error>
     where
         Self: Sized;
@@ -178,14 +182,18 @@ pub trait ComponentTemplate<B: Backend> {
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
     ) -> Result<bool, Error>
     where
-        Self: Sized
+        Self: Sized,
     {
         let mut slot_changes: Vec<SlotChange<(), ForestToken, ()>> = Vec::with_capacity(0);
         self.template_update(backend_context, backend_element, |slot_change| {
             match slot_change {
-                SlotChange::Unchanged(_, n, _) => slot_changes.push(SlotChange::Unchanged((), n.clone(), ())),
-                SlotChange::Added(_, n, _) => slot_changes.push(SlotChange::Added((), n.clone(), ())),
-                SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.clone()))
+                SlotChange::Unchanged(_, n, _) => {
+                    slot_changes.push(SlotChange::Unchanged((), n.clone(), ()))
+                }
+                SlotChange::Added(_, n, _) => {
+                    slot_changes.push(SlotChange::Added((), n.clone(), ()))
+                }
+                SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.clone())),
             }
             Ok(())
         })?;
@@ -202,12 +210,10 @@ pub trait ComponentTemplate<B: Backend> {
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         for (_, (t, d)) in self.template_mut().slot_scopes().iter() {
-            let n = &mut backend_element.borrow_mut_token(t).ok_or(Error::TreeNodeReleased)?;
-            slot_fn(SlotChange::Unchanged(
-                n,
-                t,
-                d,
-            ))?;
+            let n = &mut backend_element
+                .borrow_mut_token(t)
+                .ok_or(Error::TreeNodeReleased)?;
+            slot_fn(SlotChange::Unchanged(n, t, d))?;
         }
         Ok(())
     }

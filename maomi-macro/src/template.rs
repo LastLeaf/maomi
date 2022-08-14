@@ -202,14 +202,14 @@ impl Parse for TemplateNode {
                     let attr: TemplateAttribute = input.parse()?;
                     match &attr {
                         TemplateAttribute::StaticProperty { name, .. }
-                            | TemplateAttribute::DynamicProperty { name, .. } => {
-                                if name.to_string().as_str() != "data" {
-                                    Err(Error::new(
-                                        name.span(),
-                                        "The slot element cannot contain attributes other than `data`",
-                                    ))?;
-                                }
+                        | TemplateAttribute::DynamicProperty { name, .. } => {
+                            if name.to_string().as_str() != "data" {
+                                Err(Error::new(
+                                    name.span(),
+                                    "The slot element cannot contain attributes other than `data`",
+                                ))?;
                             }
+                        }
                         TemplateAttribute::Event { eq_token, .. } => {
                             Err(Error::new(
                                 eq_token.span(),
@@ -332,7 +332,10 @@ impl Parse for TemplateNode {
                     children.push(content.parse()?);
                 }
                 if branches.len() >= 16 {
-                    Err(Error::new(brace_token.span, "`if` and `else` group cannot contain more than 16 branches"))?;
+                    Err(Error::new(
+                        brace_token.span,
+                        "`if` and `else` group cannot contain more than 16 branches",
+                    ))?;
                 }
                 branches.push(TemplateIfElse {
                     else_token,
@@ -381,7 +384,10 @@ impl Parse for TemplateNode {
                     }
                     let comma = input.parse()?;
                     if arms.len() >= 16 {
-                        Err(Error::new(brace_token.span, "`match` cannot contain more than 16 branches"))?;
+                        Err(Error::new(
+                            brace_token.span,
+                            "`match` cannot contain more than 16 branches",
+                        ))?;
                     }
                     arms.push(TemplateMatchArm {
                         pat,

@@ -38,12 +38,16 @@ impl Parse for CssIdent {
             let la = input.lookahead1();
             let is_sub = if la.peek(token::Sub) {
                 let t: token::Sub = input.parse()?;
-                if span.is_none() { span = Some(t.span()) }
+                if span.is_none() {
+                    span = Some(t.span())
+                }
                 name.push('-');
                 true
             } else if la.peek(Ident) {
                 let t: Ident = input.parse()?;
-                if span.is_none() { span = Some(t.span()) }
+                if span.is_none() {
+                    span = Some(t.span())
+                }
                 let s: &str = &t.to_string();
                 name += s.strip_prefix("r#").unwrap_or(s);
                 false
@@ -53,11 +57,13 @@ impl Parse for CssIdent {
                         ($x:tt) => {
                             if la.peek(Token![$x]) {
                                 let t: Token![$x] = input.parse()?;
-                                if span.is_none() { span = Some(t.span()) }
+                                if span.is_none() {
+                                    span = Some(t.span())
+                                }
                                 name += stringify!($x);
                                 break false;
                             }
-                        }
+                        };
                     }
                     parse_keyword!(abstract);
                     parse_keyword!(as);
@@ -139,9 +145,9 @@ impl WriteCss for CssIdent {
         } else {
             match sc {
                 WriteCssSepCond::Ident
-                    | WriteCssSepCond::NonIdentAlpha
-                    | WriteCssSepCond::Digit
-                    | WriteCssSepCond::At => {
+                | WriteCssSepCond::NonIdentAlpha
+                | WriteCssSepCond::Digit
+                | WriteCssSepCond::At => {
                     write!(w, " ")?;
                 }
                 _ => {}
@@ -203,9 +209,7 @@ impl Spanned for CssString {
 
 impl Parse for CssString {
     fn parse(input: ParseStream) -> Result<Self> {
-        Ok(Self {
-            s: input.parse()?,
-        })
+        Ok(Self { s: input.parse()? })
     }
 }
 
@@ -237,9 +241,7 @@ impl Spanned for CssColon {
 impl Parse for CssColon {
     fn parse(input: ParseStream) -> Result<Self> {
         let x: token::Colon = input.parse()?;
-        Ok(Self {
-            span: x.span(),
-        })
+        Ok(Self { span: x.span() })
     }
 }
 
@@ -268,9 +270,7 @@ impl Spanned for CssSemi {
 impl Parse for CssSemi {
     fn parse(input: ParseStream) -> Result<Self> {
         let x: token::Semi = input.parse()?;
-        Ok(Self {
-            span: x.span(),
-        })
+        Ok(Self { span: x.span() })
     }
 }
 
@@ -308,9 +308,9 @@ impl Parse for CssDelim {
                     return Ok(Self {
                         span,
                         s: stringify!($x),
-                    })
+                    });
                 }
-            }
+            };
         }
         parse_delim!(+);
         parse_delim!(+=);
@@ -365,16 +365,17 @@ impl WriteCss for CssDelim {
         debug_mode: bool,
         w: &mut impl std::fmt::Write,
     ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        let need_sep = debug_mode || match sc {
-            WriteCssSepCond::Ident => self.s == "-",
-            WriteCssSepCond::NonIdentAlpha => self.s == "-",
-            WriteCssSepCond::Digit => self.s == "." || self.s == "-" || self.s == "%",
-            WriteCssSepCond::At => self.s == "-",
-            WriteCssSepCond::Equalable => self.s == "=",
-            WriteCssSepCond::Bar => self.s == "=" || self.s == "|" || self.s == "|=",
-            WriteCssSepCond::Slash => self.s == "*" || self.s == "*=",
-            _ => false,
-        };
+        let need_sep = debug_mode
+            || match sc {
+                WriteCssSepCond::Ident => self.s == "-",
+                WriteCssSepCond::NonIdentAlpha => self.s == "-",
+                WriteCssSepCond::Digit => self.s == "." || self.s == "-" || self.s == "%",
+                WriteCssSepCond::At => self.s == "-",
+                WriteCssSepCond::Equalable => self.s == "=",
+                WriteCssSepCond::Bar => self.s == "=" || self.s == "|" || self.s == "|=",
+                WriteCssSepCond::Slash => self.s == "*" || self.s == "*=",
+                _ => false,
+            };
         if need_sep {
             write!(w, " ")?;
         }
@@ -412,7 +413,7 @@ impl Parse for CssNumber {
             return Ok(Self {
                 span: n.span(),
                 num: Number::Int(n.base10_parse()?),
-            })
+            });
         }
         if la.peek(LitFloat) {
             let n: LitFloat = input.parse()?;
@@ -422,7 +423,7 @@ impl Parse for CssNumber {
             return Ok(Self {
                 span: n.span(),
                 num: Number::Int(n.base10_parse()?),
-            })
+            });
         }
         Err(la.error())
     }
@@ -440,9 +441,9 @@ impl WriteCss for CssNumber {
         } else {
             match sc {
                 WriteCssSepCond::Ident
-                    | WriteCssSepCond::NonIdentAlpha
-                    | WriteCssSepCond::Digit
-                    | WriteCssSepCond::DotOrPlus => {
+                | WriteCssSepCond::NonIdentAlpha
+                | WriteCssSepCond::Digit
+                | WriteCssSepCond::DotOrPlus => {
                     write!(w, " ")?;
                 }
                 _ => {}
@@ -468,10 +469,7 @@ impl Parse for CssPercentage {
     fn parse(input: ParseStream) -> Result<Self> {
         let CssNumber { span, num } = CssNumber::parse(input)?;
         let _: Token![%] = input.parse()?;
-        Ok(Self {
-            span,
-            num,
-        })
+        Ok(Self { span, num })
     }
 }
 
@@ -487,9 +485,9 @@ impl WriteCss for CssPercentage {
         } else {
             match sc {
                 WriteCssSepCond::Ident
-                    | WriteCssSepCond::NonIdentAlpha
-                    | WriteCssSepCond::Digit
-                    | WriteCssSepCond::DotOrPlus => {
+                | WriteCssSepCond::NonIdentAlpha
+                | WriteCssSepCond::Digit
+                | WriteCssSepCond::DotOrPlus => {
                     write!(w, " ")?;
                 }
                 _ => {}
@@ -524,7 +522,7 @@ impl Parse for CssDimension {
                 span: n.span(),
                 num: Number::Int(n.base10_parse()?),
                 unit: n.suffix().to_string(),
-            })
+            });
         }
         if la.peek(LitFloat) {
             let n: LitFloat = input.parse()?;
@@ -535,7 +533,7 @@ impl Parse for CssDimension {
                 span: n.span(),
                 num: Number::Int(n.base10_parse()?),
                 unit: n.suffix().to_string(),
-            })
+            });
         }
         Err(la.error())
     }
@@ -553,9 +551,9 @@ impl WriteCss for CssDimension {
         } else {
             match sc {
                 WriteCssSepCond::Ident
-                    | WriteCssSepCond::NonIdentAlpha
-                    | WriteCssSepCond::Digit
-                    | WriteCssSepCond::DotOrPlus => {
+                | WriteCssSepCond::NonIdentAlpha
+                | WriteCssSepCond::Digit
+                | WriteCssSepCond::DotOrPlus => {
                     write!(w, " ")?;
                 }
                 _ => {}
@@ -606,16 +604,17 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
         } else {
             match sc {
                 WriteCssSepCond::Ident
-                    | WriteCssSepCond::NonIdentAlpha
-                    | WriteCssSepCond::Digit
-                    | WriteCssSepCond::At => {
+                | WriteCssSepCond::NonIdentAlpha
+                | WriteCssSepCond::Digit
+                | WriteCssSepCond::At => {
                     write!(w, " ")?;
                 }
                 _ => {}
             }
         }
         write!(w, "{}(", self.name)?;
-        self.block.write_css(WriteCssSepCond::Other, debug_mode, w)?;
+        self.block
+            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
         if debug_mode {
             write!(w, " ")?;
         }
@@ -640,10 +639,7 @@ impl<T: Parse> Parse for CssParen<T> {
         let content;
         let paren_token = parenthesized!(content in input);
         let block = content.parse()?;
-        Ok(Self {
-            paren_token,
-            block,
-        })
+        Ok(Self { paren_token, block })
     }
 }
 
@@ -665,7 +661,8 @@ impl<T: WriteCss> WriteCss for CssParen<T> {
             }
         }
         write!(w, "(")?;
-        self.block.write_css(WriteCssSepCond::Other, debug_mode, w)?;
+        self.block
+            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
         if debug_mode {
             write!(w, " ")?;
         }
@@ -708,7 +705,8 @@ impl<T: WriteCss> WriteCss for CssBracket<T> {
             write!(w, " ")?;
         }
         write!(w, "[")?;
-        self.block.write_css(WriteCssSepCond::Other, debug_mode, w)?;
+        self.block
+            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
         if debug_mode {
             write!(w, " ")?;
         }
@@ -733,10 +731,7 @@ impl<T: Parse> Parse for CssBrace<T> {
         let content;
         let brace_token = braced!(content in input);
         let block = content.parse()?;
-        Ok(Self {
-            brace_token,
-            block,
-        })
+        Ok(Self { brace_token, block })
     }
 }
 
@@ -751,7 +746,8 @@ impl<T: WriteCss> WriteCss for CssBrace<T> {
             write!(w, " ")?;
         }
         write!(w, "{{")?;
-        self.block.write_css(WriteCssSepCond::Other, debug_mode, w)?;
+        self.block
+            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
         if debug_mode {
             write!(w, " ")?;
         }
@@ -765,18 +761,13 @@ pub struct Repeat<T> {
 }
 
 impl<T: Parse> Repeat<T> {
-    pub fn parse_while(
-        input: ParseStream,
-        mut f: impl FnMut(ParseStream) -> bool,
-    ) -> Result<Self> {
+    pub fn parse_while(input: ParseStream, mut f: impl FnMut(ParseStream) -> bool) -> Result<Self> {
         let mut inner = vec![];
         while f(input) {
             let x = input.parse()?;
             inner.push(x);
         }
-        Ok(Self {
-            inner,
-        })
+        Ok(Self { inner })
     }
 
     pub fn iter(&self) -> std::slice::Iter<T> {
@@ -858,15 +849,9 @@ impl Parse for CssToken {
             if n.suffix().len() == 0 {
                 if input.peek(Token![%]) {
                     let _: Token![%] = input.parse()?;
-                    Self::Percentage(CssPercentage {
-                        span,
-                        num,
-                    })
+                    Self::Percentage(CssPercentage { span, num })
                 } else {
-                    Self::Number(CssNumber {
-                        span,
-                        num,
-                    })
+                    Self::Number(CssNumber { span, num })
                 }
             } else {
                 Self::Dimension(CssDimension {
@@ -882,15 +867,9 @@ impl Parse for CssToken {
             if n.suffix().len() == 0 {
                 if input.peek(Token![%]) {
                     let _: Token![%] = input.parse()?;
-                    Self::Percentage(CssPercentage {
-                        span,
-                        num,
-                    })
+                    Self::Percentage(CssPercentage { span, num })
                 } else {
-                    Self::Number(CssNumber {
-                        span,
-                        num,
-                    })
+                    Self::Number(CssNumber { span, num })
                 }
             } else {
                 Self::Dimension(CssDimension {

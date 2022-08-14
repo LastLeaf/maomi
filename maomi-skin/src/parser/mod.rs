@@ -15,10 +15,9 @@ pub trait StyleSheetConstructor {
     type PropertyValue: Parse;
     type FontFacePropertyValue: Parse;
 
-    fn to_tokens(
-        ss: &StyleSheet<Self>,
-        tokens: &mut proc_macro2::TokenStream,
-    ) where Self: Sized;
+    fn to_tokens(ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
+    where
+        Self: Sized;
 }
 
 /// Display as CSS text
@@ -36,35 +35,35 @@ pub trait WriteCss {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WriteCssSepCond {
     /// The CSS string ends with `CssIdent`
-    /// 
+    ///
     /// It should not be followed by alphabets, digits, `-`, and `(`
     Ident,
     /// The CSS string ends with alphabets or digits (but not an ident nor number), `-` or `#`
-    /// 
+    ///
     /// It should not be followed by alphabets, digits, and `-`
     NonIdentAlpha,
     /// The CSS string ends with `CssNumber`
-    /// 
+    ///
     /// It should not be followed by alphabets, digits, `.`, `-`, and `%`
     Digit,
     /// The CSS string ends with `@`
-    /// 
+    ///
     /// It should not be followed by alphabets and `-`
     At,
     /// The CSS string ends with `.` `+`
-    /// 
+    ///
     /// It should not be followed by digits
     DotOrPlus,
     /// The CSS string ends with `$` `^` `~` `*`
-    /// 
+    ///
     /// It should not be followed by `=`
     Equalable,
     /// The CSS string ends with `|`
-    /// 
+    ///
     /// It should not be followed by `=` `|` `|=`
     Bar,
     /// The CSS string ends with `/`
-    /// 
+    ///
     /// It should not be followed by `*` `*=`
     Slash,
     /// Always no separators needed
@@ -99,7 +98,9 @@ impl<V: WriteCss> WriteCss for Property<V> {
     ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
         self.name.write_css(sc, false, w)?;
         write!(w, ":")?;
-        let sc = self.value.write_css(WriteCssSepCond::Other, debug_mode, w)?;
+        let sc = self
+            .value
+            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
         Ok(sc)
     }
 }
@@ -128,7 +129,7 @@ pub enum PropertyOrSubRule<T: StyleSheetConstructor> {
     },
 }
 
-impl<T: StyleSheetConstructor> Parse for PropertyOrSubRule<T>  {
+impl<T: StyleSheetConstructor> Parse for PropertyOrSubRule<T> {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
         let item = if la.peek(Ident) || la.peek(token::Sub) {
@@ -150,12 +151,16 @@ impl<T: StyleSheetConstructor> Parse for PropertyOrSubRule<T>  {
             match at_keyword.name.as_str() {
                 "media" => Self::Media {
                     at_keyword,
-                    expr: Repeat::parse_while(input, |input| !input.peek(token::Brace) && !input.peek(token::Semi))?,
+                    expr: Repeat::parse_while(input, |input| {
+                        !input.peek(token::Brace) && !input.peek(token::Semi)
+                    })?,
                     items: input.parse()?,
                 },
                 "supports" => Self::Supports {
                     at_keyword,
-                    expr: Repeat::parse_while(input, |input| !input.peek(token::Brace) && !input.peek(token::Semi))?,
+                    expr: Repeat::parse_while(input, |input| {
+                        !input.peek(token::Brace) && !input.peek(token::Semi)
+                    })?,
                     items: input.parse()?,
                 },
                 _ => {
@@ -240,7 +245,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
                                     span: s.span(),
                                     num: Number::Int(100),
                                 },
-                                _ => return Err(Error::new(s.span(), "Illegal ident"))
+                                _ => return Err(Error::new(s.span(), "Illegal ident")),
                             }
                         } else if la.peek(Lit) {
                             input.parse()?

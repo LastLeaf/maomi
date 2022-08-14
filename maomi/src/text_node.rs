@@ -33,7 +33,9 @@ impl TextNode {
         &'b mut self,
         owner: &'b mut tree::ForestNodeMut<B::GeneralElement>,
     ) -> Result<tree::ForestNodeRc<B::GeneralElement>, Error> {
-        owner.resolve_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)
+        owner
+            .resolve_token(&self.backend_element_token)
+            .ok_or(Error::TreeNodeReleased)
     }
 
     #[doc(hidden)]

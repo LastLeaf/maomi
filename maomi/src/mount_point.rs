@@ -33,7 +33,11 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     ) -> Result<Self, Error> {
         let owner_weak: Box<dyn OwnerWeak> = Box::new(DanglingOwner());
         let (mut component_node, backend_element) =
-            <ComponentNode<B, C> as BackendComponent<B>>::init(backend_context, owner, &owner_weak)?;
+            <ComponentNode<B, C> as BackendComponent<B>>::init(
+                backend_context,
+                owner,
+                &owner_weak,
+            )?;
         <ComponentNode<B, C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,

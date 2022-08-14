@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
-use maomi_dom::{prelude::*, async_task, element::*};
+use maomi_dom::{async_task, element::*, prelude::*};
 
 mod env;
 use env::*;

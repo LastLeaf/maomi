@@ -3,7 +3,10 @@
 pub use maomi_tree as tree;
 use tree::*;
 
-use crate::{error::Error, node::{SlotChange, OwnerWeak}};
+use crate::{
+    error::Error,
+    node::{OwnerWeak, SlotChange},
+};
 pub mod context;
 use context::BackendContext;
 

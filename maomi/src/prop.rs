@@ -76,7 +76,7 @@ impl<S: ?Sized + PartialEq, T: PropAsRef<S>> PropertyUpdate<S> for Prop<T> {
 }
 
 /// The list property updater
-/// 
+///
 /// List properties can be updated in `prop:item_name={}` form,
 /// while the `item_name` is a type that implements `ListPropertyItem` .
 pub trait ListPropertyUpdate<S: ?Sized> {

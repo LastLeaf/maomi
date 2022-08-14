@@ -114,7 +114,7 @@ impl<T> ForestNodeRc<T> {
 }
 
 /// A stable memory address for a `ForestToken`
-/// 
+///
 /// Can be used as hash key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ForestTokenAddr(*const ());
@@ -374,7 +374,10 @@ impl<'a, T> ForestNodeMut<'a, T> {
     ///
     /// The node which the token pointed to must be in the same forest and still has a valid `ForestNodeRc` .
     #[inline]
-    pub fn borrow_mut_token<'b>(&'b mut self, target: &ForestToken) -> Option<ForestNodeMut<'b, T>> {
+    pub fn borrow_mut_token<'b>(
+        &'b mut self,
+        target: &ForestToken,
+    ) -> Option<ForestNodeMut<'b, T>> {
         let weak = unsafe { SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(target.inner) };
         weak.clone().leak();
         let rc = weak.rc()?;
