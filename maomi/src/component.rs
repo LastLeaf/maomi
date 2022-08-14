@@ -427,7 +427,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<<B as Backend>::GeneralElement>,
         update_fn: impl FnOnce(&mut C, &mut bool),
-        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component().try_borrow_mut() {
             let mut backend_element = owner.borrow_mut(&self.backend_element());
@@ -453,7 +453,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
         update_fn: impl FnOnce(&mut C, &mut bool),
         mut slot_fn: impl FnMut(
-            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component().try_borrow_mut() {
@@ -473,27 +473,29 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                 // if there is pending slot changes, use it 
                 for slot_change in x {
                     match slot_change {
-                        SlotChange::Unchanged(t, _) => {
+                        SlotChange::Unchanged(_, t, _) => {
+                            let addr = t.stable_addr();
                             slot_fn(
                                 SlotChange::Unchanged(
-                                    owner.borrow_mut_token(&t).as_mut().ok_or(Error::ListChangeWrong)?, 
-                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp).slot_scopes().get(t.stable_addr())?.1,
+                                    owner.borrow_mut_token(&t).as_mut().ok_or(Error::ListChangeWrong)?,
+                                    &t,
+                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp).slot_scopes().get(addr)?.1,
                                 ),
                             )?;
                         }
-                        SlotChange::Added(t, _) => {
+                        SlotChange::Added(_, t, _) => {
+                            let addr = t.stable_addr();
                             slot_fn(
                                 SlotChange::Added(
-                                    owner.borrow_mut_token(&t).as_mut().ok_or(Error::ListChangeWrong)?, 
-                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp).slot_scopes().get(t.stable_addr())?.1,
+                                    owner.borrow_mut_token(&t).as_mut().ok_or(Error::ListChangeWrong)?,
+                                    &t,
+                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp).slot_scopes().get(addr)?.1,
                                 ),
                             )?;
                         }
                         SlotChange::Removed(t) => {
                             slot_fn(
-                                SlotChange::Removed(
-                                    owner.borrow_mut_token(&t).as_mut().ok_or(Error::ListChangeWrong)?, 
-                                ),
+                                SlotChange::Removed(&t),
                             )?;
                         }
                     }

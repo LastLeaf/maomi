@@ -359,7 +359,7 @@ impl Parse for TemplateNode {
         } else if la.peek(token::Match) {
             // parse match expr
             let match_token = input.parse()?;
-            let expr = input.parse()?;
+            let expr = Box::new(Expr::parse_without_eager_brace(input)?);
             let content;
             let brace_token = braced!(content in input);
             let mut arms = vec![];
@@ -635,9 +635,9 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
                 let create_slot = if inside_update {
-                    quote! { __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &()))?; }
+                    quote! { __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &()))?; }
                 } else {
-                    quote! { __m_slot_fn(__m_parent_element, &())?; }
+                    quote! { __m_slot_fn(__m_parent_element, &__m_backend_element_token, &())?; }
                 };
                 quote_spanned! {span=>
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
@@ -695,8 +695,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             #attrs_list_init
                             #(#attrs)*
                         },
-                        |__m_parent_element, __m_scope| {
-                            __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), (#({#children},)*));
+                        |__m_parent_element, __m_backend_element_token, __m_scope| {
+                            __m_slot_children.add(__m_backend_element_token.stable_addr(), (#({#children},)*));
                             Ok(())
                         },
                     )?;
@@ -788,7 +788,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 quote_spanned! {span=>
                     let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
                     let __m_size_hint = {
-                        let size_hint = __m_list.size_hint();
+                        let size_hint = std::iter::Iterator::size_hint(&__m_list);
                         size_hint.1.unwrap_or(size_hint.0)
                     };
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
@@ -880,9 +880,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     } = __m_children.#child_index;
                     let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                         .ok_or(maomi::error::Error::ListChangeWrong)?;
-                    __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &()))?;
-                    __m_slot_scopes.get_mut(__m_backend_element_token.stable_addr())?.1 = (); // TODO update data
-                    // TODO consider slot drop
+                    __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, &()))?;
+                    __m_slot_scopes.reuse(__m_backend_element_token.stable_addr())?.1 = ();
+                    // TODO update data
                 }
             }
             TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
@@ -928,17 +928,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         },
                         |__m_slot_change| {
                             match __m_slot_change {
-                                maomi::node::SlotChange::Added(__m_parent_element, __m_scope) => {
+                                maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, __m_scope) => {
                                     let __m_children = (#({#create_children},)*);
-                                    __m_slot_children.add(__m_parent_element.rc().token().stable_addr(), __m_children);
+                                    __m_slot_children.add(__m_backend_element_token.stable_addr(), __m_children);
                                 }
-                                maomi::node::SlotChange::Unchanged(__m_parent_element, __m_scope) => {
+                                maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, __m_scope) => {
                                     let __m_children =
-                                        __m_slot_children.get_mut(__m_parent_element.rc().token().stable_addr())?;
+                                        __m_slot_children.get_mut(__m_backend_element_token.stable_addr())?;
                                     #({#update_children})*
                                 }
-                                maomi::node::SlotChange::Removed(__m_parent_element) => {
-                                    __m_slot_children.remove(__m_parent_element.rc().token().stable_addr())?;
+                                maomi::node::SlotChange::Removed(__m_backend_element_token) => {
+                                    __m_slot_children.remove(__m_backend_element_token.stable_addr())?;
                                 }
                             }
                             Ok(())
@@ -1073,7 +1073,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         .ok_or(maomi::error::Error::ListChangeWrong)?;
                     let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
                     let __m_size_hint = {
-                        let size_hint = __m_list.size_hint();
+                        let size_hint = std::iter::Iterator::size_hint(&__m_list);
                         size_hint.1.unwrap_or(size_hint.0)
                     };
                     let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
@@ -1083,12 +1083,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     #for_token #pat #in_token __m_list {
                         __m_list_update_iter.next(
                             #next_arg
-                            |__m_parent_element| {
-                                Ok((#({#create_children},)*))
-                            },
                             |__m_children, __m_parent_element| {
-                                #({#update_children})*
-                                Ok(())
+                                if let Some(__m_children) = __m_children {
+                                    #({#update_children})*
+                                    Ok(None)
+                                } else {
+                                    Ok(Some((#({#create_children},)*)))
+                                }
                             },
                         )?;
                     }

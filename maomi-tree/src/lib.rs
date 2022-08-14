@@ -130,6 +130,14 @@ impl Drop for ForestToken {
     }
 }
 
+impl Clone for ForestToken {
+    fn clone(&self) -> Self {
+        Self {
+            inner: unsafe { SliceWeak::clone_weak(self.inner) },
+        }
+    }
+}
+
 impl Debug for ForestToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ForestToken").finish()

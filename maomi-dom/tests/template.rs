@@ -1,106 +1,12 @@
 use wasm_bindgen_test::*;
 
-use maomi::{diff::key::AsListKey, prelude::*};
+use maomi::prelude::*;
 use maomi_dom::{prelude::*, async_task, element::*};
 
 mod env;
 use env::*;
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
-#[wasm_bindgen_test]
-async fn child_component() {
-    #[component(for DomBackend)]
-    struct Child {
-        template: template! {
-            <div title={ &*self.title }> { &self.text } </div>
-            <slot />
-        },
-        text: Prop<String>,
-        title: Prop<String>,
-    }
-
-    impl Component for Child {
-        fn new() -> Self {
-            Self {
-                template: Default::default(),
-                text: Prop::new("".into()),
-                title: Prop::new("".into()),
-            }
-        }
-    }
-
-    #[component(for DomBackend)]
-    struct Parent {
-        callback: Option<ComponentTestCb>,
-        template: template! {
-            <div>
-                <Child title={ &self.hello_title } text=&{ self.hello_text }>
-                    { &self.slot_text }
-                    <slot />
-                </Child>
-            </div>
-        },
-        hello_text: String,
-        hello_title: String,
-        slot_text: String,
-    }
-
-    impl Component for Parent {
-        fn new() -> Self {
-            Self {
-                callback: None,
-                template: Default::default(),
-                hello_text: "".into(),
-                hello_title: "Again".into(),
-                slot_text: "Hello".into(),
-            }
-        }
-
-        fn created(&self) {
-            let this = self.rc();
-            async_task(async move {
-                this.update(|this| {
-                    assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
-                            .outer_html(),
-                        r#"<div><div title="Again"></div>Hello</div>"#,
-                    );
-                    this.hello_text = "Hello world again!".into();
-                    this.slot_text = "".into();
-                })
-                .await
-                .unwrap();
-                this.get_mut(|this| {
-                    assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
-                            .outer_html(),
-                        r#"<div><div title="Again">Hello world again!</div></div>"#,
-                    );
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap();
-            });
-        }
-    }
-
-    impl ComponentTest for Parent {
-        fn set_callback(&mut self, callback: ComponentTestCb) {
-            self.callback = Some(callback);
-        }
-    }
-
-    test_component::<Parent>().await;
-}
 
 #[wasm_bindgen_test]
 async fn template_if_else() {

@@ -39,7 +39,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
             backend_context,
             owner,
             |comp, _| init(comp),
-            |_, _| Ok(()),
+            |_, _, _| Ok(()),
         )?;
         Ok(Self {
             component_node,

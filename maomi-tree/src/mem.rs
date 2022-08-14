@@ -60,6 +60,14 @@ impl SliceWeak<(), 1> {
             mem: p as *const SliceInner<(), 1>,
         };
     }
+
+    pub(crate) unsafe fn clone_weak(p: *const ()) -> *const () {
+        let ret: SliceWeak<(), 1> = SliceWeak {
+            mem: p as *const SliceInner<(), 1>,
+        };
+        (*ret.mem).weak.set((*ret.mem).weak.get() + 1);
+        ret.leak()
+    }
 }
 
 impl<T, const N: usize> Clone for SliceWeak<T, N> {
@@ -139,6 +147,7 @@ struct SliceBuf<T, const N: usize> {
     slices: Pin<Box<[SliceInner<T, N>; N]>>,
 }
 
+#[repr(C)]
 struct SliceInner<T, const N: usize> {
     strong: ManuallyDrop<Cell<usize>>,
     weak: ManuallyDrop<Cell<usize>>,

@@ -232,6 +232,7 @@ impl ToTokens for ComponentBody {
                                 &mut maomi::backend::tree::ForestNodeMut<
                                     <#backend_param as maomi::backend::Backend>::GeneralElement,
                                 >,
+                                &maomi::backend::tree::ForestToken,
                                 &Self::SlotData,
                             ) -> Result<(), maomi::error::Error>,
                         ) -> Result<(), maomi::error::Error>
@@ -257,6 +258,7 @@ impl ToTokens for ComponentBody {
                                     &mut maomi::backend::tree::ForestNodeMut<
                                         <#backend_param as maomi::backend::Backend>::GeneralElement,
                                     >,
+                                    &maomi::backend::tree::ForestToken,
                                     &Self::SlotData,
                                 >,
                             ) -> Result<(), maomi::error::Error>,
@@ -264,7 +266,8 @@ impl ToTokens for ComponentBody {
                         where
                             Self: Sized,
                         {
-                            let __m_slot_scopes = &mut self.#template_field.__m_slot_scopes;
+                            let ttt = __m_backend_element.rc().token();
+                            let mut __m_slot_scopes = self.#template_field.__m_slot_scopes.update();
                             let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;
                             let __m_children = self
@@ -273,6 +276,10 @@ impl ToTokens for ComponentBody {
                                 .as_mut()
                                 .ok_or(maomi::error::Error::TreeNotCreated)?;
                             #template_update
+                            __m_slot_scopes.finish(|_, (n, _)| {
+                                __m_slot_fn(maomi::node::SlotChange::Removed(&n))?;
+                                Ok(())
+                            })?;
                             Ok(())
                         }
                     }

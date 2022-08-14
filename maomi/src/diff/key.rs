@@ -124,8 +124,7 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
     pub fn next<R>(
         &mut self,
         list_key: impl AsListKey<ListKey = R>,
-        create_fn: impl FnOnce(&mut ForestNodeMut<B::GeneralElement>) -> Result<C, Error>,
-        update_fn: impl FnOnce(&mut C, &mut ForestNodeMut<B::GeneralElement>) -> Result<(), Error>,
+        create_or_update_fn: impl FnOnce(Option<&mut C>, &mut ForestNodeMut<B::GeneralElement>) -> Result<Option<C>, Error>,
     ) -> Result<(), Error>
     where
         R: Eq + Hash + ToOwned<Owned = K> + ?Sized,
@@ -135,8 +134,8 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
         let new_key_ref = list_key.as_list_key();
         if let Some((pos, mut c, forest_token)) = self.map.remove(new_key_ref) {
             if let Some(rc) = self.backend_element.resolve_token(&forest_token) {
-                update_fn(
-                    &mut c,
+                create_or_update_fn(
+                    Some(&mut c),
                     &mut self.backend_element.borrow_mut(&rc),
                 )?;
                 self.stable_pos.push(KeyChange::OldPos(rc, OldPos(pos)));
@@ -148,7 +147,7 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
                 <B::GeneralElement as BackendGeneralElement>::create_virtual_element(
                     self.backend_element,
                 )?;
-            let c = create_fn(&mut self.backend_element.borrow_mut(&backend_element))?;
+            let c = create_or_update_fn(None, &mut self.backend_element.borrow_mut(&backend_element))?.ok_or(Error::ListChangeWrong)?;
             self.new_map.insert(
                 new_key_ref.to_owned(),
                 (new_pos, c, backend_element.token()),

@@ -74,12 +74,13 @@ macro_rules! define_element {
                 update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
                 mut slot_fn: impl FnMut(
                     &mut ForestNodeMut<DomGeneralElement>,
+                    &ForestToken,
                     &Self::SlotData,
                 ) -> Result<(), Error>,
             ) -> Result<(), Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)?;
                 update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
-                slot_fn(&mut node, &())?;
+                slot_fn(&mut node, &self.backend_element_token, &())?;
                 Ok(())
             }
 
@@ -90,12 +91,12 @@ macro_rules! define_element {
                 owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
                 update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
                 mut slot_fn: impl FnMut(
-                    SlotChange<&mut ForestNodeMut<DomGeneralElement>, &Self::SlotData>,
+                    SlotChange<&mut ForestNodeMut<DomGeneralElement>, &ForestToken, &Self::SlotData>,
                 ) -> Result<(), Error>,
             ) -> Result<(), Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)?;
                 update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
-                slot_fn(SlotChange::Unchanged(&mut node, &()))?;
+                slot_fn(SlotChange::Unchanged(&mut node, &self.backend_element_token, &()))?;
                 Ok(())
             }
         }

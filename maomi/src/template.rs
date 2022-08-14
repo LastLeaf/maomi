@@ -29,7 +29,7 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     where
         C: 'static + Sized;
     fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, D)>;
-    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<ForestToken, ()>>>;
+    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<(), ForestToken, ()>>>;
     fn self_owner_weak(&self) -> &Box<dyn OwnerWeak>;
 }
 
@@ -46,7 +46,7 @@ pub struct Template<C, S, D> {
     #[doc(hidden)]
     pub __m_slot_scopes: SlotChildren<ForestTokenAddr, (ForestToken, D)>,
     #[doc(hidden)]
-    pub __m_pending_slot_changes: Option<Vec<SlotChange<ForestToken, ()>>>,
+    pub __m_pending_slot_changes: Option<Vec<SlotChange<(), ForestToken, ()>>>,
 }
 
 impl<C, S, D> Default for Template<C, S, D> {
@@ -121,7 +121,7 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     }
 
     #[inline]
-    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<ForestToken, ()>>> {
+    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<(), ForestToken, ()>>> {
         self.__m_pending_slot_changes.take()
     }
 
@@ -153,7 +153,7 @@ pub trait ComponentTemplate<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData) -> Result<(), Error>,
+        slot_fn: impl FnMut(&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData) -> Result<(), Error>,
     ) -> Result<(), Error>
     where
         Self: Sized;
@@ -164,7 +164,7 @@ pub trait ComponentTemplate<B: Backend> {
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
         slot_fn: impl FnMut(
-            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error>
     where
@@ -180,12 +180,12 @@ pub trait ComponentTemplate<B: Backend> {
     where
         Self: Sized
     {
-        let mut slot_changes = Vec::with_capacity(0);
+        let mut slot_changes: Vec<SlotChange<(), ForestToken, ()>> = Vec::with_capacity(0);
         self.template_update(backend_context, backend_element, |slot_change| {
             match slot_change {
-                SlotChange::Unchanged(n, _) => slot_changes.push(SlotChange::Unchanged(n.rc().token(), ())),
-                SlotChange::Added(n, _) => slot_changes.push(SlotChange::Added(n.rc().token(), ())),
-                SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.rc().token()))
+                SlotChange::Unchanged(_, n, _) => slot_changes.push(SlotChange::Unchanged((), n.clone(), ())),
+                SlotChange::Added(_, n, _) => slot_changes.push(SlotChange::Added((), n.clone(), ())),
+                SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.clone()))
             }
             Ok(())
         })?;
@@ -198,12 +198,14 @@ pub trait ComponentTemplate<B: Backend> {
         &'b mut self,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
         mut slot_fn: impl FnMut(
-            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &Self::SlotData>,
+            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         for (_, (t, d)) in self.template_mut().slot_scopes().iter() {
+            let n = &mut backend_element.borrow_mut_token(t).ok_or(Error::TreeNodeReleased)?;
             slot_fn(SlotChange::Unchanged(
-                &mut backend_element.borrow_mut_token(t).ok_or(Error::TreeNodeReleased)?,
+                n,
+                t,
                 d,
             ))?;
         }
