@@ -1,44 +1,62 @@
 use proc_macro::TokenStream;
 use quote::*;
 use syn::parse::*;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::*;
 
 use super::template::Template;
 
-enum ComponentAttr {
-    None,
-    ImplBackend {
-        _for_token: token::For,
-        _impl_token: token::Impl,
-        path: Path,
-    },
-    Backend {
-        _for_token: token::For,
-        path: Path,
-    },
+struct ComponentAttr {
+    items: Punctuated<ComponentAttrItem, token::Comma>,
 }
 
 impl Parse for ComponentAttr {
     fn parse(input: ParseStream) -> Result<Self> {
-        let ret = if input.is_empty() {
-            Self::None
-        } else {
-            let _for_token = input.parse()?;
-            let la = input.lookahead1();
-            if la.peek(Ident) || la.peek(token::Colon2) {
+        let items = Punctuated::parse_terminated(input)?;
+        Ok(Self {
+            items,
+        })
+    }
+}
+
+enum ComponentAttrItem {
+    Backend {
+        attr_name: Ident,
+        #[allow(dead_code)]
+        equal_token: token::Eq,
+        impl_token: Option<token::Impl>,
+        path: Path,
+    },
+    SlotData {
+        attr_name: Ident,
+        #[allow(dead_code)]
+        equal_token: token::Eq,
+        path: Path,
+    },
+}
+
+impl Parse for ComponentAttrItem {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let attr_name: Ident = input.parse()?;
+        let ret = match attr_name.to_string().as_str() {
+            "Backend" => {
                 Self::Backend {
-                    _for_token,
+                    attr_name,
+                    equal_token: input.parse()?,
+                    impl_token: input.parse()?,
                     path: input.parse()?,
                 }
-            } else if la.peek(token::Impl) {
-                Self::ImplBackend {
-                    _for_token,
-                    _impl_token: input.parse()?,
+            }
+            "SlotData" => {
+                Self::SlotData {
+                    attr_name,
+                    equal_token: input.parse()?,
                     path: input.parse()?,
                 }
-            } else {
-                return Err(la.error());
+            }
+            _ => {
+                return Err(Error::new(attr_name.span(), "Unknown attribute parameter"));
             }
         };
         Ok(ret)
@@ -50,6 +68,7 @@ struct ComponentBody {
     component_name: proc_macro2::TokenStream,
     backend_param: proc_macro2::TokenStream,
     backend_param_in_impl: Option<GenericParam>,
+    slot_data_ty: proc_macro2::TokenStream,
     template: Result<Template>,
     template_field: Ident,
     template_ty: Type,
@@ -57,25 +76,50 @@ struct ComponentBody {
 
 impl ComponentBody {
     fn new(attr: ComponentAttr, mut inner: ItemStruct) -> Result<Self> {
-        // generate backend type params
-        let backend_param = match &attr {
-            ComponentAttr::None => quote! { __MBackend },
-            ComponentAttr::ImplBackend { path, .. } => {
+        // generate backend type params and slot params
+        let mut backend_attr = None;
+        let mut slot_data_attr = None;
+        for item in attr.items {
+            match item {
+                ComponentAttrItem::Backend { attr_name, impl_token, path, .. } => {
+                    if backend_attr.is_some() {
+                        return Err(Error::new(attr_name.span(), "Duplicated attribute parameter"));
+                    }
+                    backend_attr = Some((impl_token, path));
+                }
+                ComponentAttrItem::SlotData { attr_name, path, .. } => {
+                    if slot_data_attr.is_some() {
+                        return Err(Error::new(attr_name.span(), "Duplicated attribute parameter"));
+                    }
+                    slot_data_attr = Some(path);
+                }
+            }
+        }
+        let backend_param = match &backend_attr {
+            None => quote! { __MBackend },
+            Some((Some(_), path)) => {
                 let span = path.span();
                 quote_spanned! {span=> __MBackend }
             }
-            ComponentAttr::Backend { path, .. } => {
+            Some((None, path)) => {
                 let span = path.span();
                 quote_spanned! {span=> #path }
             }
         };
-        let backend_param_in_impl = match &attr {
-            ComponentAttr::None => Some(parse_quote! { __MBackend: maomi::backend::Backend }),
-            ComponentAttr::ImplBackend { path, .. } => {
+        let backend_param_in_impl = match backend_attr {
+            None => Some(parse_quote! { __MBackend: maomi::backend::Backend }),
+            Some((Some(_), path)) => {
                 let span = path.span();
                 Some(parse_quote_spanned! {span=> __MBackend: #path })
             }
-            ComponentAttr::Backend { .. } => None,
+            Some((None, _)) => None,
+        };
+        let slot_data_ty = match slot_data_attr {
+            None => quote! { () },
+            Some(path) => {
+                let span = path.span();
+                quote_spanned! {span=> #path }
+            },
         };
 
         // find component name and type params
@@ -134,7 +178,7 @@ impl ComponentBody {
                             Err(_) => parse_quote! { () },
                         };
                         field.ty = parse_quote! {
-                            maomi::template::Template<#component_name, #structure_ty, ()> // TODO slot data ty
+                            maomi::template::Template<#component_name, #structure_ty, #slot_data_ty>
                         };
                         template_ty = Some(structure_ty);
                         template = Some(t);
@@ -164,6 +208,7 @@ impl ComponentBody {
             component_name,
             backend_param,
             backend_param_in_impl,
+            slot_data_ty,
             template,
             template_field: template_field.unwrap(),
             template_ty: template_ty.unwrap(),
@@ -178,6 +223,7 @@ impl ToTokens for ComponentBody {
             component_name,
             backend_param,
             backend_param_in_impl,
+            slot_data_ty,
             template,
             template_field,
             template_ty,
@@ -204,7 +250,7 @@ impl ToTokens for ComponentBody {
                     impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
                         type TemplateField = maomi::template::Template<Self, Self::TemplateStructure, Self::SlotData>;
                         type TemplateStructure = #template_ty;
-                        type SlotData = ();
+                        type SlotData = #slot_data_ty;
 
                         #[inline]
                         fn template(&self) -> &Self::TemplateField {

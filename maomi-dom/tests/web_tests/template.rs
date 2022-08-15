@@ -3,14 +3,11 @@ use wasm_bindgen_test::*;
 use maomi::prelude::*;
 use maomi_dom::{async_task, element::*, prelude::*};
 
-mod env;
-use env::*;
-
-wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+use super::*;
 
 #[wasm_bindgen_test]
 async fn template_if_else() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -53,7 +50,7 @@ async fn template_if_else() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, ctx| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -64,11 +61,11 @@ async fn template_if_else() {
                         r#"<div>hello</div>"#,
                     );
                     this.text = "long........".into();
-                    this.schedule_update();
+                    ctx.need_update();
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -97,7 +94,7 @@ async fn template_if_else() {
 
 #[wasm_bindgen_test]
 async fn template_lonely_if() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -150,7 +147,7 @@ async fn template_lonely_if() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -179,7 +176,7 @@ async fn template_lonely_if() {
 
 #[wasm_bindgen_test]
 async fn template_match() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -226,7 +223,7 @@ async fn template_match() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, ctx| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -237,11 +234,11 @@ async fn template_match() {
                         r#"<div>hello</div>"#,
                     );
                     this.text = "long........".into();
-                    this.schedule_update();
+                    ctx.need_update();
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -270,7 +267,7 @@ async fn template_match() {
 
 #[wasm_bindgen_test]
 async fn template_for_keyless() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -335,7 +332,7 @@ async fn template_for_keyless() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -380,7 +377,7 @@ async fn template_for() {
         static EV_LIST: RefCell<Vec<usize>> = RefCell::new(vec![]);
     }
 
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Child {
         template: template! {
             { &self.num.to_string() }
@@ -401,7 +398,7 @@ async fn template_for() {
         }
     }
 
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -519,7 +516,7 @@ async fn template_for() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -561,7 +558,7 @@ async fn template_for() {
 //         }
 //     }
 
-//     #[component(for DomBackend)]
+//     #[component(Backend = DomBackend)]
 //     struct Parent {
 //         callback: Option<ComponentTestCb>,
 //         template: template! {
@@ -639,7 +636,7 @@ async fn template_for() {
 
 #[wasm_bindgen_test]
 async fn style_attr() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -674,7 +671,7 @@ async fn style_attr() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()

@@ -76,6 +76,7 @@ pub(super) enum TemplateNode {
     Tag {
         tag_lt_token: token::Lt,
         tag_name: Path,
+        slot_var_name: Option<Ident>,
         attrs: Vec<TemplateAttribute>,
         #[allow(dead_code)]
         tag_gt_token: token::Gt,
@@ -194,25 +195,31 @@ impl Parse for TemplateNode {
             let expr = content.parse()?;
             TemplateNode::DynamicText { brace_token, expr }
         } else if la.peek(token::Lt) {
-            // parse a tag
             let tag_lt_token = input.parse()?;
             let tag_name: Path = input.parse()?;
             if tag_name.is_ident("slot") {
-                let data = if la.peek(Ident) {
+                // parse slot tag
+                let data = if input.peek(Ident) {
                     let attr: TemplateAttribute = input.parse()?;
                     match &attr {
-                        TemplateAttribute::StaticProperty { name, .. }
-                        | TemplateAttribute::DynamicProperty { name, .. } => {
+                        TemplateAttribute::StaticProperty { name, list_updater, .. }
+                        | TemplateAttribute::DynamicProperty { name, list_updater, .. } => {
                             if name.to_string().as_str() != "data" {
                                 Err(Error::new(
                                     name.span(),
                                     "The slot element cannot contain attributes other than `data`",
                                 ))?;
                             }
+                            if list_updater.is_some() {
+                                Err(Error::new(
+                                    name.span(),
+                                    "Illegal slot `data` attribute",
+                                ))?;
+                            }
                         }
-                        TemplateAttribute::Event { eq_token, .. } => {
+                        TemplateAttribute::Event { name, .. } | TemplateAttribute::Slot { name, .. } => {
                             Err(Error::new(
-                                eq_token.span(),
+                                name.span(),
                                 "Illegal slot element attribute value",
                             ))?;
                         }
@@ -257,12 +264,21 @@ impl Parse for TemplateNode {
                     return Err(la.error());
                 }
             } else {
+                // parse element
+                let mut slot_var_name = None;
                 let mut attrs = vec![];
                 let mut la = input.lookahead1();
                 loop {
                     if la.peek(Ident) {
                         let attr = input.parse()?;
-                        attrs.push(attr);
+                        if let TemplateAttribute::Slot { name, var_name, .. } = attr {
+                            if slot_var_name.is_some() {
+                                return Err(Error::new(name.span(), "Duplicated `slot` attribute"));
+                            }
+                            slot_var_name = Some(var_name);
+                        } else {
+                            attrs.push(attr);
+                        }
                         la = input.lookahead1();
                     } else {
                         break;
@@ -274,6 +290,7 @@ impl Parse for TemplateNode {
                     TemplateNode::Tag {
                         tag_lt_token,
                         tag_name,
+                        slot_var_name,
                         attrs,
                         tag_gt_token,
                         children: Vec::with_capacity(0),
@@ -305,6 +322,7 @@ impl Parse for TemplateNode {
                     TemplateNode::Tag {
                         tag_lt_token,
                         tag_name,
+                        slot_var_name,
                         attrs,
                         tag_gt_token,
                         children,
@@ -461,11 +479,11 @@ pub(super) enum TemplateAttribute {
         value: Lit,
     },
     DynamicProperty {
-        ref_token: Option<token::And>,
         name: Ident,
         list_updater: Option<(token::Colon, Path)>,
         #[allow(dead_code)]
         eq_token: token::Eq,
+        ref_token: Option<token::And>,
         #[allow(dead_code)]
         brace_token: token::Brace,
         expr: Box<Expr>,
@@ -480,6 +498,12 @@ pub(super) enum TemplateAttribute {
         brace_token: token::Brace,
         expr: Box<Expr>,
     },
+    Slot {
+        name: Ident,
+        #[allow(dead_code)]
+        colon_token: token::Colon,
+        var_name: Ident,
+    }
 }
 
 impl TemplateAttribute {
@@ -492,6 +516,7 @@ impl TemplateAttribute {
                 name, list_updater, ..
             } => list_updater.as_ref().map(|_| name),
             Self::Event { .. } => None,
+            Self::Slot { .. } => None,
         }
     }
 }
@@ -500,58 +525,66 @@ impl Parse for TemplateAttribute {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
         let ret = if la.peek(Ident) {
-            let name = input.parse()?;
-            let list_updater = if input.peek(token::Colon) {
-                Some((input.parse()?, input.parse()?))
+            let name: Ident = input.parse()?;
+            if name.to_string().as_str() == "slot" {
+                TemplateAttribute::Slot {
+                    name,
+                    colon_token: input.parse()?,
+                    var_name: input.parse()?,
+                }
             } else {
-                None
-            };
-            if input.peek(token::Eq) {
-                let eq_token = input.parse()?;
-                let la = input.lookahead1();
-                if la.peek(Lit) {
-                    let value = input.parse()?;
+                let list_updater = if input.peek(token::Colon) {
+                    Some((input.parse()?, input.parse()?))
+                } else {
+                    None
+                };
+                if input.peek(token::Eq) {
+                    let eq_token = input.parse()?;
+                    let la = input.lookahead1();
+                    if la.peek(Lit) {
+                        let value = input.parse()?;
+                        TemplateAttribute::StaticProperty {
+                            name,
+                            list_updater,
+                            eq_token,
+                            value,
+                        }
+                    } else if la.peek(token::And) {
+                        let ref_token = input.parse()?;
+                        let content;
+                        let brace_token = braced!(content in input);
+                        let expr = content.parse()?;
+                        TemplateAttribute::DynamicProperty {
+                            ref_token: Some(ref_token),
+                            name,
+                            list_updater,
+                            eq_token,
+                            brace_token,
+                            expr,
+                        }
+                    } else if la.peek(token::Brace) {
+                        let content;
+                        let brace_token = braced!(content in input);
+                        let expr = content.parse()?;
+                        TemplateAttribute::DynamicProperty {
+                            ref_token: None,
+                            name,
+                            list_updater,
+                            eq_token,
+                            brace_token,
+                            expr,
+                        }
+                    } else {
+                        return Err(la.error());
+                    }
+                } else {
+                    let span = name.span();
                     TemplateAttribute::StaticProperty {
                         name,
                         list_updater,
-                        eq_token,
-                        value,
+                        eq_token: parse_quote_spanned! {span=> = },
+                        value: parse_quote_spanned! {span=> true },
                     }
-                } else if la.peek(token::And) {
-                    let ref_token = input.parse()?;
-                    let content;
-                    let brace_token = braced!(content in input);
-                    let expr = content.parse()?;
-                    TemplateAttribute::DynamicProperty {
-                        ref_token: Some(ref_token),
-                        name,
-                        list_updater,
-                        eq_token,
-                        brace_token,
-                        expr,
-                    }
-                } else if la.peek(token::Brace) {
-                    let content;
-                    let brace_token = braced!(content in input);
-                    let expr = content.parse()?;
-                    TemplateAttribute::DynamicProperty {
-                        ref_token: None,
-                        name,
-                        list_updater,
-                        eq_token,
-                        brace_token,
-                        expr,
-                    }
-                } else {
-                    return Err(la.error());
-                }
-            } else {
-                let span = name.span();
-                TemplateAttribute::StaticProperty {
-                    name,
-                    list_updater,
-                    eq_token: parse_quote_spanned! {span=> = },
-                    value: parse_quote_spanned! {span=> true },
                 }
             }
         } else if la.peek(token::At) {
@@ -640,18 +673,34 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
+                let data_expr = match data {
+                    None => quote_spanned! {span=> () },
+                    Some(attr) => {
+                        match attr {
+                            TemplateAttribute::StaticProperty { value, .. } => {
+                                quote_spanned! {span=> #value.into() }
+                            }
+                            TemplateAttribute::DynamicProperty { expr, .. } => {
+                                quote_spanned! {span=> (#expr).into() }
+                            }
+                            TemplateAttribute::Event { .. } => unreachable!(),
+                            TemplateAttribute::Slot { .. } => unreachable!(),
+                        }
+                    },
+                };
                 let create_slot = if inside_update {
-                    quote! { __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &()))?; }
+                    quote! { __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &__m_slot_data))?; }
                 } else {
-                    quote! { __m_slot_fn(__m_parent_element, &__m_backend_element_token, &())?; }
+                    quote! { __m_slot_fn(__m_parent_element, &__m_backend_element_token, &__m_slot_data)?; }
                 };
                 quote_spanned! {span=>
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     {
                         let __m_backend_element_token = __m_backend_element.token();
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        let __m_slot_data = #data_expr;
                         #create_slot
-                        __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, ()));
+                        __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data));
                     }
                     let __m_backend_element_token = __m_backend_element.token();
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
@@ -661,7 +710,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     )
                 }
             }
-            TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
+            TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
                 let mut list_prop_count = HashMap::new();
                 let attrs = attrs.into_iter().map(|attr| {
@@ -685,6 +734,10 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     )*
                 };
                 let children = children.into_iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
+                let slot_var_name = match slot_var_name {
+                    Some(x) => quote! { #x },
+                    None => quote! { __m_slot_data },
+                };    
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
                         <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
@@ -701,7 +754,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             #attrs_list_init
                             #(#attrs)*
                         },
-                        |__m_parent_element, __m_backend_element_token, __m_scope| {
+                        |__m_parent_element, __m_backend_element_token, #slot_var_name| {
                             __m_slot_children.add(__m_backend_element_token.stable_addr(), (#({#children},)*));
                             Ok(())
                         },
@@ -879,6 +932,21 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
+                let data_expr = match data {
+                    None => quote! {},
+                    Some(attr) => {
+                        match attr {
+                            TemplateAttribute::StaticProperty { .. } => quote! {},
+                            TemplateAttribute::DynamicProperty { expr, .. } => {
+                                quote_spanned! {span=>
+                                    *__m_slot_data = (#expr).into();
+                                }
+                            }
+                            TemplateAttribute::Event { .. } => unreachable!(),
+                            TemplateAttribute::Slot { .. } => unreachable!(),
+                        }
+                    },
+                };
                 quote_spanned! {span=>
                     let maomi::node::ControlNode {
                         forest_token: ref mut __m_backend_element_token,
@@ -886,12 +954,12 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     } = __m_children.#child_index;
                     let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                         .ok_or(maomi::error::Error::ListChangeWrong)?;
-                    __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, &()))?;
-                    __m_slot_scopes.reuse(__m_backend_element_token.stable_addr())?.1 = ();
-                    // TODO update data
+                    let __m_slot_data = &mut __m_slot_scopes.reuse(__m_backend_element_token.stable_addr())?.1;
+                    #data_expr
+                    __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
                 }
             }
-            TemplateNode::Tag { tag_lt_token, tag_name, attrs, children, .. } => {
+            TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
                 let mut list_prop_count = HashMap::new();
                 let attrs = attrs.into_iter().map(|attr| {
@@ -917,6 +985,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         template_node: x,
                         backend_param,
                     });
+                let slot_var_name = match slot_var_name {
+                    Some(x) => quote! { #x },
+                    None => quote! { __m_slot_data },
+                };
                 quote_spanned! {span=>
                     let maomi::node::Node {
                         tag: ref mut __m_child,
@@ -934,11 +1006,11 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         },
                         |__m_slot_change| {
                             match __m_slot_change {
-                                maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, __m_scope) => {
+                                maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
                                     let __m_children = (#({#create_children},)*);
                                     __m_slot_children.add(__m_backend_element_token.stable_addr(), __m_children);
                                 }
-                                maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, __m_scope) => {
+                                maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
                                     let __m_children =
                                         __m_slot_children.get_mut(__m_backend_element_token.stable_addr())?;
                                     #({#update_children})*
@@ -1173,6 +1245,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                     maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #expr, __m_update_ctx);
                 }
             }
+            TemplateAttribute::Slot { .. } => unreachable!(),
         }
         .to_tokens(tokens)
     }
@@ -1225,6 +1298,7 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
             TemplateAttribute::Event { .. } => {
                 quote! {}
             }
+            TemplateAttribute::Slot { .. } => unreachable!(),
         }
         .to_tokens(tokens)
     }

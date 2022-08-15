@@ -14,6 +14,7 @@ use crate::mount_point::MountPoint;
 use crate::template::ComponentTemplate;
 
 /// A future that can be resolved with a callback function
+#[must_use]
 pub struct AsyncCallback<R: 'static> {
     done: Rc<Cell<Option<R>>>,
     waker: Rc<Cell<Option<Waker>>>,

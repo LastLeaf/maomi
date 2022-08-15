@@ -3,6 +3,9 @@ use std::sync::Once;
 use maomi::{prelude::*, template::ComponentTemplate, AsyncCallback};
 use maomi_dom::prelude::*;
 
+pub mod template;
+pub mod component;
+
 static INIT: Once = Once::new();
 
 fn init() {

@@ -3,6 +3,7 @@ use std::{
     marker::PhantomData,
     rc::{Rc, Weak},
 };
+use async_trait::async_trait;
 
 use crate::{
     backend::{
@@ -53,10 +54,10 @@ impl<C: 'static> ComponentRc<C> {
         let ret2 = ret.clone();
         self.inner
             .enter_mut(
-                true,
                 Box::new(move |c| {
                     let r = f(c);
                     ret2.set(Some(r));
+                    true
                 }),
             )
             .await?;
@@ -91,19 +92,20 @@ impl<C: 'static> ComponentRc<C> {
     ///
     /// The `f` may not be called immediately.
     /// If any other component is still in a visiting or updating task, the `f` will be delayed.
-    /// If the template is needed to be updated, `schedule_update` should be called during `f` execution.
+    /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
     pub async fn get_mut<R: 'static>(
         &self,
-        f: impl 'static + FnOnce(&mut C) -> R,
+        f: impl 'static + FnOnce(&mut C, &mut ComponentMutCtx) -> R,
     ) -> Result<R, Error> {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
         self.inner
             .enter_mut(
-                false,
                 Box::new(move |c| {
-                    let r = f(c);
+                    let mut ctx = ComponentMutCtx { need_update: false };
+                    let r = f(c, &mut ctx);
                     ret2.set(Some(r));
+                    ctx.need_update
                 }),
             )
             .await?;
@@ -112,6 +114,18 @@ impl<C: 'static> ComponentRc<C> {
             .unwrap()
             .into_inner()
             .unwrap())
+    }
+}
+
+/// A helper for `ComponentRc::get_mut`
+pub struct ComponentMutCtx {
+    need_update: bool,
+}
+
+impl ComponentMutCtx {
+    /// Request an update when the `ComponentRc::get_mut` call ends
+    pub fn need_update(&mut self) {
+        self.need_update = true;
     }
 }
 
@@ -127,12 +141,13 @@ pub trait Component: 'static {
     fn created(&self) {}
 
     /// Called before every template updates
-    fn before_update(&mut self) {}
+    fn before_template_apply(&mut self) {}
 }
 
 /// Some component helper functions
 ///
 /// This trait is auto-implemented by `#[component]` .
+#[async_trait(?Send)]
 pub trait ComponentExt<B: Backend, C> {
     type TemplateStructure;
 
@@ -143,8 +158,17 @@ pub trait ComponentExt<B: Backend, C> {
     fn template_structure(&self) -> Option<&Self::TemplateStructure>;
 
     /// Manually trigger an update for the template
-    fn schedule_update(&mut self)
+    async fn apply_updates(&mut self) -> Result<(), Error>
     where
+        C: 'static,
+        Self: 'static;
+
+    /// Get a mutable reference of the component and then do updates
+    ///
+    /// It is a short cut for `.rc().update()`
+    async fn update<R>(&self, f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R) -> Result<R, Error>
+    where
+        R: 'static,
         C: 'static,
         Self: 'static;
 
@@ -158,6 +182,7 @@ pub trait ComponentExt<B: Backend, C> {
         Self: 'static;
 }
 
+#[async_trait(?Send)]
 impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     type TemplateStructure = T::TemplateStructure;
 
@@ -167,11 +192,20 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     }
 
     #[inline]
-    fn schedule_update(&mut self)
+    async fn apply_updates(&mut self) -> Result<(), Error>
     where
         T: 'static,
     {
         <Self as ComponentTemplate<B>>::template_mut(self).mark_dirty();
+        self.rc().update(|_| {}).await
+    }
+
+    #[inline]
+    async fn update<R: 'static>(&self, f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R) -> Result<R, Error>
+    where
+        T: 'static,
+    {
+        <Self as ComponentExt<B, Self>>::rc(self).update(f).await
     }
 
     #[inline]
@@ -181,7 +215,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     {
         <Self as ComponentTemplate<B>>::template(self)
             .component_rc()
-            .unwrap()
+            .expect("Cannot get `ComponentRc` before initialization")
     }
 }
 
@@ -191,8 +225,7 @@ pub(crate) trait UpdateScheduler: 'static {
     fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()>;
     fn enter_mut(
         &self,
-        force_schdule_update: bool,
-        f: Box<dyn FnOnce(&mut Self::EnterType)>,
+        f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>>;
     fn sync_update(&self) -> Result<(), Error>;
 }
@@ -271,20 +304,19 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
     #[inline]
     fn enter_mut(
         &self,
-        force_schdule_update: bool,
-        f: Box<dyn FnOnce(&mut Self::EnterType)>,
+        f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>> {
         let inner = self.inner.clone();
         self.backend_context()
             .enter::<Result<(), Error>, _>(move |_| {
                 let has_slot_changes = {
                     let mut comp = inner.0.borrow_mut();
-                    f(&mut comp);
+                    let force_schdule_update = f(&mut comp);
                     if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
                         || force_schdule_update
                     {
                         let mut backend_element = inner.2.borrow_mut();
-                        <C as Component>::before_update(&mut comp);
+                        <C as Component>::before_template_apply(&mut comp);
                         let has_slot_changes =
                             <C as ComponentTemplate<B>>::template_update_store_slot_changes(
                                 &mut comp,
@@ -310,7 +342,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
             let mut comp = inner.0.borrow_mut();
             <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty();
             let mut backend_element = inner.2.borrow_mut();
-            <C as Component>::before_update(&mut comp);
+            <C as Component>::before_template_apply(&mut comp);
             let has_slot_changes = <C as ComponentTemplate<B>>::template_update_store_slot_changes(
                 &mut comp,
                 &inner.1,
@@ -444,6 +476,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             let mut backend_element = owner.borrow_mut(&self.backend_element());
             let mut force_dirty = false;
             update_fn(&mut comp, &mut force_dirty);
+            <C as Component>::before_template_apply(&mut comp);
             <C as ComponentTemplate<B>>::template_create(
                 &mut comp,
                 backend_context,
@@ -473,7 +506,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
                 // if any data changed, do updates
                 let mut backend_element = owner.borrow_mut(&self.backend_element());
-                <C as Component>::before_update(&mut comp);
+                <C as Component>::before_template_apply(&mut comp);
                 <C as ComponentTemplate<B>>::template_update(
                     &mut comp,
                     backend_context,

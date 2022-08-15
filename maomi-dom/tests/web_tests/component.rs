@@ -3,14 +3,11 @@ use wasm_bindgen_test::*;
 use maomi::prelude::*;
 use maomi_dom::{async_task, element::*, prelude::*};
 
-mod env;
-use env::*;
-
-wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+use super::*;
 
 #[wasm_bindgen_test]
 async fn single_static_slot() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Child {
         template: template! {
             <div title={ &*self.title }> { &self.text } </div>
@@ -30,7 +27,7 @@ async fn single_static_slot() {
         }
     }
 
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -75,7 +72,7 @@ async fn single_static_slot() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -104,7 +101,7 @@ async fn single_static_slot() {
 
 #[wasm_bindgen_test]
 async fn single_dynamic_slot() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Child {
         template: template! {
             <div>
@@ -133,7 +130,7 @@ async fn single_dynamic_slot() {
         }
     }
 
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -227,7 +224,7 @@ async fn single_dynamic_slot() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -265,7 +262,7 @@ async fn single_dynamic_slot() {
 
 #[wasm_bindgen_test]
 async fn multiple_slots() {
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Child {
         template: template! {
             for n in &*self.list {
@@ -285,7 +282,7 @@ async fn multiple_slots() {
         }
     }
 
-    #[component(for DomBackend)]
+    #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
@@ -379,7 +376,7 @@ async fn multiple_slots() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this| {
+                this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -398,6 +395,289 @@ async fn multiple_slots() {
                         .0
                         .single_slot()
                         .is_none());
+                    (this.callback.take().unwrap())();
+                })
+                .await
+                .unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn multiple_slots_with_data() {
+    enum ChildSlot {
+        Even(u32),
+        Odd(u32),
+    }
+
+    #[component(Backend = DomBackend, SlotData = ChildSlot)]
+    struct Child {
+        template: template! {
+            for n in &*self.list {
+                { &n.to_string() }
+                <slot data={
+                    match n % 2 {
+                        0 => ChildSlot::Even(*n),
+                        1 => ChildSlot::Odd(*n),
+                        _ => unreachable!(),
+                    }
+                } />
+            }
+        },
+        list: Prop<Vec<u32>>,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                list: Prop::new(vec![]),
+            }
+        }
+    }
+
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                <Child list={ &self.list } slot:data>
+                    match data {
+                        ChildSlot::Even(_) => { "A" }
+                        ChildSlot::Odd(_) => { "B" }
+                    }
+                </_>
+            </div>
+        },
+        list: Vec<u32>,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                list: vec![],
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
+                        r#""#,
+                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
+                    this.list.push(1);
+                    this.list.push(2);
+                })
+                .await
+                .unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
+                        r#"1B2A"#,
+                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
+                    this.list = vec![6, 7, 8];
+                })
+                .await
+                .unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
+                        r#"6A7B8A"#,
+                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
+                    this.list = vec![];
+                })
+                .await
+                .unwrap();
+                this.get_mut(|this, _| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
+                        r#""#,
+                    );
+                    assert!(this
+                        .template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .unwrap()
+                        .0
+                        .single_slot()
+                        .is_none());
+                    (this.callback.take().unwrap())();
+                })
+                .await
+                .unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn self_update_slot_data() {
+    #[component(Backend = DomBackend, SlotData = String)]
+    struct Child {
+        template: template! {
+            <slot data={ self.slot_data.as_str() } />
+        },
+        slot_data: String,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                slot_data: "".into(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    this.slot_data = "abc".into();
+                })
+                .await
+                .unwrap();
+            });
+        }
+    }
+
+    impl Child {
+        fn update_data(&self) -> AsyncCallback<()> {
+            let this = self.rc();
+            let (fut, cb) = AsyncCallback::new();
+            async_task(async move {
+                this.update(|this| {
+                    this.slot_data = "def".into();
+                }).await.unwrap();
+                cb(());
+            });
+            fut
+        }
+    }
+
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                <Child slot:data>
+                    "P: " { data }
+                </_>
+            </div>
+        },
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.get(|this| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
+                        r#"P: abc"#,
+                    );
+                })
+                .await;
+                let child = this.get(|this| {
+                    this.template_structure()
+                        .unwrap()
+                        .0
+                        .single_slot().unwrap()
+                        .0
+                        .tag
+                        .rc()
+                }).await;
+                child.get(|c| { c.update_data() }).await.await;
+                this.get_mut(|this, _| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .inner_html(),
+                        r#"P: def"#,
+                    );
                     (this.callback.take().unwrap())();
                 })
                 .await

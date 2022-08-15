@@ -1,0 +1,4 @@
+
+wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+pub mod web_tests;
