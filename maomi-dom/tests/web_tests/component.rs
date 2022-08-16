@@ -414,6 +414,7 @@ async fn multiple_slots() {
 
 #[wasm_bindgen_test]
 async fn multiple_slots_with_data() {
+    #[derive(PartialEq, Clone)]
     enum ChildSlot {
         Even(u32),
         Odd(u32),
@@ -424,7 +425,7 @@ async fn multiple_slots_with_data() {
         template: template! {
             for n in &*self.list {
                 { &n.to_string() }
-                <slot data={
+                <slot data=&{
                     match n % 2 {
                         0 => ChildSlot::Even(*n),
                         1 => ChildSlot::Odd(*n),
@@ -584,6 +585,9 @@ async fn self_update_slot_data() {
     #[component(Backend = DomBackend, SlotData = String)]
     struct Child {
         template: template! {
+            if self.slot_data.len() == 0 {
+                <slot data={ "(empty)" } />
+            }
             <slot data={ self.slot_data.as_str() } />
         },
         slot_data: String,
@@ -615,7 +619,7 @@ async fn self_update_slot_data() {
             let (fut, cb) = AsyncCallback::new();
             async_task(async move {
                 this.update(|this| {
-                    this.slot_data = "def".into();
+                    this.slot_data = "".into();
                 }).await.unwrap();
                 cb(());
             });
@@ -629,7 +633,7 @@ async fn self_update_slot_data() {
         template: template! {
             <div>
                 <Child slot:data>
-                    "P: " { data }
+                    "|" { data }
                 </_>
             </div>
         },
@@ -654,7 +658,7 @@ async fn self_update_slot_data() {
                             .tag
                             .dom_element()
                             .inner_html(),
-                        r#"P: abc"#,
+                        r#"|abc"#,
                     );
                 })
                 .await;
@@ -676,7 +680,7 @@ async fn self_update_slot_data() {
                             .tag
                             .dom_element()
                             .inner_html(),
-                        r#"P: def"#,
+                        r#"|(empty)|"#,
                     );
                     (this.callback.take().unwrap())();
                 })

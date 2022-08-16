@@ -513,54 +513,56 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     &mut backend_element,
                     slot_fn,
                 )
-            } else if let Some(x) =
-                <C as ComponentTemplate<B>>::template_mut(&mut comp).pending_slot_changes()
-            {
-                // if there is pending slot changes, use it
-                for slot_change in x {
-                    match slot_change {
-                        SlotChange::Unchanged(_, t, _) => {
-                            let addr = t.stable_addr();
-                            slot_fn(SlotChange::Unchanged(
-                                owner
-                                    .borrow_mut_token(&t)
-                                    .as_mut()
-                                    .ok_or(Error::ListChangeWrong)?,
-                                &t,
-                                &<C as ComponentTemplate<B>>::template_mut(&mut comp)
-                                    .slot_scopes()
-                                    .get(addr)?
-                                    .1,
-                            ))?;
-                        }
-                        SlotChange::Added(_, t, _) => {
-                            let addr = t.stable_addr();
-                            slot_fn(SlotChange::Added(
-                                owner
-                                    .borrow_mut_token(&t)
-                                    .as_mut()
-                                    .ok_or(Error::ListChangeWrong)?,
-                                &t,
-                                &<C as ComponentTemplate<B>>::template_mut(&mut comp)
-                                    .slot_scopes()
-                                    .get(addr)?
-                                    .1,
-                            ))?;
-                        }
-                        SlotChange::Removed(t) => {
-                            slot_fn(SlotChange::Removed(&t))?;
+            } else {
+                let changes = <C as ComponentTemplate<B>>::template_mut(&mut comp).pending_slot_changes(Vec::with_capacity(0));
+                if changes.len() > 0 {
+                    // if there is pending slot changes, use it
+                    for slot_change in changes {
+                        match slot_change {
+                            SlotChange::Unchanged(..) => {}
+                            SlotChange::DataChanged(_, t, _) => {
+                                let addr = t.stable_addr();
+                                slot_fn(SlotChange::Unchanged(
+                                    owner
+                                        .borrow_mut_token(&t)
+                                        .as_mut()
+                                        .ok_or(Error::ListChangeWrong)?,
+                                    &t,
+                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp)
+                                        .slot_scopes()
+                                        .get(addr)?
+                                        .1,
+                                ))?;
+                            }
+                            SlotChange::Added(_, t, _) => {
+                                let addr = t.stable_addr();
+                                slot_fn(SlotChange::Added(
+                                    owner
+                                        .borrow_mut_token(&t)
+                                        .as_mut()
+                                        .ok_or(Error::ListChangeWrong)?,
+                                    &t,
+                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp)
+                                        .slot_scopes()
+                                        .get(addr)?
+                                        .1,
+                                ))?;
+                            }
+                            SlotChange::Removed(t) => {
+                                slot_fn(SlotChange::Removed(&t))?;
+                            }
                         }
                     }
+                    Ok(())
+                } else {
+                    // if nothing changed, just return the slots
+                    let mut backend_element = owner.borrow_mut(&self.backend_element());
+                    <C as ComponentTemplate<B>>::for_each_slot_scope(
+                        &mut comp,
+                        &mut backend_element,
+                        slot_fn,
+                    )
                 }
-                Ok(())
-            } else {
-                // if nothing changed, just return the slots
-                let mut backend_element = owner.borrow_mut(&self.backend_element());
-                <C as ComponentTemplate<B>>::for_each_slot_scope(
-                    &mut comp,
-                    &mut backend_element,
-                    slot_fn,
-                )
             }
         } else {
             Err(Error::RecursiveUpdate)

@@ -322,6 +322,7 @@ impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlotChange<N, M, T> {
     Unchanged(N, M, T),
+    DataChanged(N, M, T),
     Added(N, M, T),
     Removed(M),
 }

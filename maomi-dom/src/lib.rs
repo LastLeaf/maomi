@@ -110,7 +110,7 @@ pub enum DomGeneralElement {
 impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::VirtualElement(_) => write!(f, "[Virtual]"),
+            Self::VirtualElement(_) => write!(f, "[Virtual {:p}]", self),
             Self::DomText(x) => write!(f, "{:?}", x.dom().text_content().unwrap_or_default()),
             Self::DomElement(x) => write!(f, "{:?}", x),
         }

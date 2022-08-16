@@ -674,14 +674,22 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
                 let data_expr = match data {
-                    None => quote_spanned! {span=> () },
+                    None => quote_spanned! {span=> &() },
                     Some(attr) => {
                         match attr {
                             TemplateAttribute::StaticProperty { value, .. } => {
-                                quote_spanned! {span=> #value.into() }
+                                let span = value.span();
+                                match value {
+                                    Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
+                                    _ => quote_spanned! {span=> & #value },
+                                }
                             }
-                            TemplateAttribute::DynamicProperty { expr, .. } => {
-                                quote_spanned! {span=> (#expr).into() }
+                            TemplateAttribute::DynamicProperty { expr, ref_token, .. } => {
+                                let span = expr.span();
+                                match ref_token {
+                                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                                    None => quote_spanned!(span=> #expr),
+                                }
                             }
                             TemplateAttribute::Event { .. } => unreachable!(),
                             TemplateAttribute::Slot { .. } => unreachable!(),
@@ -698,7 +706,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     {
                         let __m_backend_element_token = __m_backend_element.token();
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                        let __m_slot_data = #data_expr;
+                        let __m_slot_data = maomi::prop::Prop::new(maomi::prop::PropAsRef::property_to_owned(#data_expr));
                         #create_slot
                         __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data));
                     }
@@ -933,13 +941,21 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
                 let data_expr = match data {
-                    None => quote! {},
+                    None => quote_spanned! {span=> &() },
                     Some(attr) => {
                         match attr {
-                            TemplateAttribute::StaticProperty { .. } => quote! {},
-                            TemplateAttribute::DynamicProperty { expr, .. } => {
-                                quote_spanned! {span=>
-                                    *__m_slot_data = (#expr).into();
+                            TemplateAttribute::StaticProperty { value, .. } => {
+                                let span = value.span();
+                                match value {
+                                    Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
+                                    _ => quote_spanned! {span=> & #value },
+                                }
+                            }
+                            TemplateAttribute::DynamicProperty { expr, ref_token, .. } => {
+                                let span = expr.span();
+                                match ref_token {
+                                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                                    None => quote_spanned!(span=> #expr),
                                 }
                             }
                             TemplateAttribute::Event { .. } => unreachable!(),
@@ -955,8 +971,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                         .ok_or(maomi::error::Error::ListChangeWrong)?;
                     let __m_slot_data = &mut __m_slot_scopes.reuse(__m_backend_element_token.stable_addr())?.1;
-                    #data_expr
-                    __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
+                    let mut __m_slot_data_changed = false;
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(
+                        __m_slot_data,
+                        #data_expr,
+                        &mut __m_slot_data_changed,
+                    );
+                    if __m_slot_data_changed {
+                        __m_slot_fn(maomi::node::SlotChange::DataChanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
+                    } else {
+                        __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
+                    }
                 }
             }
             TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
@@ -1010,7 +1035,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                     let __m_children = (#({#create_children},)*);
                                     __m_slot_children.add(__m_backend_element_token.stable_addr(), __m_children);
                                 }
-                                maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
+                                maomi::node::SlotChange::DataChanged(__m_parent_element, __m_backend_element_token, #slot_var_name)
+                                    | maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name)
+                                    => {
                                     let __m_children =
                                         __m_slot_children.get_mut(__m_backend_element_token.stable_addr())?;
                                     #({#update_children})*
@@ -1216,8 +1243,8 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
             TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, .. } => {
                 let span = expr.span();
                 let expr = match ref_token {
-                    Some(ref_sign) => quote!(#ref_sign(#expr)),
-                    None => quote!(#expr),
+                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                    None => quote_spanned!(span=> #expr),
                 };
                 if let Some((_, updater)) = list_updater {
                     let index = Index::from(*list_index);
@@ -1272,8 +1299,8 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
             } => {
                 let span = expr.span();
                 let expr = match ref_token {
-                    Some(ref_sign) => quote!(#ref_sign(#expr)),
-                    None => quote!(#expr),
+                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                    None => quote_spanned!(span=> #expr),
                 };
                 if let Some((_, updater)) = list_updater {
                     let index = Index::from(*list_index);

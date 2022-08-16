@@ -4,6 +4,7 @@ use crate::{
     error::Error,
     node::{OwnerWeak, SlotChange, SlotChildren},
     BackendContext,
+    prop::Prop,
 };
 
 /// An init object for the template
@@ -28,8 +29,11 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     fn component_rc(&self) -> Result<ComponentRc<C>, Error>
     where
         C: 'static + Sized;
-    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, D)>;
-    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<(), ForestToken, ()>>>;
+    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)>;
+    fn pending_slot_changes(
+        &mut self,
+        new_changes: Vec<SlotChange<(), ForestToken, ()>>,
+    ) -> Vec<SlotChange<(), ForestToken, ()>>;
     fn self_owner_weak(&self) -> &Box<dyn OwnerWeak>;
 }
 
@@ -44,9 +48,9 @@ pub struct Template<C, S, D> {
     #[doc(hidden)]
     pub __m_structure: Option<S>,
     #[doc(hidden)]
-    pub __m_slot_scopes: SlotChildren<ForestTokenAddr, (ForestToken, D)>,
+    pub __m_slot_scopes: SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)>,
     #[doc(hidden)]
-    pub __m_pending_slot_changes: Option<Vec<SlotChange<(), ForestToken, ()>>>,
+    pub __m_pending_slot_changes: Vec<SlotChange<(), ForestToken, ()>>,
 }
 
 impl<C, S, D> Default for Template<C, S, D> {
@@ -57,7 +61,7 @@ impl<C, S, D> Default for Template<C, S, D> {
             dirty: false,
             __m_structure: None,
             __m_slot_scopes: SlotChildren::None,
-            __m_pending_slot_changes: None,
+            __m_pending_slot_changes: Vec::with_capacity(0),
         }
     }
 }
@@ -116,13 +120,16 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     }
 
     #[inline]
-    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, D)> {
+    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)> {
         &self.__m_slot_scopes
     }
 
     #[inline]
-    fn pending_slot_changes(&mut self) -> Option<Vec<SlotChange<(), ForestToken, ()>>> {
-        self.__m_pending_slot_changes.take()
+    fn pending_slot_changes(
+        &mut self,
+        new_changes: Vec<SlotChange<(), ForestToken, ()>>,
+    ) -> Vec<SlotChange<(), ForestToken, ()>> {
+        std::mem::replace(&mut self.__m_pending_slot_changes, new_changes)
     }
 
     #[inline]
@@ -187,8 +194,9 @@ pub trait ComponentTemplate<B: Backend> {
         let mut slot_changes: Vec<SlotChange<(), ForestToken, ()>> = Vec::with_capacity(0);
         self.template_update(backend_context, backend_element, |slot_change| {
             match slot_change {
-                SlotChange::Unchanged(_, n, _) => {
-                    slot_changes.push(SlotChange::Unchanged((), n.clone(), ()))
+                SlotChange::Unchanged(..) => {}
+                SlotChange::DataChanged(_, n, _) => {
+                    slot_changes.push(SlotChange::DataChanged((), n.clone(), ()))
                 }
                 SlotChange::Added(_, n, _) => {
                     slot_changes.push(SlotChange::Added((), n.clone(), ()))
@@ -197,7 +205,14 @@ pub trait ComponentTemplate<B: Backend> {
             }
             Ok(())
         })?;
-        Ok(slot_changes.len() > 0)
+        if slot_changes.len() > 0 {
+            if self.template_mut().pending_slot_changes(slot_changes).len() > 0 {
+                Err(Error::ListChangeWrong)?;
+            }
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Iterate slots

@@ -164,12 +164,13 @@ pub(crate) fn find_next_dom_sibling<'a>(
                 }
                 next
             } else if let Some(parent) = cur.parent_rc() {
-                match &*cur {
+                match &*cur.borrow(&parent) {
                     DomGeneralElement::DomElement(_) | DomGeneralElement::DomText(_) => {
                         break;
                     }
-                    DomGeneralElement::VirtualElement(_) => parent,
+                    DomGeneralElement::VirtualElement(_) => {}
                 }
+                parent
             } else {
                 break;
             }
