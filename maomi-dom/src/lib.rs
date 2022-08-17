@@ -1,4 +1,5 @@
 use enum_dispatch::enum_dispatch;
+use event::DomListeners;
 use maomi::{
     backend::{tree::*, *},
     error::Error,
@@ -13,6 +14,7 @@ use virtual_element::DomVirtualElement;
 pub mod text_node;
 use text_node::DomTextNode;
 pub mod class_list;
+pub mod event;
 mod composing;
 
 pub mod prelude {
@@ -45,11 +47,12 @@ pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
 /// A DOM backend
 pub struct DomBackend {
     tree: tree::ForestNodeRc<DomGeneralElement>,
+    listeners: DomListeners,
 }
 
 impl DomBackend {
     pub fn new_with_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
-        Ok(Self::wrap_root_element(dom_elem))
+        Ok(Self::wrap_root_element(dom_elem)?)
     }
 
     pub fn new_with_element_id(id: &str) -> Result<Self, Error> {
@@ -59,7 +62,7 @@ impl DomBackend {
                 msg: format!("Cannot find the element {:?}", id),
                 err: None,
             })?;
-        Ok(Self::wrap_root_element(dom_elem))
+        Ok(Self::wrap_root_element(dom_elem)?)
     }
 
     pub fn new_with_document_body() -> Result<Self, Error> {
@@ -70,14 +73,20 @@ impl DomBackend {
                     msg: "Cannot find the <body> element".into(),
                     err: None,
                 })?;
-        Ok(Self::wrap_root_element(dom_elem.into()))
+        Ok(Self::wrap_root_element(dom_elem.into())?)
     }
 
-    fn wrap_root_element(dom_elem: web_sys::Element) -> Self {
-        let root_elem = DomElement(dom_elem);
-        Self {
+    fn wrap_root_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
+        let listeners = event::DomListeners::new(&dom_elem)
+            .map_err(|_| Error::BackendError { msg: "Cannot bind event".to_string(), err: None })?;
+        let root_elem = DomElement {
+            elem: dom_elem,
+            bubble_events: None,
+        };
+        Ok(Self {
             tree: tree::ForestNodeRc::new_forest(root_elem.into()),
-        }
+            listeners,
+        })
     }
 }
 
@@ -120,9 +129,12 @@ impl std::fmt::Debug for DomGeneralElement {
 impl DomGeneralElement {
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        elem: DomElement,
+        elem: &'b web_sys::Element,
     ) -> ForestNodeRc<DomGeneralElement> {
-        this.new_tree(DomGeneralElement::DomElement(elem))
+        this.new_tree(DomGeneralElement::DomElement(DomElement {
+            elem: elem.clone(),
+            bubble_events: None,
+        }))
     }
 
     pub fn as_dom_element_mut<'b>(

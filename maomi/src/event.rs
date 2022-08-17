@@ -1,8 +1,11 @@
 
 /// The event handler setter
 pub trait EventHandler<D: ?Sized> {
+    /// Must be `bool` if used in components
+    type UpdateContext;
+
     /// Set the handler fn
-    fn set_handler_fn(dest: &mut Self, handler_fn: Box<dyn 'static + Fn(&mut D)>);
+    fn set_handler_fn(dest: &mut Self, handler_fn: Box<dyn 'static + Fn(&mut D)>, ctx: &mut Self::UpdateContext);
 }
 
 /// An event that can be triggered
@@ -32,7 +35,9 @@ impl<D> Event<D> {
 }
 
 impl<D: ?Sized> EventHandler<D> for Event<D> {
-    fn set_handler_fn(dest: &mut Self, handler_fn: Box<dyn 'static + Fn(&mut D)>) {
+    type UpdateContext = bool;
+
+    fn set_handler_fn(dest: &mut Self, handler_fn: Box<dyn 'static + Fn(&mut D)>, _ctx: &mut Self::UpdateContext) {
         dest.handler = Some(handler_fn);
     }
 }

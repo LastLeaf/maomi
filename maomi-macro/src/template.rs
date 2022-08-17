@@ -1283,6 +1283,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                         Box::new(move |__m_event_detail| {
                             Self::#fn_name(__m_event_self_weak.upgrade().unwrap(), __m_event_detail, #(#args_ref),*)
                         }),
+                        __m_update_ctx,
                     );
                 }
             }
@@ -1354,6 +1355,7 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             Box::new(move |__m_event_detail| {
                                 Self::#fn_name(__m_event_self_weak.upgrade().unwrap(), __m_event_detail, #(#args_ref),*)
                             }),
+                            __m_update_ctx,
                         );
                     }
                 } else {

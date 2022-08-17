@@ -5,23 +5,33 @@ use maomi::{
     BackendContext,
 };
 
-use crate::{base_element::*, class_list::DomClassList, tree::*, DomBackend, DomGeneralElement};
+use crate::{
+    base_element::*,
+    event::*,
+    class_list::DomClassList,
+    tree::*,
+    DomBackend,
+    DomGeneralElement,
+};
 
 fn set_style(elem: &web_sys::HtmlElement, s: &str) {
     elem.style().set_css_text(s)
 }
 
 macro_rules! define_element {
-    ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }) => {
+    ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }, { $($event:ident: $event_type:ty,)* }) => {
         #[allow(non_camel_case_types)]
         pub struct $tag_name {
             backend_element_token: ForestToken,
-            elem: web_sys::Element,
             pub class: DomClassList,
             pub style: DomStrAttr,
             $(
                 pub $prop: $prop_type,
             )*
+            $(
+                pub $event: DomEvent<$event_type>,
+            )*
+            elem: web_sys::Element,
         }
 
         impl $tag_name {
@@ -34,7 +44,7 @@ macro_rules! define_element {
         impl BackendComponent<DomBackend> for $tag_name {
             type SlotData = ();
             type UpdateTarget = Self;
-            type UpdateContext = web_sys::Element;
+            type UpdateContext = DomElement;
 
             #[inline]
             fn init<'b>(
@@ -47,7 +57,7 @@ macro_rules! define_element {
             {
                 let elem = crate::DOCUMENT.with(|document| document.create_element(std::stringify!($tag_name)).unwrap());
                 let backend_element =
-                    crate::DomGeneralElement::create_dom_element(owner, DomElement(elem.clone()));
+                    crate::DomGeneralElement::create_dom_element(owner, &elem);
                 let this = Self {
                     backend_element_token: backend_element.token(),
                     class: DomClassList::new(elem.class_list()),
@@ -60,6 +70,9 @@ macro_rules! define_element {
                             inner: Default::default(),
                             f: $f,
                         },
+                    )*
+                    $(
+                        $event: DomEvent::new(),
                     )*
                     elem,
                 };
@@ -79,7 +92,7 @@ macro_rules! define_element {
                 ) -> Result<(), Error>,
             ) -> Result<(), Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)?;
-                update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
+                update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap());
                 slot_fn(&mut node, &self.backend_element_token, &())?;
                 Ok(())
             }
@@ -95,7 +108,7 @@ macro_rules! define_element {
                 ) -> Result<(), Error>,
             ) -> Result<(), Error> {
                 let mut node = owner.borrow_mut_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)?;
-                update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap().0);
+                update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap());
                 slot_fn(SlotChange::Unchanged(&mut node, &self.backend_element_token, &()))?;
                 Ok(())
             }
@@ -108,14 +121,19 @@ macro_rules! define_element {
 }
 
 macro_rules! define_element_with_shared_props {
-    ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }) => {
+    ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }, { $($event:ident: $event_type:ty,)* }) => {
         define_element!($tag_name, {
             title: DomStrAttr: web_sys::HtmlElement::set_title,
             hidden: DomBoolAttr: web_sys::HtmlElement::set_hidden,
             $($prop: $prop_type: $f,)*
+        }, {
+            touch_start: SingleTouch,
+            touch_move: SingleTouch,
+            touch_end: SingleTouch,
+            touch_cancel: SingleTouch,
         });
     };
 }
 
-define_element_with_shared_props!(div, {});
-define_element_with_shared_props!(span, {});
+define_element_with_shared_props!(div, {}, {});
+define_element_with_shared_props!(span, {}, {});

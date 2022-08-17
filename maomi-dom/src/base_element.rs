@@ -1,27 +1,32 @@
-use maomi::prop::PropertyUpdate;
+use maomi::{prop::PropertyUpdate};
 use std::{borrow::Borrow, ops::Deref};
 use wasm_bindgen::JsCast;
 
+use crate::event::BubbleEventList;
+
 #[doc(hidden)]
-pub struct DomElement(pub(crate) web_sys::Element);
+pub struct DomElement {
+    pub(crate) elem: web_sys::Element,
+    pub(crate) bubble_events: Option<Box<BubbleEventList>>,
+}
 
 impl std::fmt::Debug for DomElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<{}>", self.0.tag_name())
+        write!(f, "<{}>", self.elem.tag_name())
     }
 }
 
 impl DomElement {
     pub fn dom(&self) -> &web_sys::Node {
-        &self.0
+        &self.elem
     }
 
     pub fn inner_html(&self) -> String {
-        self.0.inner_html()
+        self.elem.inner_html()
     }
 
     pub fn outer_html(&self) -> String {
-        self.0.outer_html()
+        self.elem.outer_html()
     }
 }
 
