@@ -285,6 +285,9 @@ impl ToTokens for ComponentBody {
                         where
                             Self: Sized,
                         {
+                            let __m_event_self_weak = maomi::template::TemplateHelper::component_weak(
+                                &self.#template_field,
+                            ).unwrap();
                             let __m_slot_scopes = &mut self.#template_field.__m_slot_scopes;
                             let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;
@@ -312,7 +315,9 @@ impl ToTokens for ComponentBody {
                         where
                             Self: Sized,
                         {
-                            let ttt = __m_backend_element.rc().token();
+                            let __m_event_self_weak = maomi::template::TemplateHelper::component_weak(
+                                &self.#template_field,
+                            ).unwrap();
                             let mut __m_slot_scopes = self.#template_field.__m_slot_scopes.update();
                             let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                             let __m_parent_element = __m_backend_element;

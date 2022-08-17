@@ -15,7 +15,7 @@ dom_css!(
 );
 
 // declare a component
-#[component(for DomBackend)]
+#[component(Backend = DomBackend)]
 struct HelloWorld {
     // a component should have a template field
     template: template! {

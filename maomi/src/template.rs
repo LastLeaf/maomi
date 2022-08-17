@@ -10,8 +10,8 @@ use crate::{
 /// An init object for the template
 ///
 /// This struct is auto-managed by `#[component]` .
-pub struct TemplateInit<C: ?Sized> {
-    pub(crate) updater: Box<dyn UpdateSchedulerWeak<EnterType = C>>,
+pub struct TemplateInit<C> {
+    pub(crate) updater: ComponentWeak<C>,
 }
 
 /// Some helper functions for the template type
@@ -29,6 +29,9 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
     fn component_rc(&self) -> Result<ComponentRc<C>, Error>
     where
         C: 'static + Sized;
+    fn component_weak(&self) -> Result<ComponentWeak<C>, Error>
+    where
+        C: 'static + Sized;
     fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)>;
     fn pending_slot_changes(
         &mut self,
@@ -43,7 +46,7 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
 pub struct Template<C, S, D> {
     #[doc(hidden)]
     pub __m_self_owner_weak: Option<Box<dyn OwnerWeak>>,
-    updater: Option<Box<dyn UpdateSchedulerWeak<EnterType = C>>>,
+    updater: Option<ComponentWeak<C>>,
     dirty: bool,
     #[doc(hidden)]
     pub __m_structure: Option<S>,
@@ -114,8 +117,18 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     {
         self.updater
             .as_ref()
-            .and_then(|x| x.upgrade_scheduler())
-            .map(|x| ComponentRc::new(x))
+            .and_then(|x| x.upgrade())
+            .ok_or(Error::TreeNotCreated)
+    }
+
+    #[inline]
+    fn component_weak(&self) -> Result<ComponentWeak<C>, Error>
+    where
+        C: 'static,
+    {
+        self.updater
+            .as_ref()
+            .map(|x| x.clone())
             .ok_or(Error::TreeNotCreated)
     }
 
@@ -153,7 +166,7 @@ pub trait ComponentTemplate<B: Backend> {
     fn template_mut(&mut self) -> &mut Self::TemplateField;
 
     /// Init a template
-    fn template_init(&mut self, init: TemplateInit<Self>);
+    fn template_init(&mut self, init: TemplateInit<Self>) where Self: Sized;
 
     /// Create a component within the specified shadow root
     fn template_create<'b>(

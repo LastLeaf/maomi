@@ -697,3 +697,93 @@ async fn style_attr() {
 
     test_component::<Parent>().await;
 }
+
+#[wasm_bindgen_test]
+async fn event_handler() {
+    struct MyEventDetail {
+        num: Option<u32>,
+    }
+
+    #[component(Backend = DomBackend)]
+    struct Child {
+        template: template! {
+            { &self.my_prop }
+        },
+        my_prop: Prop<String>,
+        my_event: Event<MyEventDetail>,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                my_prop: Prop::new("".into()),
+                my_event: Event::new(),
+            }
+        }
+
+        fn before_template_apply(&mut self) {
+            self.my_event.trigger(&mut MyEventDetail {
+                num: self.my_prop.parse().ok(),
+            });
+        }
+    }
+
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                for item in &self.list {
+                    <Child my_prop={item} my_event=@my_event_handler(item)>
+                        <slot />
+                    </Child>
+                }
+            </div>
+        },
+        list: Vec<String>,
+    }
+
+    impl Parent {
+        fn my_event_handler(this: ComponentRc<Self>, e: &mut MyEventDetail, item: &str) {
+            let num = e.num.unwrap_or(0);
+            assert_eq!(num.to_string().as_str(), item);
+            async_task(async move {
+                this.update(move |this| {
+                    if num <= 300 {
+                        this.list = vec![(num + 100).to_string()];
+                    } else {
+                        assert_eq!(
+                            this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
+                            r#"<div>400</div>"#,
+                        );
+                        (this.callback.take().unwrap())();
+                    }
+                }).await.unwrap();
+            });
+        }
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                list: vec![100.to_string()],
+            }
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}

@@ -12,6 +12,7 @@ pub trait PropertyUpdate<S: ?Sized> {
 }
 
 /// A property that can be used in templates
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct Prop<T> {
     inner: T,
 }

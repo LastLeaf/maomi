@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::parse::*;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::*;
 
@@ -120,7 +121,6 @@ pub(super) struct TemplateMatchArm {
     children: Vec<TemplateNode>,
     comma: Option<token::Comma>,
 }
-
 impl TemplateNode {
     fn gen_type(&self, backend_param: &TokenStream) -> Type {
         match self {
@@ -217,7 +217,7 @@ impl Parse for TemplateNode {
                                 ))?;
                             }
                         }
-                        TemplateAttribute::Event { name, .. } | TemplateAttribute::Slot { name, .. } => {
+                        TemplateAttribute::EventHandler { name, .. } | TemplateAttribute::Slot { name, .. } => {
                             Err(Error::new(
                                 name.span(),
                                 "Illegal slot element attribute value",
@@ -338,7 +338,7 @@ impl Parse for TemplateNode {
             let mut else_token = None;
             loop {
                 let if_cond = if input.peek(token::If) {
-                    Some((input.parse()?, input.parse()?))
+                    Some((input.parse()?, Box::new(Expr::parse_without_eager_brace(input)?)))
                 } else {
                     None
                 };
@@ -428,7 +428,7 @@ impl Parse for TemplateNode {
             let for_token = input.parse()?;
             let pat = input.parse()?;
             let in_token = input.parse()?;
-            let expr = input.parse()?;
+            let expr = Box::new(Expr::parse_without_eager_brace(input)?);
             let key = if input.peek(token::Use) {
                 let use_token = input.parse()?;
                 let la = input.lookahead1();
@@ -488,15 +488,15 @@ pub(super) enum TemplateAttribute {
         brace_token: token::Brace,
         expr: Box<Expr>,
     },
-    Event {
-        #[allow(dead_code)]
-        at_token: token::At,
+    EventHandler {
         name: Ident,
         #[allow(dead_code)]
         eq_token: token::Eq,
+        at_token: token::At,
+        fn_name: Ident,
         #[allow(dead_code)]
-        brace_token: token::Brace,
-        expr: Box<Expr>,
+        paren_token: token::Paren,
+        args: Punctuated<Box<Expr>, token::Comma>,
     },
     Slot {
         name: Ident,
@@ -515,7 +515,7 @@ impl TemplateAttribute {
             Self::DynamicProperty {
                 name, list_updater, ..
             } => list_updater.as_ref().map(|_| name),
-            Self::Event { .. } => None,
+            Self::EventHandler { .. } => None,
             Self::Slot { .. } => None,
         }
     }
@@ -574,6 +574,20 @@ impl Parse for TemplateAttribute {
                             brace_token,
                             expr,
                         }
+                    } else if la.peek(token::At) {
+                        let at_token = input.parse()?;
+                        let fn_name = input.parse()?;
+                        let content;
+                        let paren_token = parenthesized!(content in input);
+                        let args = Punctuated::parse_terminated(&content)?;
+                        TemplateAttribute::EventHandler {
+                            name,
+                            eq_token,
+                            at_token,
+                            fn_name,
+                            paren_token,
+                            args,
+                        }
                     } else {
                         return Err(la.error());
                     }
@@ -586,20 +600,6 @@ impl Parse for TemplateAttribute {
                         value: parse_quote_spanned! {span=> true },
                     }
                 }
-            }
-        } else if la.peek(token::At) {
-            let at_token = input.parse()?;
-            let name = input.parse()?;
-            let eq_token = input.parse()?;
-            let content;
-            let brace_token = braced!(content in input);
-            let expr = content.parse()?;
-            TemplateAttribute::Event {
-                at_token,
-                name,
-                eq_token,
-                brace_token,
-                expr,
             }
         } else {
             return Err(la.error());
@@ -691,7 +691,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                                     None => quote_spanned!(span=> #expr),
                                 }
                             }
-                            TemplateAttribute::Event { .. } => unreachable!(),
+                            TemplateAttribute::EventHandler { .. } => unreachable!(),
                             TemplateAttribute::Slot { .. } => unreachable!(),
                         }
                     },
@@ -958,7 +958,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                     None => quote_spanned!(span=> #expr),
                                 }
                             }
-                            TemplateAttribute::Event { .. } => unreachable!(),
+                            TemplateAttribute::EventHandler { .. } => unreachable!(),
                             TemplateAttribute::Slot { .. } => unreachable!(),
                         }
                     },
@@ -1266,10 +1266,24 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                     }
                 }
             }
-            TemplateAttribute::Event { name, expr, .. } => {
-                let span = expr.span();
+            TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
+                let span = at_token.span();
+                let (args_ref, args_expr): (Vec<_>, Vec<_>) = args.iter().enumerate().map(|(index, expr)| {
+                    let span = expr.span();
+                    let arg_name = Ident::new(&format!("__m_arg{}", index), span);
+                    let arg_expr = quote_spanned! {span=> let #arg_name = std::borrow::ToOwned::to_owned(#expr); };
+                    let arg_ref = quote_spanned! {span=> std::borrow::Borrow::borrow(&#arg_name) };
+                    (arg_ref, arg_expr)
+                }).unzip();
                 quote_spanned! {span=>
-                    maomi::prop::PropertyUpdate::compare_and_set_ref(&mut __m_child.#name, #expr, __m_update_ctx);
+                    let __m_event_self_weak = __m_event_self_weak.clone();
+                    #(#args_expr)*
+                    maomi::event::EventHandler::set_handler_fn(
+                        &mut __m_child.#name,
+                        Box::new(move |__m_event_detail| {
+                            Self::#fn_name(__m_event_self_weak.upgrade().unwrap(), __m_event_detail, #(#args_ref),*)
+                        }),
+                    );
                 }
             }
             TemplateAttribute::Slot { .. } => unreachable!(),
@@ -1322,8 +1336,29 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                     }
                 }
             }
-            TemplateAttribute::Event { .. } => {
-                quote! {}
+            TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
+                if args.len() > 0 {
+                    let span = at_token.span();
+                    let (args_ref, args_expr): (Vec<_>, Vec<_>) = args.iter().enumerate().map(|(index, expr)| {
+                        let span = expr.span();
+                        let arg_name = Ident::new(&format!("__m_arg{}", index), span);
+                        let arg_expr = quote_spanned! {span=> let #arg_name = std::borrow::ToOwned::to_owned(#expr); };
+                        let arg_ref = quote_spanned! {span=> std::borrow::Borrow::borrow(&#arg_name) };
+                        (arg_ref, arg_expr)
+                    }).unzip();
+                    quote_spanned! {span=>
+                        let __m_event_self_weak = __m_event_self_weak.clone();
+                        #(#args_expr)*
+                        maomi::event::EventHandler::set_handler_fn(
+                            &mut __m_child.#name,
+                            Box::new(move |__m_event_detail| {
+                                Self::#fn_name(__m_event_self_weak.upgrade().unwrap(), __m_event_detail, #(#args_ref),*)
+                            }),
+                        );
+                    }
+                } else {
+                    quote! {}
+                }
             }
             TemplateAttribute::Slot { .. } => unreachable!(),
         }

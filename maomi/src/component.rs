@@ -18,29 +18,27 @@ use crate::{
 
 /// A ref-counted token of a component
 pub struct ComponentRc<C: 'static> {
-    inner: Box<dyn UpdateScheduler<EnterType = C>>,
+    inner: Rc<dyn UpdateScheduler<EnterType = C>>,
     _phantom: PhantomData<C>,
-}
-
-impl<C: 'static> ComponentRc<C> {
-    pub(crate) fn new(inner: Box<dyn UpdateScheduler<EnterType = C>>) -> Self {
-        Self {
-            inner,
-            _phantom: PhantomData,
-        }
-    }
 }
 
 impl<C: 'static> Clone for ComponentRc<C> {
     fn clone(&self) -> Self {
         Self {
-            inner: self.inner.clone_scheduler().unwrap(),
+            inner: self.inner.clone(),
             _phantom: PhantomData,
         }
     }
 }
 
 impl<C: 'static> ComponentRc<C> {
+    pub(crate) fn new(inner: Rc<dyn UpdateScheduler<EnterType = C>>) -> Self {
+        Self {
+            inner,
+            _phantom: PhantomData,
+        }
+    }
+
     /// Schedule an update task, getting the component mutable reference
     ///
     /// The `f` may not be called immediately.
@@ -117,6 +115,47 @@ impl<C: 'static> ComponentRc<C> {
     }
 }
 
+/// A weak ref-counted token of a component
+pub struct ComponentWeak<C> {
+    inner: Rc<dyn UpdateSchedulerWeak<EnterType = C>>,
+    _phantom: PhantomData<C>,
+}
+
+impl<C> Clone for ComponentWeak<C> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<C> ComponentWeak<C> {
+    pub(crate) fn new(inner: Rc<dyn UpdateSchedulerWeak<EnterType = C>>) -> Self {
+        Self {
+            inner,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<C: 'static> ComponentWeak<C> {
+    pub(crate) fn to_owner_weak(&self) -> Box<dyn OwnerWeak> {
+        self.inner.to_owner_weak()
+    }
+}
+
+impl<C: 'static> ComponentWeak<C> {
+    /// Upgrade to a `ComponentRc`
+    pub fn upgrade(&self) -> Option<ComponentRc<C>> {
+        let inner = self.inner.upgrade_scheduler()?;
+        Some(ComponentRc {
+            inner,
+            _phantom: PhantomData,
+        })
+    }
+}
+
 /// A helper for `ComponentRc::get_mut`
 pub struct ComponentMutCtx {
     need_update: bool,
@@ -172,11 +211,20 @@ pub trait ComponentExt<B: Backend, C> {
         C: 'static,
         Self: 'static;
 
-    /// Get a `ComponentRc` for the component
+    /// Get a ref-counted token `ComponentRc` for the component
     ///
     /// The `ComponentRc` can move across async steps.
     /// It is useful for doing updates after async steps such as network requests.
     fn rc(&self) -> ComponentRc<C>
+    where
+        C: 'static,
+        Self: 'static;
+
+    /// Get a ref-counted token `ComponentWeak` for the component
+    ///
+    /// Similar to `ComponentRc` , the `ComponentWeak` can move across async steps.
+    /// It is a weak ref which does not prevent dropping the component.
+    fn weak(&self) -> ComponentWeak<C>
     where
         C: 'static,
         Self: 'static;
@@ -217,11 +265,21 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
             .component_rc()
             .expect("Cannot get `ComponentRc` before initialization")
     }
+
+    #[inline]
+    fn weak(&self) -> ComponentWeak<Self>
+    where
+        T: 'static,
+    {
+        <Self as ComponentTemplate<B>>::template(self)
+            .component_weak()
+            .expect("Cannot get `ComponentWeak` before initialization")
+    }
 }
 
 pub(crate) trait UpdateScheduler: 'static {
     type EnterType;
-    fn clone_scheduler(&self) -> Option<Box<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
+    // fn clone_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
     fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()>;
     fn enter_mut(
         &self,
@@ -232,8 +290,7 @@ pub(crate) trait UpdateScheduler: 'static {
 
 pub(crate) trait UpdateSchedulerWeak: 'static {
     type EnterType;
-    fn upgrade_scheduler(&self) -> Option<Box<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
-    fn clone_scheduler(&self) -> Box<dyn UpdateSchedulerWeak<EnterType = Self::EnterType>>;
+    fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
     fn to_owner_weak(&self) -> Box<dyn OwnerWeak>;
 }
 
@@ -268,19 +325,29 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
         &self.inner.2
     }
 
-    /// Get a `ComponentRc` for the component
+    /// Get a ref-counted token `ComponentRc` for the component
     ///
     /// The `ComponentRc` can move across async steps.
     /// It is useful for doing updates after async steps such as network requests.
     #[inline]
     pub fn rc(&self) -> ComponentRc<C> {
-        let component = Box::new(self.clone());
+        let component = Rc::new(self.clone());
         ComponentRc::new(component)
+    }
+
+    /// Get a ref-counted token `ComponentWeak` for the component
+    ///
+    /// Similar to `ComponentRc` , the `ComponentWeak` can move across async steps.
+    /// It is a weak ref which does not prevent dropping the component.
+    #[inline]
+    pub fn weak(&self) -> ComponentWeak<C> {
+        let component = Rc::new(self.downgrade());
+        ComponentWeak::new(component)
     }
 
     /// Get a weak reference
     #[inline]
-    pub fn weak_ref(&self) -> ComponentNodeWeak<B, C> {
+    pub fn downgrade(&self) -> ComponentNodeWeak<B, C> {
         ComponentNodeWeak {
             inner: Rc::downgrade(&self.inner),
         }
@@ -289,11 +356,6 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for ComponentNode<B, C> {
     type EnterType = C;
-
-    #[inline]
-    fn clone_scheduler(&self) -> Option<Box<dyn UpdateScheduler<EnterType = Self::EnterType>>> {
-        Some(Box::new(self.clone()))
-    }
 
     #[inline]
     fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()> {
@@ -385,19 +447,12 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateSchedulerWeak
     type EnterType = C;
 
     #[inline]
-    fn upgrade_scheduler(&self) -> Option<Box<dyn UpdateScheduler<EnterType = Self::EnterType>>> {
+    fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>> {
         if let Some(this) = self.upgrade() {
-            Some(Box::new(this))
+            Some(Rc::new(this))
         } else {
             None
         }
-    }
-
-    #[inline]
-    fn clone_scheduler(&self) -> Box<dyn UpdateSchedulerWeak<EnterType = Self::EnterType>> {
-        Box::new(Self {
-            inner: self.inner.clone(),
-        })
     }
 
     #[inline]
@@ -451,7 +506,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             )),
         };
         let init = TemplateInit {
-            updater: Box::new(this.weak_ref()),
+            updater: ComponentWeak::new(Rc::new(this.downgrade())),
         };
         {
             let mut comp = this.component().borrow_mut();
@@ -483,7 +538,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                 &mut backend_element,
                 slot_fn,
             )?;
-            <C as Component>::created(&mut comp);
+            <C as Component>::created(&comp);
             Ok(())
         } else {
             Err(Error::RecursiveUpdate)
