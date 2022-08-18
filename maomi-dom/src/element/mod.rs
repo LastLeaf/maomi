@@ -29,7 +29,7 @@ macro_rules! define_element {
                 pub $prop: $prop_type,
             )*
             $(
-                pub $event: DomEvent<$event_type>,
+                pub $event: $event_type,
             )*
             elem: web_sys::Element,
         }
@@ -72,7 +72,7 @@ macro_rules! define_element {
                         },
                     )*
                     $(
-                        $event: DomEvent::new(),
+                        $event: Default::default(),
                     )*
                     elem,
                 };
@@ -127,10 +127,10 @@ macro_rules! define_element_with_shared_props {
             hidden: DomBoolAttr: web_sys::HtmlElement::set_hidden,
             $($prop: $prop_type: $f,)*
         }, {
-            touch_start: SingleTouch,
-            touch_move: SingleTouch,
-            touch_end: SingleTouch,
-            touch_cancel: SingleTouch,
+            touch_start: DomEvent<crate::event::touch::TouchStart>,
+            touch_move: DomEvent<crate::event::touch::TouchMove>,
+            touch_end: DomEvent<crate::event::touch::TouchEnd>,
+            touch_cancel: DomEvent<crate::event::touch::TouchCancel>,
         });
     };
 }

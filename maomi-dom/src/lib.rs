@@ -47,6 +47,7 @@ pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
 /// A DOM backend
 pub struct DomBackend {
     tree: tree::ForestNodeRc<DomGeneralElement>,
+    #[allow(dead_code)]
     listeners: DomListeners,
 }
 
@@ -79,12 +80,20 @@ impl DomBackend {
     fn wrap_root_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
         let listeners = event::DomListeners::new(&dom_elem)
             .map_err(|_| Error::BackendError { msg: "Cannot bind event".to_string(), err: None })?;
-        let root_elem = DomElement {
-            elem: dom_elem,
-            bubble_events: None,
+        let tree_root = {
+            let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::DomElement(unsafe {
+                DomElement::new(dom_elem)
+            }));
+            let token = ret.token();
+            if let DomGeneralElement::DomElement(x) = &mut *ret.borrow_mut() {
+                x.init(token);
+            } else {
+                unreachable!()
+            }
+            ret
         };
         Ok(Self {
-            tree: tree::ForestNodeRc::new_forest(root_elem.into()),
+            tree: tree_root,
             listeners,
         })
     }
@@ -131,10 +140,16 @@ impl DomGeneralElement {
         this: &'b mut ForestNodeMut<Self>,
         elem: &'b web_sys::Element,
     ) -> ForestNodeRc<DomGeneralElement> {
-        this.new_tree(DomGeneralElement::DomElement(DomElement {
-            elem: elem.clone(),
-            bubble_events: None,
-        }))
+        let ret = this.new_tree(DomGeneralElement::DomElement(unsafe {
+            DomElement::new(elem.clone())
+        }));
+        let token = ret.token();
+        if let DomGeneralElement::DomElement(x) = &mut *this.borrow_mut(&ret) {
+            x.init(token);
+        } else {
+            unreachable!()
+        }
+        ret
     }
 
     pub fn as_dom_element_mut<'b>(

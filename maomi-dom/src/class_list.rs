@@ -1,6 +1,7 @@
 use web_sys::DomTokenList;
-
 use maomi::prop::ListPropertyUpdate;
+
+use crate::base_element::DomElement;
 
 /// The manager for DOM `ClassList`
 pub struct DomClassList {
@@ -18,7 +19,7 @@ impl DomClassList {
 }
 
 impl ListPropertyUpdate<bool> for DomClassList {
-    type UpdateContext = web_sys::Element;
+    type UpdateContext = DomElement;
     type ItemValue = &'static str;
 
     fn init_list(dest: &mut Self, count: usize, _ctx: &mut Self::UpdateContext) {

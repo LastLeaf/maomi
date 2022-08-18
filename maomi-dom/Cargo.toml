@@ -39,6 +39,8 @@ features = [
   "TouchList",
   "Touch",
   "KeyboardEvent",
+  "AnimationEvent",
+  "TransitionEvent",
 ]
 
 [dev-dependencies]

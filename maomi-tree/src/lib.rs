@@ -119,6 +119,25 @@ impl<T> ForestNodeRc<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ForestTokenAddr(*const ());
 
+impl ForestTokenAddr {
+    /// Get a cloned token
+    pub unsafe fn token(&self) -> ForestToken {
+        ForestToken {
+            inner: SliceWeak::clone_weak(self.0),
+        }
+    }
+
+    /// Get the underlying pointer
+    pub fn ptr(&self) -> *const () {
+        self.0
+    }
+
+    /// Construct from a pointer
+    pub unsafe fn from_ptr(ptr: *const ()) -> Self {
+        Self(ptr)
+    }
+}
+
 /// A static ref to a `ForestNodeRc<T>`
 pub struct ForestToken {
     inner: *const (),
@@ -145,8 +164,20 @@ impl Debug for ForestToken {
 }
 
 impl ForestToken {
+    /// Get the stable memory address (which can be used as hash key)
     pub fn stable_addr(&self) -> ForestTokenAddr {
         ForestTokenAddr(self.inner)
+    }
+
+    /// Resolve a token to a `ForestNodeRc`
+    ///
+    /// It is unsafe if the `T` is not matched with the node which generates this token.
+    #[inline]
+    pub unsafe fn unsafe_resolve_token<'b, T>(&'b self) -> Option<ForestNodeRc<T>> {
+        let weak = SliceWeak::<ForestRel<T>, SLICE_ITEMS>::from_leaked(self.inner);
+        weak.clone().leak();
+        let rc = weak.rc()?;
+        Some(ForestNodeRc { inner: rc })
     }
 }
 
