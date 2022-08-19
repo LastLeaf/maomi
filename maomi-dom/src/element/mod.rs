@@ -131,6 +131,9 @@ macro_rules! define_element_with_shared_props {
             touch_move: DomEvent<crate::event::touch::TouchMove>,
             touch_end: DomEvent<crate::event::touch::TouchEnd>,
             touch_cancel: DomEvent<crate::event::touch::TouchCancel>,
+            tap: DomEvent<crate::event::tap::Tap>,
+            long_tap: DomEvent<crate::event::tap::LongTap>,
+            cancel_tap: DomEvent<crate::event::tap::CancelTap>,
         });
     };
 }

@@ -25,7 +25,7 @@ impl Drop for DomElement {
     fn drop(&mut self) {
         if self.hot_event_list.is_some() || self.cold_event_list.is_some() {
             self.elem.unchecked_ref::<MaomiDomElement>().set_maomi(None);
-            // TODO clear touch/tap state
+            crate::event::tap::remove_element_touch_state(&self.forest_token);
         }
         unsafe {
             ManuallyDrop::drop(&mut self.forest_token);
@@ -40,10 +40,11 @@ impl std::fmt::Debug for DomElement {
 }
 
 impl DomElement {
+    // Safety: must call `init` later (before dropped)
     pub(crate) unsafe fn new(elem: web_sys::Element) -> Self {
         Self {
             elem,
-            forest_token: ManuallyDrop::new(unsafe { MaybeUninit::uninit().assume_init() }),
+            forest_token: ManuallyDrop::new(MaybeUninit::uninit().assume_init()),
             hot_event_list: None,
             cold_event_list: None,
         }
@@ -91,6 +92,10 @@ impl DomElement {
         self.hot_event_list.as_mut().unwrap()
     }
 
+    pub(crate) fn hot_event_list(&self) -> Option<&HotEventList> {
+        self.hot_event_list.as_ref().map(|x| &**x)
+    }
+
     pub(crate) fn cold_event_list_mut(&mut self) -> &mut ColdEventList {
         if self.cold_event_list.is_none() {
             self.cold_event_list = Some(Default::default());
@@ -99,6 +104,10 @@ impl DomElement {
             }
         }
         self.cold_event_list.as_mut().unwrap()
+    }
+
+    pub(crate) fn cold_event_list(&self) -> Option<&ColdEventList> {
+        self.cold_event_list.as_ref().map(|x| &**x)
     }
 }
 

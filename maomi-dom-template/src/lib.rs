@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 // import maomi core module
 use maomi::{prelude::*, BackendContext};
 // using DOM backend
-use maomi_dom::{element::*, prelude::dom_css, DomBackend};
+use maomi_dom::{element::*, prelude::dom_css, DomBackend, event::*, async_task};
 
 // write limited CSS
 dom_css!(
@@ -30,8 +30,13 @@ struct HelloWorld {
         </div>
         // use classes in `class:xxx` form
         <div class:warn> "WARN" </div>
+        // bind event with `@xxx()`
+        if !self.r {
+            <div long_tap=@handle_tap()> "Click me!" </div>
+        }
     },
     hello: String,
+    r: bool,
 }
 
 // implement basic component interfaces
@@ -40,12 +45,27 @@ impl Component for HelloWorld {
         Self {
             template: Default::default(),
             hello: "Hello world again!".to_string(),
+            r: false,
         }
+    }
+}
+
+impl HelloWorld {
+    // an event handler
+    fn handle_tap(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+        log::info!("Clicked!");
+        async_task(async move {
+            this.update(|this| this.r = true).await.unwrap();
+        });
     }
 }
 
 #[wasm_bindgen(start)]
 pub fn wasm_main() {
+    // init logger
+    console_error_panic_hook::set_once();
+    console_log::init_with_level(log::Level::Trace).unwrap();
+
     // init a backend context
     let dom_backend = DomBackend::new_with_document_body().unwrap();
     let backend_context = BackendContext::new(dom_backend);
@@ -53,8 +73,13 @@ pub fn wasm_main() {
     // create a mount point
     backend_context
         .enter_sync(move |ctx| {
-            let _mount_point = ctx.append_attach(|_: &mut HelloWorld| {}).unwrap();
+            let mount_point = ctx.append_attach(|_: &mut HelloWorld| {}).unwrap();
+            // leak the mount point, so that event callbacks still work
+            Box::leak(Box::new(mount_point));
         })
         .map_err(|_| "Cannot init mount point")
         .unwrap();
+
+    // leak the backend context, so that event callbacks still work
+    Box::leak(Box::new(backend_context));
 }

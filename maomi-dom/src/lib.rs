@@ -78,8 +78,7 @@ impl DomBackend {
     }
 
     fn wrap_root_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
-        let listeners = event::DomListeners::new(&dom_elem)
-            .map_err(|_| Error::BackendError { msg: "Cannot bind event".to_string(), err: None })?;
+        let listeners = event::DomListeners::new(&dom_elem);
         let tree_root = {
             let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::DomElement(unsafe {
                 DomElement::new(dom_elem)

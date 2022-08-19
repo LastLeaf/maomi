@@ -17,6 +17,6 @@ maomi = { version = "=0.4.0", path = "../maomi" }
 maomi-dom = { version = "=0.4.0", path = "../maomi-dom" }
 log = "0.4"
 env_logger = "0.9"
-console_log = "0.2"
+console_log = { version = "0.2", features = ["color"] }
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"

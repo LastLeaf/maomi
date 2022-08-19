@@ -1281,7 +1281,9 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                     maomi::event::EventHandler::set_handler_fn(
                         &mut __m_child.#name,
                         Box::new(move |__m_event_detail| {
-                            Self::#fn_name(__m_event_self_weak.upgrade().unwrap(), __m_event_detail, #(#args_ref),*)
+                            if let Some(__m_event_self) = __m_event_self_weak.upgrade() {
+                                Self::#fn_name(__m_event_self, __m_event_detail, #(#args_ref),*)
+                            }
                         }),
                         __m_update_ctx,
                     );
@@ -1353,7 +1355,9 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                         maomi::event::EventHandler::set_handler_fn(
                             &mut __m_child.#name,
                             Box::new(move |__m_event_detail| {
-                                Self::#fn_name(__m_event_self_weak.upgrade().unwrap(), __m_event_detail, #(#args_ref),*)
+                                if let Some(__m_event_self) = __m_event_self_weak.upgrade() {
+                                    Self::#fn_name(__m_event_self, __m_event_detail, #(#args_ref),*)
+                                }
                             }),
                             __m_update_ctx,
                         );
