@@ -1,8 +1,8 @@
-use wasm_bindgen::{prelude::*, JsCast};
 use maomi::backend::tree::{ForestNodeRc, ForestToken};
+use wasm_bindgen::{prelude::*, JsCast};
 
+use super::{touch::TouchIdentifier, utils, BubbleEvent, DomEventRegister};
 use crate::DomGeneralElement;
-use super::{DomEventRegister, BubbleEvent, utils, touch::TouchIdentifier};
 
 const CANCEL_TAP_DIST: i32 = 5;
 const LONG_TAP_TIME_MS: i32 = 500;
@@ -12,9 +12,7 @@ thread_local! {
 }
 
 pub(crate) fn remove_element_touch_state(target: &ForestToken) {
-    TOUCH_TRACKER.with(|this| {
-        this.borrow_mut().interrupt_by_elem(target)
-    })
+    TOUCH_TRACKER.with(|this| this.borrow_mut().interrupt_by_elem(target))
 }
 
 #[derive(Default)]
@@ -65,9 +63,7 @@ impl TouchTracker {
                     log::error!("Setup long tap handler failed.");
                     (None, 0)
                 }
-                Ok(cb_id) => {
-                    (Some(cb), cb_id)
-                }
+                Ok(cb_id) => (Some(cb), cb_id),
             }
         });
         self.cur.push(CurrentTouch {
@@ -81,7 +77,12 @@ impl TouchTracker {
     }
 
     fn trigger_long_tap(&mut self, identifier: TouchIdentifier) {
-        if let Some((i, t)) = self.cur.iter_mut().enumerate().find(|(_, x)| x.identifier == identifier) {
+        if let Some((i, t)) = self
+            .cur
+            .iter_mut()
+            .enumerate()
+            .find(|(_, x)| x.identifier == identifier)
+        {
             t.long_tap_cb = None;
             // generate long_tap event
             let mut ev = TapEvent {
@@ -99,15 +100,16 @@ impl TouchTracker {
         }
     }
 
-    pub(super) fn update(
-        &mut self,
-        identifier: TouchIdentifier,
-        client_x: i32,
-        client_y: i32,
-    ) {
-        if let Some((i, t)) = self.cur.iter_mut().enumerate().find(|(_, x)| x.identifier == identifier) {
+    pub(super) fn update(&mut self, identifier: TouchIdentifier, client_x: i32, client_y: i32) {
+        if let Some((i, t)) = self
+            .cur
+            .iter_mut()
+            .enumerate()
+            .find(|(_, x)| x.identifier == identifier)
+        {
             if (t.client_x - client_x).abs() > CANCEL_TAP_DIST
-                || (t.client_y - client_y).abs() > CANCEL_TAP_DIST {
+                || (t.client_y - client_y).abs() > CANCEL_TAP_DIST
+            {
                 if t.long_tap_cb.is_some() {
                     crate::WINDOW.with(|window| {
                         window.clear_timeout_with_handle(t.long_tap_cb_id);
@@ -128,11 +130,13 @@ impl TouchTracker {
         }
     }
 
-    pub(super) fn remove(
-        &mut self,
-        identifier: TouchIdentifier,
-    ) {
-        if let Some((i, t)) = self.cur.iter_mut().enumerate().find(|(_, x)| x.identifier == identifier) {
+    pub(super) fn remove(&mut self, identifier: TouchIdentifier) {
+        if let Some((i, t)) = self
+            .cur
+            .iter_mut()
+            .enumerate()
+            .find(|(_, x)| x.identifier == identifier)
+        {
             if t.long_tap_cb.is_some() {
                 crate::WINDOW.with(|window| {
                     window.clear_timeout_with_handle(t.long_tap_cb_id);
@@ -155,11 +159,13 @@ impl TouchTracker {
         }
     }
 
-    pub(super) fn interrupt(
-        &mut self,
-        identifier: TouchIdentifier,
-    ) {
-        if let Some((i, t)) = self.cur.iter_mut().enumerate().find(|(_, x)| x.identifier == identifier) {
+    pub(super) fn interrupt(&mut self, identifier: TouchIdentifier) {
+        if let Some((i, t)) = self
+            .cur
+            .iter_mut()
+            .enumerate()
+            .find(|(_, x)| x.identifier == identifier)
+        {
             if t.long_tap_cb.is_some() {
                 crate::WINDOW.with(|window| {
                     window.clear_timeout_with_handle(t.long_tap_cb_id);
@@ -172,11 +178,13 @@ impl TouchTracker {
         }
     }
 
-    pub fn interrupt_by_elem(
-        &mut self,
-        forest_token: &ForestToken,
-    ) {
-        if let Some((i, t)) = self.cur.iter_mut().enumerate().find(|(_, x)| x.target.stable_addr() == forest_token.stable_addr()) {
+    pub fn interrupt_by_elem(&mut self, forest_token: &ForestToken) {
+        if let Some((i, t)) = self
+            .cur
+            .iter_mut()
+            .enumerate()
+            .find(|(_, x)| x.target.stable_addr() == forest_token.stable_addr())
+        {
             if t.long_tap_cb.is_some() {
                 crate::WINDOW.with(|window| {
                     window.clear_timeout_with_handle(t.long_tap_cb_id);
@@ -197,7 +205,7 @@ pub struct TapEvent {
     propagation_stopped: bool,
     default_prevented: bool,
     client_x: i32,
-    client_y: i32,  
+    client_y: i32,
 }
 
 impl TapEvent {

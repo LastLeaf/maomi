@@ -14,9 +14,7 @@ struct ComponentAttr {
 impl Parse for ComponentAttr {
     fn parse(input: ParseStream) -> Result<Self> {
         let items = Punctuated::parse_terminated(input)?;
-        Ok(Self {
-            items,
-        })
+        Ok(Self { items })
     }
 }
 
@@ -40,21 +38,17 @@ impl Parse for ComponentAttrItem {
     fn parse(input: ParseStream) -> Result<Self> {
         let attr_name: Ident = input.parse()?;
         let ret = match attr_name.to_string().as_str() {
-            "Backend" => {
-                Self::Backend {
-                    attr_name,
-                    equal_token: input.parse()?,
-                    impl_token: input.parse()?,
-                    path: input.parse()?,
-                }
-            }
-            "SlotData" => {
-                Self::SlotData {
-                    attr_name,
-                    equal_token: input.parse()?,
-                    path: input.parse()?,
-                }
-            }
+            "Backend" => Self::Backend {
+                attr_name,
+                equal_token: input.parse()?,
+                impl_token: input.parse()?,
+                path: input.parse()?,
+            },
+            "SlotData" => Self::SlotData {
+                attr_name,
+                equal_token: input.parse()?,
+                path: input.parse()?,
+            },
             _ => {
                 return Err(Error::new(attr_name.span(), "Unknown attribute parameter"));
             }
@@ -81,15 +75,28 @@ impl ComponentBody {
         let mut slot_data_attr = None;
         for item in attr.items {
             match item {
-                ComponentAttrItem::Backend { attr_name, impl_token, path, .. } => {
+                ComponentAttrItem::Backend {
+                    attr_name,
+                    impl_token,
+                    path,
+                    ..
+                } => {
                     if backend_attr.is_some() {
-                        return Err(Error::new(attr_name.span(), "Duplicated attribute parameter"));
+                        return Err(Error::new(
+                            attr_name.span(),
+                            "Duplicated attribute parameter",
+                        ));
                     }
                     backend_attr = Some((impl_token, path));
                 }
-                ComponentAttrItem::SlotData { attr_name, path, .. } => {
+                ComponentAttrItem::SlotData {
+                    attr_name, path, ..
+                } => {
                     if slot_data_attr.is_some() {
-                        return Err(Error::new(attr_name.span(), "Duplicated attribute parameter"));
+                        return Err(Error::new(
+                            attr_name.span(),
+                            "Duplicated attribute parameter",
+                        ));
                     }
                     slot_data_attr = Some(path);
                 }
@@ -119,7 +126,7 @@ impl ComponentBody {
             Some(path) => {
                 let span = path.span();
                 quote_spanned! {span=> #path }
-            },
+            }
         };
 
         // find component name and type params

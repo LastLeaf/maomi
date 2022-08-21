@@ -202,8 +202,12 @@ impl Parse for TemplateNode {
                 let data = if input.peek(Ident) {
                     let attr: TemplateAttribute = input.parse()?;
                     match &attr {
-                        TemplateAttribute::StaticProperty { name, list_updater, .. }
-                        | TemplateAttribute::DynamicProperty { name, list_updater, .. } => {
+                        TemplateAttribute::StaticProperty {
+                            name, list_updater, ..
+                        }
+                        | TemplateAttribute::DynamicProperty {
+                            name, list_updater, ..
+                        } => {
                             if name.to_string().as_str() != "data" {
                                 Err(Error::new(
                                     name.span(),
@@ -211,13 +215,11 @@ impl Parse for TemplateNode {
                                 ))?;
                             }
                             if list_updater.is_some() {
-                                Err(Error::new(
-                                    name.span(),
-                                    "Illegal slot `data` attribute",
-                                ))?;
+                                Err(Error::new(name.span(), "Illegal slot `data` attribute"))?;
                             }
                         }
-                        TemplateAttribute::EventHandler { name, .. } | TemplateAttribute::Slot { name, .. } => {
+                        TemplateAttribute::EventHandler { name, .. }
+                        | TemplateAttribute::Slot { name, .. } => {
                             Err(Error::new(
                                 name.span(),
                                 "Illegal slot element attribute value",
@@ -338,7 +340,10 @@ impl Parse for TemplateNode {
             let mut else_token = None;
             loop {
                 let if_cond = if input.peek(token::If) {
-                    Some((input.parse()?, Box::new(Expr::parse_without_eager_brace(input)?)))
+                    Some((
+                        input.parse()?,
+                        Box::new(Expr::parse_without_eager_brace(input)?),
+                    ))
                 } else {
                     None
                 };
@@ -503,7 +508,7 @@ pub(super) enum TemplateAttribute {
         #[allow(dead_code)]
         colon_token: token::Colon,
         var_name: Ident,
-    }
+    },
 }
 
 impl TemplateAttribute {
@@ -745,7 +750,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let slot_var_name = match slot_var_name {
                     Some(x) => quote! { #x },
                     None => quote! { __m_slot_data },
-                };    
+                };
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
                         <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(

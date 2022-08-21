@@ -620,7 +620,9 @@ async fn self_update_slot_data() {
             async_task(async move {
                 this.update(|this| {
                     this.slot_data = "".into();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 cb(());
             });
             fut
@@ -662,16 +664,19 @@ async fn self_update_slot_data() {
                     );
                 })
                 .await;
-                let child = this.get(|this| {
-                    this.template_structure()
-                        .unwrap()
-                        .0
-                        .single_slot().unwrap()
-                        .0
-                        .tag
-                        .rc()
-                }).await;
-                child.get(|c| { c.update_data() }).await.await;
+                let child = this
+                    .get(|this| {
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .single_slot()
+                            .unwrap()
+                            .0
+                            .tag
+                            .rc()
+                    })
+                    .await;
+                child.get(|c| c.update_data()).await.await;
                 this.get_mut(|this, _| {
                     assert_eq!(
                         this.template_structure()

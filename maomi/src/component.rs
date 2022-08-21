@@ -1,9 +1,9 @@
+use async_trait::async_trait;
 use std::{
     cell::{Cell, RefCell},
     marker::PhantomData,
     rc::{Rc, Weak},
 };
-use async_trait::async_trait;
 
 use crate::{
     backend::{
@@ -51,13 +51,11 @@ impl<C: 'static> ComponentRc<C> {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
         self.inner
-            .enter_mut(
-                Box::new(move |c| {
-                    let r = f(c);
-                    ret2.set(Some(r));
-                    true
-                }),
-            )
+            .enter_mut(Box::new(move |c| {
+                let r = f(c);
+                ret2.set(Some(r));
+                true
+            }))
             .await?;
         Ok(Rc::try_unwrap(ret)
             .map_err(|_| "Enter callback failed")
@@ -98,14 +96,12 @@ impl<C: 'static> ComponentRc<C> {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
         self.inner
-            .enter_mut(
-                Box::new(move |c| {
-                    let mut ctx = ComponentMutCtx { need_update: false };
-                    let r = f(c, &mut ctx);
-                    ret2.set(Some(r));
-                    ctx.need_update
-                }),
-            )
+            .enter_mut(Box::new(move |c| {
+                let mut ctx = ComponentMutCtx { need_update: false };
+                let r = f(c, &mut ctx);
+                ret2.set(Some(r));
+                ctx.need_update
+            }))
             .await?;
         Ok(Rc::try_unwrap(ret)
             .map_err(|_| "Enter callback failed")
@@ -205,7 +201,10 @@ pub trait ComponentExt<B: Backend, C> {
     /// Get a mutable reference of the component and then do updates
     ///
     /// It is a short cut for `.rc().update()`
-    async fn update<R>(&self, f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R) -> Result<R, Error>
+    async fn update<R>(
+        &self,
+        f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R,
+    ) -> Result<R, Error>
     where
         R: 'static,
         C: 'static,
@@ -249,7 +248,10 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     }
 
     #[inline]
-    async fn update<R: 'static>(&self, f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R) -> Result<R, Error>
+    async fn update<R: 'static>(
+        &self,
+        f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R,
+    ) -> Result<R, Error>
     where
         T: 'static,
     {
@@ -569,7 +571,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     slot_fn,
                 )
             } else {
-                let changes = <C as ComponentTemplate<B>>::template_mut(&mut comp).pending_slot_changes(Vec::with_capacity(0));
+                let changes = <C as ComponentTemplate<B>>::template_mut(&mut comp)
+                    .pending_slot_changes(Vec::with_capacity(0));
                 if changes.len() > 0 {
                     // if there is pending slot changes, use it
                     for slot_change in changes {

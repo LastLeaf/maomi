@@ -1,5 +1,5 @@
-use web_sys::DomTokenList;
 use maomi::prop::ListPropertyUpdate;
+use web_sys::DomTokenList;
 
 use crate::base_element::DomElement;
 

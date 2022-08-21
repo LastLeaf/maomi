@@ -1,7 +1,7 @@
 use maomi::backend::tree::ForestNodeRc;
 
+use super::{BubbleEvent, DomEventRegister};
 use crate::DomGeneralElement;
-use super::{DomEventRegister, BubbleEvent};
 
 macro_rules! hot_event {
     ($t:ident, $field:ident, $detail:ty) => {
@@ -10,7 +10,10 @@ macro_rules! hot_event {
         impl DomEventRegister for $t {
             type Detail = $detail;
 
-            fn bind(target: &mut crate::base_element::DomElement, f: Box<dyn 'static + Fn(&mut Self::Detail)>) {
+            fn bind(
+                target: &mut crate::base_element::DomElement,
+                f: Box<dyn 'static + Fn(&mut Self::Detail)>,
+            ) {
                 let list = target.hot_event_list_mut();
                 list.$field = Some(f);
             }
@@ -72,10 +75,7 @@ macro_rules! cold_event {
     };
 }
 
-pub(super) fn bubble_event<T>(
-    target: ForestNodeRc<DomGeneralElement>,
-    detail: &mut T::Detail,
-)
+pub(super) fn bubble_event<T>(target: ForestNodeRc<DomGeneralElement>, detail: &mut T::Detail)
 where
     T: DomEventRegister,
     T::Detail: BubbleEvent,

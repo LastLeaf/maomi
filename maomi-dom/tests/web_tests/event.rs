@@ -1,9 +1,9 @@
 use js_sys::Reflect;
-use wasm_bindgen::{JsValue, JsCast};
+use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
-use maomi_dom::{async_task, element::*, prelude::*, event::*};
+use maomi_dom::{async_task, element::*, event::*, prelude::*};
 
 use super::*;
 
@@ -35,7 +35,8 @@ fn generate_fake_touch(
         identifier,
         client_x,
         client_y,
-    }).unwrap();
+    })
+    .unwrap();
     Reflect::set(&v, &JsValue::from_str("target"), target).unwrap();
     let arr = js_sys::Array::new();
     arr.push(&v);
@@ -99,85 +100,78 @@ async fn animation_event() {
 
         async fn next_step(this: ComponentRc<Self>, state: u32) {
             match state {
-                0 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>0</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "animationstart",
-                        false,
-                        [
-                            ("animationName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                1 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>1</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "animationiteration",
-                        false,
-                        [
-                            ("animationName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                2 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>2</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "animationend",
-                        false,
-                        [
-                            ("animationName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                3 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>3</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "animationcancel",
-                        false,
-                        [
-                            ("animationName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                _ => this.get_mut(|this, _| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>4</div>"#,
-                    );
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap(),
+                0 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>0</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "animationstart",
+                            false,
+                            [
+                                ("animationName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                1 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>1</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "animationiteration",
+                            false,
+                            [
+                                ("animationName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                2 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>2</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "animationend",
+                            false,
+                            [
+                                ("animationName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                3 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>3</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "animationcancel",
+                            false,
+                            [
+                                ("animationName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                _ => this
+                    .get_mut(|this, _| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>4</div>"#,);
+                        (this.callback.take().unwrap())();
+                    })
+                    .await
+                    .unwrap(),
             }
         }
     }
@@ -239,85 +233,78 @@ async fn transition_event() {
 
         async fn next_step(this: ComponentRc<Self>, state: u32) {
             match state {
-                0 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>0</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "transitionrun",
-                        false,
-                        [
-                            ("propertyName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                1 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>1</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "transitionstart",
-                        false,
-                        [
-                            ("propertyName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                2 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>2</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "transitionend",
-                        false,
-                        [
-                            ("propertyName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                3 => this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>3</div>"#,
-                    );
-                    simulate_event(
-                        dom_elem,
-                        "transitioncancel",
-                        false,
-                        [
-                            ("propertyName", JsValue::from_str("ani")),
-                            ("elapsedTime", JsValue::from_f64(123.)),
-                        ],
-                    );
-                }).await,
-                _ => this.get_mut(|this, _| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    assert_eq!(
-                        dom_elem.outer_html(),
-                        r#"<div>4</div>"#,
-                    );
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap(),
+                0 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>0</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "transitionrun",
+                            false,
+                            [
+                                ("propertyName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                1 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>1</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "transitionstart",
+                            false,
+                            [
+                                ("propertyName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                2 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>2</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "transitionend",
+                            false,
+                            [
+                                ("propertyName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                3 => {
+                    this.get(|this| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>3</div>"#,);
+                        simulate_event(
+                            dom_elem,
+                            "transitioncancel",
+                            false,
+                            [
+                                ("propertyName", JsValue::from_str("ani")),
+                                ("elapsedTime", JsValue::from_f64(123.)),
+                            ],
+                        );
+                    })
+                    .await
+                }
+                _ => this
+                    .get_mut(|this, _| {
+                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                        assert_eq!(dom_elem.outer_html(), r#"<div>4</div>"#,);
+                        (this.callback.take().unwrap())();
+                    })
+                    .await
+                    .unwrap(),
             }
         }
     }
@@ -353,15 +340,10 @@ async fn scroll_event() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    simulate_event(
-                        dom_elem,
-                        "scroll",
-                        false,
-                        [],
-                    );
-                }).await;
+                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                    simulate_event(dom_elem, "scroll", false, []);
+                })
+                .await;
             });
         }
     }
@@ -371,7 +353,9 @@ async fn scroll_event() {
             async_task(async move {
                 this.get_mut(|this, _| {
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -387,70 +371,63 @@ async fn scroll_event() {
 
 macro_rules! test_touch_events {
     ($ev:ident, $ev_js_name:expr) => {
-
-#[wasm_bindgen_test]
-async fn $ev() {
-    #[component(Backend = DomBackend)]
-    struct MyComp {
-        callback: Option<ComponentTestCb>,
-        template: template! {
-            <div $ev=@handler()></div>
-        },
-    }
-
-    impl Component for MyComp {
-        fn new() -> Self {
-            Self {
-                callback: None,
-                template: Default::default(),
+        #[wasm_bindgen_test]
+        async fn $ev() {
+            #[component(Backend = DomBackend)]
+            struct MyComp {
+                callback: Option<ComponentTestCb>,
+                template: template! {
+                    <div $ev=@handler()></div>
+                },
             }
-        }
 
-        fn created(&self) {
-            let this = self.rc();
-            async_task(async move {
-                this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    simulate_event(
-                        dom_elem,
-                        $ev_js_name,
-                        true,
-                        [
-                            ("changedTouches", generate_fake_touch(
+            impl Component for MyComp {
+                fn new() -> Self {
+                    Self {
+                        callback: None,
+                        template: Default::default(),
+                    }
+                }
+
+                fn created(&self) {
+                    let this = self.rc();
+                    async_task(async move {
+                        this.get(|this| {
+                            let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                            simulate_event(
                                 dom_elem,
-                                1,
-                                12,
-                                34,
-                            )),
-                        ],
-                    );
-                }).await;
-            });
+                                $ev_js_name,
+                                true,
+                                [("changedTouches", generate_fake_touch(dom_elem, 1, 12, 34))],
+                            );
+                        })
+                        .await;
+                    });
+                }
+            }
+
+            impl MyComp {
+                fn handler(this: ComponentRc<Self>, ev: &mut TouchEvent) {
+                    assert_eq!(ev.client_x(), 12);
+                    assert_eq!(ev.client_y(), 34);
+                    async_task(async move {
+                        this.get_mut(|this, _| {
+                            (this.callback.take().unwrap())();
+                        })
+                        .await
+                        .unwrap();
+                    });
+                }
+            }
+
+            impl ComponentTest for MyComp {
+                fn set_callback(&mut self, callback: ComponentTestCb) {
+                    self.callback = Some(callback);
+                }
+            }
+
+            test_component::<MyComp>().await;
         }
-    }
-
-    impl MyComp {
-        fn handler(this: ComponentRc<Self>, ev: &mut TouchEvent) {
-            assert_eq!(ev.client_x(), 12);
-            assert_eq!(ev.client_y(), 34);
-            async_task(async move {
-                this.get_mut(|this, _| {
-                    (this.callback.take().unwrap())();
-                }).await.unwrap();
-            });
-        }
-    }
-
-    impl ComponentTest for MyComp {
-        fn set_callback(&mut self, callback: ComponentTestCb) {
-            self.callback = Some(callback);
-        }
-    }
-
-    test_component::<MyComp>().await;
-}
-
     };
 }
 
@@ -461,68 +438,68 @@ test_touch_events!(touch_cancel, "touchcancel");
 
 macro_rules! test_mouse_events {
     ($ev:ident, $ev_js_name:expr) => {
-
-#[wasm_bindgen_test]
-async fn $ev() {
-    #[component(Backend = DomBackend)]
-    struct MyComp {
-        callback: Option<ComponentTestCb>,
-        template: template! {
-            <div $ev=@handler()></div>
-        },
-    }
-
-    impl Component for MyComp {
-        fn new() -> Self {
-            Self {
-                callback: None,
-                template: Default::default(),
+        #[wasm_bindgen_test]
+        async fn $ev() {
+            #[component(Backend = DomBackend)]
+            struct MyComp {
+                callback: Option<ComponentTestCb>,
+                template: template! {
+                    <div $ev=@handler()></div>
+                },
             }
+
+            impl Component for MyComp {
+                fn new() -> Self {
+                    Self {
+                        callback: None,
+                        template: Default::default(),
+                    }
+                }
+
+                fn created(&self) {
+                    let this = self.rc();
+                    async_task(async move {
+                        this.get(|this| {
+                            let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                            simulate_event(
+                                dom_elem,
+                                $ev_js_name,
+                                true,
+                                [
+                                    ("button", JsValue::from_f64(2.)),
+                                    ("clientX", JsValue::from_f64(56.)),
+                                    ("clientY", JsValue::from_f64(78.)),
+                                ],
+                            );
+                        })
+                        .await;
+                    });
+                }
+            }
+
+            impl MyComp {
+                fn handler(this: ComponentRc<Self>, ev: &mut MouseEvent) {
+                    assert_eq!(ev.button(), MouseButton::Secondary);
+                    assert_eq!(ev.client_x(), 56);
+                    assert_eq!(ev.client_y(), 78);
+                    async_task(async move {
+                        this.get_mut(|this, _| {
+                            (this.callback.take().unwrap())();
+                        })
+                        .await
+                        .unwrap();
+                    });
+                }
+            }
+
+            impl ComponentTest for MyComp {
+                fn set_callback(&mut self, callback: ComponentTestCb) {
+                    self.callback = Some(callback);
+                }
+            }
+
+            test_component::<MyComp>().await;
         }
-
-        fn created(&self) {
-            let this = self.rc();
-            async_task(async move {
-                this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
-                    simulate_event(
-                        dom_elem,
-                        $ev_js_name,
-                        true,
-                        [
-                            ("button", JsValue::from_f64(2.)),
-                            ("clientX", JsValue::from_f64(56.)),
-                            ("clientY", JsValue::from_f64(78.)),
-                        ],
-                    );
-                }).await;
-            });
-        }
-    }
-
-    impl MyComp {
-        fn handler(this: ComponentRc<Self>, ev: &mut MouseEvent) {
-            assert_eq!(ev.button(), MouseButton::Secondary);
-            assert_eq!(ev.client_x(), 56);
-            assert_eq!(ev.client_y(), 78);
-            async_task(async move {
-                this.get_mut(|this, _| {
-                    (this.callback.take().unwrap())();
-                }).await.unwrap();
-            });
-        }
-    }
-
-    impl ComponentTest for MyComp {
-        fn set_callback(&mut self, callback: ComponentTestCb) {
-            self.callback = Some(callback);
-        }
-    }
-
-    test_component::<MyComp>().await;
-}
-
     };
 }
 
@@ -554,8 +531,7 @@ async fn tap() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
+                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
                     simulate_event(
                         dom_elem,
                         "mousedown",
@@ -576,7 +552,8 @@ async fn tap() {
                             ("clientY", JsValue::from_f64(35.)),
                         ],
                     );
-                }).await;
+                })
+                .await;
             });
         }
     }
@@ -588,7 +565,9 @@ async fn tap() {
             async_task(async move {
                 this.get_mut(|this, _| {
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -624,8 +603,7 @@ async fn cancel_tap() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
+                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
                     simulate_event(
                         dom_elem,
                         "mousedown",
@@ -646,7 +624,8 @@ async fn cancel_tap() {
                             ("clientY", JsValue::from_f64(45.)),
                         ],
                     );
-                }).await;
+                })
+                .await;
             });
         }
     }
@@ -658,7 +637,9 @@ async fn cancel_tap() {
             async_task(async move {
                 this.get_mut(|this, _| {
                     (this.callback.take().unwrap())();
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }
@@ -694,8 +675,7 @@ async fn long_tap() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap()
-                        .0.tag.dom_element();
+                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
                     simulate_event(
                         dom_elem,
                         "mousedown",
@@ -706,7 +686,8 @@ async fn long_tap() {
                             ("clientY", JsValue::from_f64(34.)),
                         ],
                     );
-                }).await;
+                })
+                .await;
             });
         }
     }
@@ -730,7 +711,9 @@ async fn long_tap() {
                 async_task(async move {
                     this.get_mut(|this, _| {
                         (this.callback.take().unwrap())();
-                    }).await.unwrap();
+                    })
+                    .await
+                    .unwrap();
                 });
             });
         }

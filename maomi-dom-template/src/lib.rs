@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 // import maomi core module
 use maomi::{prelude::*, BackendContext};
 // using DOM backend
-use maomi_dom::{element::*, prelude::dom_css, DomBackend, event::*, async_task};
+use maomi_dom::{async_task, element::*, event::*, prelude::dom_css, DomBackend};
 
 // write limited CSS
 dom_css!(

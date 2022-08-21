@@ -6,12 +6,7 @@ use maomi::{
 };
 
 use crate::{
-    base_element::*,
-    event::*,
-    class_list::DomClassList,
-    tree::*,
-    DomBackend,
-    DomGeneralElement,
+    base_element::*, class_list::DomClassList, event::*, tree::*, DomBackend, DomGeneralElement,
 };
 
 fn set_style(elem: &web_sys::HtmlElement, s: &str) {

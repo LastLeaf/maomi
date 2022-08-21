@@ -14,8 +14,8 @@ use virtual_element::DomVirtualElement;
 pub mod text_node;
 use text_node::DomTextNode;
 pub mod class_list;
-pub mod event;
 mod composing;
+pub mod event;
 
 pub mod prelude {
     pub use crate::DomBackend;

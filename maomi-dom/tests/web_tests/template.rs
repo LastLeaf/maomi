@@ -755,16 +755,18 @@ async fn event_handler() {
                     } else {
                         assert_eq!(
                             this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
-                            .outer_html(),
+                                .unwrap()
+                                .0
+                                .tag
+                                .dom_element()
+                                .outer_html(),
                             r#"<div>400</div>"#,
                         );
                         (this.callback.take().unwrap())();
                     }
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             });
         }
     }

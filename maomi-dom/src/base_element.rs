@@ -1,8 +1,18 @@
-use maomi::{prop::PropertyUpdate, backend::tree::{ForestToken, ForestTokenAddr, ForestNodeRc}};
-use std::{borrow::Borrow, ops::Deref, mem::{ManuallyDrop, MaybeUninit}};
+use maomi::{
+    backend::tree::{ForestNodeRc, ForestToken, ForestTokenAddr},
+    prop::PropertyUpdate,
+};
+use std::{
+    borrow::Borrow,
+    mem::{ManuallyDrop, MaybeUninit},
+    ops::Deref,
+};
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::{event::{HotEventList, ColdEventList}, DomGeneralElement};
+use crate::{
+    event::{ColdEventList, HotEventList},
+    DomGeneralElement,
+};
 
 #[wasm_bindgen]
 extern "C" {
@@ -66,11 +76,15 @@ impl DomElement {
         self.elem.outer_html()
     }
 
-    pub(crate) fn from_event_dom_elem(dom_elem: &web_sys::Element) -> Option<ForestNodeRc<DomGeneralElement>> {
+    pub(crate) fn from_event_dom_elem(
+        dom_elem: &web_sys::Element,
+    ) -> Option<ForestNodeRc<DomGeneralElement>> {
         let ptr = dom_elem.unchecked_ref::<MaomiDomElement>().maomi();
         if let Some(ptr) = ptr {
             unsafe {
-                ForestTokenAddr::from_ptr(ptr as *const ()).token().unsafe_resolve_token()
+                ForestTokenAddr::from_ptr(ptr as *const ())
+                    .token()
+                    .unsafe_resolve_token()
             }
         } else {
             None
@@ -79,7 +93,9 @@ impl DomElement {
 
     fn init_event_token(&mut self) {
         let ptr = self.forest_token.stable_addr().ptr() as usize;
-        self.elem.unchecked_ref::<MaomiDomElement>().set_maomi(Some(ptr as u32));
+        self.elem
+            .unchecked_ref::<MaomiDomElement>()
+            .set_maomi(Some(ptr as u32));
     }
 
     pub(crate) fn hot_event_list_mut(&mut self) -> &mut HotEventList {

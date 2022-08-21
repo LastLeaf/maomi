@@ -1,7 +1,7 @@
 use wasm_bindgen::{prelude::*, JsCast};
 
+use super::{BubbleEvent, ColdEventItem, DomEventRegister};
 use crate::DomGeneralElement;
-use super::{ColdEventItem, DomEventRegister, BubbleEvent};
 
 /// A mouse-related event
 #[derive(Debug, Clone, PartialEq)]
@@ -67,7 +67,9 @@ impl MouseEvent {
 
 impl BubbleEvent for MouseEvent {
     fn stop_propagation(&mut self) {
-        if self.propagation_stopped { return };
+        if self.propagation_stopped {
+            return;
+        };
         self.propagation_stopped = true;
         self.dom_event.stop_propagation()
     }
@@ -77,7 +79,9 @@ impl BubbleEvent for MouseEvent {
     }
 
     fn prevent_default(&mut self) {
-        if self.default_prevented { return };
+        if self.default_prevented {
+            return;
+        };
         self.default_prevented = true;
         self.dom_event.prevent_default()
     }
@@ -88,37 +92,64 @@ impl BubbleEvent for MouseEvent {
 }
 
 fn trigger_ev<T: DomEventRegister<Detail = MouseEvent>>(dom_event: web_sys::MouseEvent) {
-    let target = dom_event.target()
-        .and_then(|x| {
-            crate::DomElement::from_event_dom_elem(x.unchecked_ref())
-        });
+    let target = dom_event
+        .target()
+        .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref()));
     if let Some(n) = target {
         if let DomGeneralElement::DomElement(x) = &mut *n.borrow_mut() {
-            T::trigger(x, &mut MouseEvent {
-                propagation_stopped: false,
-                default_prevented: false,
-                dom_event,
-            });
+            T::trigger(
+                x,
+                &mut MouseEvent {
+                    propagation_stopped: false,
+                    default_prevented: false,
+                    dom_event,
+                },
+            );
         }
     }
 }
 
-cold_event!(MouseDown, MouseEvent, "mousedown", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseDown>(dom_event);
-}));
+cold_event!(
+    MouseDown,
+    MouseEvent,
+    "mousedown",
+    Closure::new(move |dom_event: web_sys::MouseEvent| {
+        trigger_ev::<MouseDown>(dom_event);
+    })
+);
 
-cold_event!(MouseUp, MouseEvent, "mouseup", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseUp>(dom_event);
-}));
+cold_event!(
+    MouseUp,
+    MouseEvent,
+    "mouseup",
+    Closure::new(move |dom_event: web_sys::MouseEvent| {
+        trigger_ev::<MouseUp>(dom_event);
+    })
+);
 
-cold_event!(MouseMove, MouseEvent, "mousemove", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseMove>(dom_event);
-}));
+cold_event!(
+    MouseMove,
+    MouseEvent,
+    "mousemove",
+    Closure::new(move |dom_event: web_sys::MouseEvent| {
+        trigger_ev::<MouseMove>(dom_event);
+    })
+);
 
-cold_event!(MouseEnter, MouseEvent, "mouseenter", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseEnter>(dom_event);
-}));
+cold_event!(
+    MouseEnter,
+    MouseEvent,
+    "mouseenter",
+    Closure::new(move |dom_event: web_sys::MouseEvent| {
+        trigger_ev::<MouseEnter>(dom_event);
+    })
+);
 
-cold_event!(MouseLeave, MouseEvent, "mouseleave", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseLeave>(dom_event);
-}));
+cold_event!(
+    MouseLeave,
+    MouseEvent,
+    "mouseleave",
+    Closure::new(move |dom_event: web_sys::MouseEvent| {
+        trigger_ev::<MouseLeave>(dom_event);
+    })
+);

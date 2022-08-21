@@ -1,6 +1,6 @@
+use maomi::event::EventHandler;
 use std::marker::PhantomData;
 use wasm_bindgen::prelude::*;
-use maomi::event::EventHandler;
 
 use crate::base_element::DomElement;
 
@@ -11,7 +11,7 @@ pub use tap::TapEvent;
 pub(crate) mod touch;
 pub use touch::TouchEvent;
 pub(crate) mod mouse;
-pub use mouse::{MouseEvent, MouseButton};
+pub use mouse::{MouseButton, MouseEvent};
 pub(crate) mod scroll;
 pub use scroll::ScrollEvent;
 pub(crate) mod animation;
@@ -48,20 +48,62 @@ pub(crate) struct HotEventList {
 pub(crate) type ColdEventList = Vec<ColdEventItem>;
 
 pub(crate) enum ColdEventItem {
-    MouseDown(Box<dyn 'static + Fn(&mut MouseEvent)>, Closure<dyn Fn(web_sys::MouseEvent)>),
-    MouseUp(Box<dyn 'static + Fn(&mut MouseEvent)>, Closure<dyn Fn(web_sys::MouseEvent)>),
-    MouseMove(Box<dyn 'static + Fn(&mut MouseEvent)>, Closure<dyn Fn(web_sys::MouseEvent)>),
-    MouseEnter(Box<dyn 'static + Fn(&mut MouseEvent)>, Closure<dyn Fn(web_sys::MouseEvent)>),
-    MouseLeave(Box<dyn 'static + Fn(&mut MouseEvent)>, Closure<dyn Fn(web_sys::MouseEvent)>),
-    Scroll(Box<dyn 'static + Fn(&mut ScrollEvent)>, Closure<dyn Fn(web_sys::Event)>),
-    AnimationStart(Box<dyn 'static + Fn(&mut AnimationEvent)>, Closure<dyn Fn(web_sys::AnimationEvent)>),
-    AnimationIteration(Box<dyn 'static + Fn(&mut AnimationEvent)>, Closure<dyn Fn(web_sys::AnimationEvent)>),
-    AnimationEnd(Box<dyn 'static + Fn(&mut AnimationEvent)>, Closure<dyn Fn(web_sys::AnimationEvent)>),
-    AnimationCancel(Box<dyn 'static + Fn(&mut AnimationEvent)>, Closure<dyn Fn(web_sys::AnimationEvent)>),
-    TransitionRun(Box<dyn 'static + Fn(&mut TransitionEvent)>, Closure<dyn Fn(web_sys::TransitionEvent)>),
-    TransitionStart(Box<dyn 'static + Fn(&mut TransitionEvent)>, Closure<dyn Fn(web_sys::TransitionEvent)>),
-    TransitionEnd(Box<dyn 'static + Fn(&mut TransitionEvent)>, Closure<dyn Fn(web_sys::TransitionEvent)>),
-    TransitionCancel(Box<dyn 'static + Fn(&mut TransitionEvent)>, Closure<dyn Fn(web_sys::TransitionEvent)>),
+    MouseDown(
+        Box<dyn 'static + Fn(&mut MouseEvent)>,
+        Closure<dyn Fn(web_sys::MouseEvent)>,
+    ),
+    MouseUp(
+        Box<dyn 'static + Fn(&mut MouseEvent)>,
+        Closure<dyn Fn(web_sys::MouseEvent)>,
+    ),
+    MouseMove(
+        Box<dyn 'static + Fn(&mut MouseEvent)>,
+        Closure<dyn Fn(web_sys::MouseEvent)>,
+    ),
+    MouseEnter(
+        Box<dyn 'static + Fn(&mut MouseEvent)>,
+        Closure<dyn Fn(web_sys::MouseEvent)>,
+    ),
+    MouseLeave(
+        Box<dyn 'static + Fn(&mut MouseEvent)>,
+        Closure<dyn Fn(web_sys::MouseEvent)>,
+    ),
+    Scroll(
+        Box<dyn 'static + Fn(&mut ScrollEvent)>,
+        Closure<dyn Fn(web_sys::Event)>,
+    ),
+    AnimationStart(
+        Box<dyn 'static + Fn(&mut AnimationEvent)>,
+        Closure<dyn Fn(web_sys::AnimationEvent)>,
+    ),
+    AnimationIteration(
+        Box<dyn 'static + Fn(&mut AnimationEvent)>,
+        Closure<dyn Fn(web_sys::AnimationEvent)>,
+    ),
+    AnimationEnd(
+        Box<dyn 'static + Fn(&mut AnimationEvent)>,
+        Closure<dyn Fn(web_sys::AnimationEvent)>,
+    ),
+    AnimationCancel(
+        Box<dyn 'static + Fn(&mut AnimationEvent)>,
+        Closure<dyn Fn(web_sys::AnimationEvent)>,
+    ),
+    TransitionRun(
+        Box<dyn 'static + Fn(&mut TransitionEvent)>,
+        Closure<dyn Fn(web_sys::TransitionEvent)>,
+    ),
+    TransitionStart(
+        Box<dyn 'static + Fn(&mut TransitionEvent)>,
+        Closure<dyn Fn(web_sys::TransitionEvent)>,
+    ),
+    TransitionEnd(
+        Box<dyn 'static + Fn(&mut TransitionEvent)>,
+        Closure<dyn Fn(web_sys::TransitionEvent)>,
+    ),
+    TransitionCancel(
+        Box<dyn 'static + Fn(&mut TransitionEvent)>,
+        Closure<dyn Fn(web_sys::TransitionEvent)>,
+    ),
 }
 
 /// A DOM event that can be binded
@@ -79,14 +121,20 @@ pub struct DomEvent<M: DomEventRegister> {
 
 impl<M: DomEventRegister> Default for DomEvent<M> {
     fn default() -> Self {
-        Self { _phantom: PhantomData }
+        Self {
+            _phantom: PhantomData,
+        }
     }
 }
 
 impl<M: DomEventRegister> EventHandler<M::Detail> for DomEvent<M> {
     type UpdateContext = DomElement;
 
-    fn set_handler_fn(_dest: &mut Self, handler_fn: Box<dyn 'static + Fn(&mut M::Detail)>, ctx: &mut DomElement) {
+    fn set_handler_fn(
+        _dest: &mut Self,
+        handler_fn: Box<dyn 'static + Fn(&mut M::Detail)>,
+        ctx: &mut DomElement,
+    ) {
         M::bind(ctx, handler_fn);
     }
 }

@@ -3,8 +3,8 @@ use crate::{
     component::*,
     error::Error,
     node::{OwnerWeak, SlotChange, SlotChildren},
-    BackendContext,
     prop::Prop,
+    BackendContext,
 };
 
 /// An init object for the template
@@ -166,7 +166,9 @@ pub trait ComponentTemplate<B: Backend> {
     fn template_mut(&mut self) -> &mut Self::TemplateField;
 
     /// Init a template
-    fn template_init(&mut self, init: TemplateInit<Self>) where Self: Sized;
+    fn template_init(&mut self, init: TemplateInit<Self>)
+    where
+        Self: Sized;
 
     /// Create a component within the specified shadow root
     fn template_create<'b>(
