@@ -15,15 +15,20 @@ fn set_style(elem: &web_sys::HtmlElement, s: &str) {
 
 macro_rules! define_element {
     ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }, { $($event:ident: $event_type:ty,)* }) => {
+        /// A DOM element
         #[allow(non_camel_case_types)]
         pub struct $tag_name {
             backend_element_token: ForestToken,
+            /// The classes of the element, usually for styling
             pub class: DomClassList,
+            /// The CSS inline style for the element
             pub style: DomStrAttr,
             $(
+                /// A property
                 pub $prop: $prop_type,
             )*
             $(
+                /// An event
                 pub $event: $event_type,
             )*
             elem: web_sys::Element,
