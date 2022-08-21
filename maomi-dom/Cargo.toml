@@ -34,6 +34,7 @@ features = [
   "EventListener",
   "EventTarget",
   "Event",
+  "EventInit",
   "MouseEvent",
   "TouchEvent",
   "TouchList",
@@ -44,5 +45,8 @@ features = [
 ]
 
 [dev-dependencies]
+serde = { version = "1", features = ["derive"] }
 wasm-bindgen-test = "0.3"
 console_log = "0.2"
+console_error_panic_hook = "0.1"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }

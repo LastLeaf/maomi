@@ -41,6 +41,10 @@ macro_rules! cold_event {
                     }
                 }
                 let cb = $listen;
+                // Seriously, there should be a removal on the element dropped,
+                // otherwise the closure is lost and a js error is displayed in console.
+                // However, most events do not trigger after element removal,
+                // so here just do no removal.
                 if let Err(err) = target.elem.add_event_listener_with_callback(
                     $ev,
                     cb.as_ref().unchecked_ref(),

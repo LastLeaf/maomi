@@ -108,6 +108,11 @@ impl TouchTracker {
         if let Some((i, t)) = self.cur.iter_mut().enumerate().find(|(_, x)| x.identifier == identifier) {
             if (t.client_x - client_x).abs() > CANCEL_TAP_DIST
                 || (t.client_y - client_y).abs() > CANCEL_TAP_DIST {
+                if t.long_tap_cb.is_some() {
+                    crate::WINDOW.with(|window| {
+                        window.clear_timeout_with_handle(t.long_tap_cb_id);
+                    });
+                }
                 // generate cancel_tap event
                 let mut ev = TapEvent {
                     propagation_stopped: false,

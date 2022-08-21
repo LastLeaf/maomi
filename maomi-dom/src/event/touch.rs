@@ -5,20 +5,28 @@ use crate::{DomGeneralElement, DOCUMENT};
 use super::{DomEventRegister, BubbleEvent, utils, tap::TOUCH_TRACKER};
 
 pub(super) struct TouchEventCbs {
-    #[allow(dead_code)]
+    root: web_sys::Element,
     touchstart: Closure<dyn Fn(web_sys::TouchEvent)>,
-    #[allow(dead_code)]
     touchmove: Closure<dyn Fn(web_sys::TouchEvent)>,
-    #[allow(dead_code)]
     touchend: Closure<dyn Fn(web_sys::TouchEvent)>,
-    #[allow(dead_code)]
     touchcancel: Closure<dyn Fn(web_sys::TouchEvent)>,
-    #[allow(dead_code)]
     mousedown: Closure<dyn Fn(web_sys::MouseEvent)>,
-    #[allow(dead_code)]
     mouseup: Closure<dyn Fn(web_sys::MouseEvent)>,
-    #[allow(dead_code)]
     mousemove: Closure<dyn Fn(web_sys::MouseEvent)>,
+}
+
+impl Drop for TouchEventCbs {
+    fn drop(&mut self) {
+        self.root.remove_event_listener_with_callback("touchstart", self.touchstart.as_ref().unchecked_ref()).ok();
+        self.root.remove_event_listener_with_callback("touchmove", self.touchmove.as_ref().unchecked_ref()).ok();
+        self.root.remove_event_listener_with_callback("touchend", self.touchend.as_ref().unchecked_ref()).ok();
+        self.root.remove_event_listener_with_callback("touchcancel", self.touchcancel.as_ref().unchecked_ref()).ok();
+        self.root.remove_event_listener_with_callback("mousedown", self.mousedown.as_ref().unchecked_ref()).ok();
+        DOCUMENT.with(|document| {
+            document.remove_event_listener_with_callback("mouseup", self.mouseup.as_ref().unchecked_ref()).ok();
+            document.remove_event_listener_with_callback("mousemove", self.mousemove.as_ref().unchecked_ref()).ok();
+        });
+    }
 }
 
 fn add_touch_event_listener<T: DomEventRegister<Detail = TouchEvent>>(
@@ -154,6 +162,7 @@ pub(super) fn init_dom_listeners(root: &web_sys::Element) -> TouchEventCbs {
         root,
         "mousedown",
         |target, ev| {
+            if ev.button() != 0 { return };
             TOUCH_TRACKER.with(|tracker| {
                 let tracker = &mut tracker.borrow_mut();
                 if !tracker.touch_mode() {
@@ -167,6 +176,7 @@ pub(super) fn init_dom_listeners(root: &web_sys::Element) -> TouchEventCbs {
             document.unchecked_ref(),
             "mouseup",
             |ev| {
+                if ev.button() != 0 { return };
                 TOUCH_TRACKER.with(|tracker| {
                     let tracker = &mut tracker.borrow_mut();
                     if !tracker.touch_mode() {
@@ -192,6 +202,7 @@ pub(super) fn init_dom_listeners(root: &web_sys::Element) -> TouchEventCbs {
         )
     });
     TouchEventCbs {
+        root: root.clone(),
         touchstart,
         touchmove,
         touchend,

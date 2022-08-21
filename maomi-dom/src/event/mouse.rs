@@ -104,15 +104,15 @@ fn trigger_ev<T: DomEventRegister<Detail = MouseEvent>>(dom_event: web_sys::Mous
 }
 
 cold_event!(MouseDown, MouseEvent, "mousedown", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseEnter>(dom_event);
+    trigger_ev::<MouseDown>(dom_event);
 }));
 
 cold_event!(MouseUp, MouseEvent, "mouseup", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseEnter>(dom_event);
+    trigger_ev::<MouseUp>(dom_event);
 }));
 
 cold_event!(MouseMove, MouseEvent, "mousemove", Closure::new(move |dom_event: web_sys::MouseEvent| {
-    trigger_ev::<MouseEnter>(dom_event);
+    trigger_ev::<MouseMove>(dom_event);
 }));
 
 cold_event!(MouseEnter, MouseEvent, "mouseenter", Closure::new(move |dom_event: web_sys::MouseEvent| {

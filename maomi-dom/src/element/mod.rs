@@ -131,9 +131,23 @@ macro_rules! define_element_with_shared_props {
             touch_move: DomEvent<crate::event::touch::TouchMove>,
             touch_end: DomEvent<crate::event::touch::TouchEnd>,
             touch_cancel: DomEvent<crate::event::touch::TouchCancel>,
+            mouse_down: DomEvent<crate::event::mouse::MouseDown>,
+            mouse_up: DomEvent<crate::event::mouse::MouseUp>,
+            mouse_move: DomEvent<crate::event::mouse::MouseMove>,
+            mouse_enter: DomEvent<crate::event::mouse::MouseEnter>,
+            mouse_leave: DomEvent<crate::event::mouse::MouseLeave>,
             tap: DomEvent<crate::event::tap::Tap>,
             long_tap: DomEvent<crate::event::tap::LongTap>,
             cancel_tap: DomEvent<crate::event::tap::CancelTap>,
+            scroll: DomEvent<crate::event::scroll::Scroll>,
+            animation_start: DomEvent<crate::event::animation::AnimationStart>,
+            animation_iteration: DomEvent<crate::event::animation::AnimationIteration>,
+            animation_end: DomEvent<crate::event::animation::AnimationEnd>,
+            animation_cancel: DomEvent<crate::event::animation::AnimationCancel>,
+            transition_run: DomEvent<crate::event::transition::TransitionRun>,
+            transition_start: DomEvent<crate::event::transition::TransitionStart>,
+            transition_end: DomEvent<crate::event::transition::TransitionEnd>,
+            transition_cancel: DomEvent<crate::event::transition::TransitionCancel>,
         });
     };
 }

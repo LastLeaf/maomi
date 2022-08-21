@@ -474,7 +474,7 @@ async fn template_for() {
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
-                        vec![],
+                        Vec::<usize>::new(),
                     );
                     this.list = vec![MyList(78), MyList(12), MyList(56), MyList(34), MyList(90)];
                 })
@@ -492,7 +492,7 @@ async fn template_for() {
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
-                        vec![],
+                        Vec::<usize>::new(),
                     );
                     this.list = vec![MyList(12), MyList(67), MyList(34)];
                 })
@@ -528,7 +528,7 @@ async fn template_for() {
                     );
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
-                        vec![],
+                        Vec::<usize>::new(),
                     );
                     (this.callback.take().unwrap())();
                 })

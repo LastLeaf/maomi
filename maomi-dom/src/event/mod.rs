@@ -11,7 +11,7 @@ pub use tap::TapEvent;
 pub(crate) mod touch;
 pub use touch::TouchEvent;
 pub(crate) mod mouse;
-pub use mouse::MouseEvent;
+pub use mouse::{MouseEvent, MouseButton};
 pub(crate) mod scroll;
 pub use scroll::ScrollEvent;
 pub(crate) mod animation;
