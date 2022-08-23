@@ -64,15 +64,15 @@ impl DomElement {
         self.forest_token = ManuallyDrop::new(forest_token);
     }
 
-    pub fn dom(&self) -> &web_sys::Node {
+    pub(crate) fn dom(&self) -> &web_sys::Node {
         &self.elem
     }
 
-    pub fn inner_html(&self) -> String {
+    pub(crate) fn inner_html(&self) -> String {
         self.elem.inner_html()
     }
 
-    pub fn outer_html(&self) -> String {
+    pub(crate) fn outer_html(&self) -> String {
         self.elem.outer_html()
     }
 
@@ -135,6 +135,7 @@ pub struct DomStrAttr {
 impl Deref for DomStrAttr {
     type Target = String;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -146,6 +147,7 @@ where
 {
     type UpdateContext = DomElement;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
         if dest.inner.borrow() == src {
             return;
@@ -163,6 +165,7 @@ pub struct DomBoolAttr {
 impl Deref for DomBoolAttr {
     type Target = bool;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -174,6 +177,7 @@ where
 {
     type UpdateContext = DomElement;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
         if dest.inner.borrow() == src {
             return;

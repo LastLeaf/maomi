@@ -89,7 +89,6 @@ async fn animation_event() {
 
     impl MyComp {
         fn ani_fn(this: ComponentRc<Self>, ev: &mut AnimationEvent, kind: &u32) {
-            assert_eq!(ev.animation_name(), "ani");
             assert_eq!(ev.elapsed_time(), 123.);
             let kind = *kind;
             async_task(async move {

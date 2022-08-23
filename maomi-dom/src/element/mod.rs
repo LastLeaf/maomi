@@ -36,6 +36,7 @@ macro_rules! define_element {
 
         impl $tag_name {
             /// Get the underlying DOM element
+            #[inline]
             pub fn dom_element(&self) -> &web_sys::Element {
                 &self.elem
             }

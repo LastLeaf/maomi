@@ -198,7 +198,7 @@ impl TouchTracker {
     }
 }
 
-/// A tap event
+/// The tap event detail
 ///
 /// Tap events are generated from DOM `touch*` or `mouse*` events automatically.
 pub struct TapEvent {
@@ -209,28 +209,36 @@ pub struct TapEvent {
 }
 
 impl TapEvent {
+    /// Get the x-position reletive to the viewport
+    #[inline]
     pub fn client_x(&self) -> i32 {
         self.client_x
     }
 
+    /// Get the y-position reletive to the viewport
+    #[inline]
     pub fn client_y(&self) -> i32 {
         self.client_y
     }
 }
 
 impl BubbleEvent for TapEvent {
+    #[inline]
     fn stop_propagation(&mut self) {
         self.propagation_stopped = true;
     }
 
+    #[inline]
     fn propagation_stopped(&self) -> bool {
         self.propagation_stopped
     }
 
+    #[inline]
     fn prevent_default(&mut self) {
         self.default_prevented = true;
     }
 
+    #[inline]
     fn default_prevented(&self) -> bool {
         self.default_prevented
     }

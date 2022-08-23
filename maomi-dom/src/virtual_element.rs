@@ -6,6 +6,7 @@ pub struct DomVirtualElement {
 }
 
 impl DomVirtualElement {
+    #[inline]
     pub(crate) fn new() -> Self {
         Self {}
     }

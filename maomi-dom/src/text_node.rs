@@ -16,7 +16,7 @@ impl DomTextNode {
         }
     }
 
-    pub fn inner_html(&self) -> String {
+    pub(crate) fn inner_html(&self) -> String {
         self.dom_elem.text_content().unwrap_or_default()
     }
 }
@@ -24,6 +24,7 @@ impl DomTextNode {
 impl BackendTextNode for DomTextNode {
     type BaseBackend = crate::DomBackend;
 
+    #[inline]
     fn set_text(&mut self, content: &str) {
         self.dom_elem.set_text_content(Some(content));
     }

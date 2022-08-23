@@ -120,6 +120,7 @@ pub struct DomEvent<M: DomEventRegister> {
 }
 
 impl<M: DomEventRegister> Default for DomEvent<M> {
+    #[inline]
     fn default() -> Self {
         Self {
             _phantom: PhantomData,
@@ -130,6 +131,7 @@ impl<M: DomEventRegister> Default for DomEvent<M> {
 impl<M: DomEventRegister> EventHandler<M::Detail> for DomEvent<M> {
     type UpdateContext = DomElement;
 
+    #[inline]
     fn set_handler_fn(
         _dest: &mut Self,
         handler_fn: Box<dyn 'static + Fn(&mut M::Detail)>,

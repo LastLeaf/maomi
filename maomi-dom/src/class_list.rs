@@ -22,11 +22,13 @@ impl ListPropertyUpdate<bool> for DomClassList {
     type UpdateContext = DomElement;
     type ItemValue = &'static str;
 
+    #[inline]
     fn init_list(dest: &mut Self, count: usize, _ctx: &mut Self::UpdateContext) {
         dest.enabled.resize(count, false);
         dest.enabled.reserve_exact(0);
     }
 
+    #[inline]
     fn compare_and_set_item_ref<
         U: maomi::prop::ListPropertyItem<Self, bool, Value = Self::ItemValue>,
     >(

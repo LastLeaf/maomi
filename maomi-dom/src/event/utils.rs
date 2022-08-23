@@ -36,6 +36,7 @@ macro_rules! cold_event {
         impl DomEventRegister for $arm {
             type Detail = $detail;
 
+            #[inline]
             fn bind(target: &mut crate::base_element::DomElement, f: Box<dyn 'static + Fn(&mut Self::Detail)>) {
                 for item in target.cold_event_list_mut() {
                     if let ColdEventItem::$arm(x, _) = item {
@@ -58,6 +59,7 @@ macro_rules! cold_event {
                 target.cold_event_list_mut().push(ColdEventItem::$arm(f, cb));
             }
 
+            #[inline]
             fn trigger(target: &mut crate::base_element::DomElement, detail: &mut Self::Detail) {
                 if let Some(list) = target.cold_event_list() {
                     let f = list.iter()
@@ -84,7 +86,7 @@ where
     loop {
         let next = {
             let mut n = cur.borrow_mut();
-            if let DomGeneralElement::DomElement(x) = &mut *n {
+            if let DomGeneralElement::Element(x) = &mut *n {
                 T::trigger(x, detail);
                 if detail.propagation_stopped() {
                     break;

@@ -1,5 +1,3 @@
-use enum_dispatch::enum_dispatch;
-use event::DomListeners;
 use maomi::{
     backend::{tree::*, *},
     error::Error,
@@ -13,9 +11,10 @@ pub mod virtual_element;
 use virtual_element::DomVirtualElement;
 pub mod text_node;
 use text_node::DomTextNode;
-pub mod class_list;
 mod composing;
+pub mod class_list;
 pub mod event;
+use event::DomListeners;
 
 pub mod prelude {
     pub use crate::DomBackend;
@@ -40,6 +39,7 @@ fn log_js_error(err: &JsValue) {
 }
 
 /// A common async runner for DOM environment
+#[inline]
 pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
     wasm_bindgen_futures::spawn_local(fut);
 }
@@ -52,10 +52,14 @@ pub struct DomBackend {
 }
 
 impl DomBackend {
+    /// Create a backend that rendering under the specified DOM element
+    #[inline]
     pub fn new_with_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
         Ok(Self::wrap_root_element(dom_elem)?)
     }
 
+    /// Create a backend that rendering under the DOM element with the `id`
+    #[inline]
     pub fn new_with_element_id(id: &str) -> Result<Self, Error> {
         let dom_elem = DOCUMENT
             .with(|document| document.get_element_by_id(id))
@@ -66,6 +70,8 @@ impl DomBackend {
         Ok(Self::wrap_root_element(dom_elem)?)
     }
 
+    /// Create a backend that rendering under the DOM `<body>`
+    #[inline]
     pub fn new_with_document_body() -> Result<Self, Error> {
         let dom_elem =
             DOCUMENT
@@ -80,11 +86,11 @@ impl DomBackend {
     fn wrap_root_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
         let listeners = event::DomListeners::new(&dom_elem);
         let tree_root = {
-            let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::DomElement(unsafe {
+            let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::Element(unsafe {
                 DomElement::new(dom_elem)
             }));
             let token = ret.token();
-            if let DomGeneralElement::DomElement(x) = &mut *ret.borrow_mut() {
+            if let DomGeneralElement::Element(x) = &mut *ret.borrow_mut() {
                 x.init(token);
             } else {
                 unreachable!()
@@ -113,23 +119,18 @@ impl Backend for DomBackend {
 }
 
 #[doc(hidden)]
-#[enum_dispatch]
-pub trait DomGeneralElementTrait {}
-
-#[doc(hidden)]
-#[enum_dispatch(DomGeneralElementTrait)]
 pub enum DomGeneralElement {
-    VirtualElement(DomVirtualElement),
-    DomText(DomTextNode),
-    DomElement(DomElement),
+    Virtual(DomVirtualElement),
+    Text(DomTextNode),
+    Element(DomElement),
 }
 
 impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::VirtualElement(_) => write!(f, "[Virtual {:p}]", self),
-            Self::DomText(x) => write!(f, "{:?}", x.dom().text_content().unwrap_or_default()),
-            Self::DomElement(x) => write!(f, "{:?}", x),
+            Self::Virtual(_) => write!(f, "[Virtual {:p}]", self),
+            Self::Text(x) => write!(f, "{:?}", x.dom().text_content().unwrap_or_default()),
+            Self::Element(x) => write!(f, "{:?}", x),
         }
     }
 }
@@ -138,12 +139,12 @@ impl DomGeneralElement {
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
         elem: &'b web_sys::Element,
-    ) -> ForestNodeRc<DomGeneralElement> {
-        let ret = this.new_tree(DomGeneralElement::DomElement(unsafe {
+    ) -> ForestNodeRc<Self> {
+        let ret = this.new_tree(Self::Element(unsafe {
             DomElement::new(elem.clone())
         }));
         let token = ret.token();
-        if let DomGeneralElement::DomElement(x) = &mut *this.borrow_mut(&ret) {
+        if let Self::Element(x) = &mut *this.borrow_mut(&ret) {
             x.init(token);
         } else {
             unreachable!()
@@ -151,12 +152,12 @@ impl DomGeneralElement {
         ret
     }
 
-    pub fn as_dom_element_mut<'b>(
+    pub(crate) fn as_dom_element_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
     ) -> Option<ForestValueMut<'b, DomElement>> {
-        if let DomGeneralElement::DomElement(_) = &mut **this {
+        if let Self::Element(_) = &mut **this {
             Some(this.map(|g| {
-                if let DomGeneralElement::DomElement(e) = g {
+                if let Self::Element(e) = g {
                     e
                 } else {
                     unreachable!()
@@ -167,15 +168,17 @@ impl DomGeneralElement {
         }
     }
 
+    /// Get the inner HTML of the specified node
+    #[inline]
     pub fn inner_html(this: &ForestNode<Self>) -> String {
         match &**this {
-            DomGeneralElement::DomText(x) => {
+            Self::Text(x) => {
                 return x.inner_html();
             }
-            DomGeneralElement::DomElement(x) => {
+            Self::Element(x) => {
                 return x.inner_html();
             }
-            DomGeneralElement::VirtualElement(_) => {}
+            Self::Virtual(_) => {}
         }
         let mut ret = String::new();
         let mut cur = this.first_child();
@@ -186,15 +189,17 @@ impl DomGeneralElement {
         ret
     }
 
+    /// Get the outer HTML of the specified node
+    #[inline]
     pub fn outer_html(this: &ForestNode<Self>) -> String {
         match &**this {
-            DomGeneralElement::DomText(x) => {
+            Self::Text(x) => {
                 return x.inner_html();
             }
-            DomGeneralElement::DomElement(x) => {
+            Self::Element(x) => {
                 return x.outer_html();
             }
-            DomGeneralElement::VirtualElement(_) => {}
+            Self::Virtual(_) => {}
         }
         let mut ret = String::new();
         let mut cur = this.first_child();
@@ -209,6 +214,7 @@ impl DomGeneralElement {
 impl BackendGeneralElement for DomGeneralElement {
     type BaseBackend = DomBackend;
 
+    #[inline]
     fn as_virtual_element_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
     ) -> Option<
@@ -220,9 +226,9 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        if let DomGeneralElement::VirtualElement(_) = &mut **this {
+        if let Self::Virtual(_) = &mut **this {
             Some(this.map(|g| {
-                if let DomGeneralElement::VirtualElement(e) = g {
+                if let Self::Virtual(e) = g {
                     e
                 } else {
                     unreachable!()
@@ -233,6 +239,7 @@ impl BackendGeneralElement for DomGeneralElement {
         }
     }
 
+    #[inline]
     fn as_text_node_mut<'b>(
         this: &'b mut ForestNodeMut<Self>,
     ) -> Option<
@@ -241,9 +248,9 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        if let DomGeneralElement::DomText(_) = &mut **this {
+        if let Self::Text(_) = &mut **this {
             Some(this.map(|g| {
-                if let DomGeneralElement::DomText(e) = g {
+                if let DomGeneralElement::Text(e) = g {
                     e
                 } else {
                     unreachable!()
@@ -254,6 +261,7 @@ impl BackendGeneralElement for DomGeneralElement {
         }
     }
 
+    #[inline]
     fn create_virtual_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
     ) -> Result<ForestNodeRc<<Self::BaseBackend as Backend>::GeneralElement>, Error>
@@ -261,10 +269,11 @@ impl BackendGeneralElement for DomGeneralElement {
         Self: Sized,
     {
         let elem = DomVirtualElement::new();
-        let child = this.new_tree(DomGeneralElement::VirtualElement(elem));
+        let child = this.new_tree(Self::Virtual(elem));
         Ok(child)
     }
 
+    #[inline]
     fn create_text_node(
         this: &mut ForestNodeMut<Self>,
         content: &str,
@@ -272,10 +281,11 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        let child = this.new_tree(DomGeneralElement::DomText(DomTextNode::new(content)));
+        let child = this.new_tree(Self::Text(DomTextNode::new(content)));
         Ok(child)
     }
 
+    #[inline]
     fn append<'b>(
         this: &'b mut ForestNodeMut<Self>,
         child: &'b ForestNodeRc<
@@ -297,6 +307,7 @@ impl BackendGeneralElement for DomGeneralElement {
         }
     }
 
+    #[inline]
     fn insert<'b>(
         this: &'b mut ForestNodeMut<Self>,
         target: &'b ForestNodeRc<
@@ -316,6 +327,7 @@ impl BackendGeneralElement for DomGeneralElement {
         }
     }
 
+    #[inline]
     fn temp_detach(
         this: ForestNodeMut<Self>,
     ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>
@@ -325,6 +337,7 @@ impl BackendGeneralElement for DomGeneralElement {
         this.detach()
     }
 
+    #[inline]
     fn detach(
         this: ForestNodeMut<Self>,
     ) -> ForestNodeRc<<<Self as BackendGeneralElement>::BaseBackend as Backend>::GeneralElement>

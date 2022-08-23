@@ -229,10 +229,11 @@ pub(super) fn init_dom_listeners(root: &web_sys::Element) -> TouchEventCbs {
     }
 }
 
+/// The identifier of a touch, i.e. a finger
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TouchIdentifier(i32);
 
-/// A touch event that contains only one changed touch information
+/// The touch event detail that contains only one changed touch information
 #[derive(Debug, Clone, PartialEq)]
 pub struct TouchEvent {
     propagation_stopped: bool,
@@ -244,18 +245,22 @@ pub struct TouchEvent {
 }
 
 impl BubbleEvent for TouchEvent {
+    #[inline]
     fn stop_propagation(&mut self) {
         self.propagation_stopped = true;
     }
 
+    #[inline]
     fn propagation_stopped(&self) -> bool {
         self.propagation_stopped
     }
 
+    #[inline]
     fn prevent_default(&mut self) {
         self.default_prevented = true;
     }
 
+    #[inline]
     fn default_prevented(&self) -> bool {
         self.default_prevented
     }
@@ -263,16 +268,19 @@ impl BubbleEvent for TouchEvent {
 
 impl TouchEvent {
     /// Get the identifier for a series of touch events
+    #[inline]
     pub fn identifier(&self) -> TouchIdentifier {
         self.identifier
     }
 
     /// Get the x-position reletive to the viewport
+    #[inline]
     pub fn client_x(&self) -> i32 {
         self.client_x
     }
 
     /// Get the y-position reletive to the viewport
+    #[inline]
     pub fn client_y(&self) -> i32 {
         self.client_y
     }
