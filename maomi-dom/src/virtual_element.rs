@@ -1,14 +1,37 @@
 use maomi::backend::*;
 
+use crate::{DomState, DomGeneralElement};
+
 #[doc(hidden)]
 pub struct DomVirtualElement {
-    // empty
+    dom_elem: dom_state_ty!((), ()),
 }
 
 impl DomVirtualElement {
     #[inline]
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(
+        this: &mut tree::ForestNodeMut<DomGeneralElement>,
+    ) -> Self {
+        let dom_elem = match this.is_prerendering() {
+            DomState::Normal(_) => DomState::Normal(()),
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(_) => DomState::Prerendering(()),
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply => DomState::PrerenderingApply,
+        };
+        Self {
+            dom_elem,
+        }
+    }
+
+    pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), ()) {
+        match &self.dom_elem {
+            DomState::Normal(_) => DomState::Normal(()),
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(_) => DomState::Prerendering(()),
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply => DomState::PrerenderingApply,
+        }
     }
 }
 

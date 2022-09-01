@@ -31,7 +31,6 @@ fn trigger_ev<T: DomEventRegister<Detail = AnimationEvent>>(dom_event: web_sys::
 cold_event!(
     AnimationStart,
     AnimationEvent,
-    "animationstart",
     Closure::new(move |dom_event: web_sys::AnimationEvent| {
         trigger_ev::<AnimationStart>(dom_event);
     })
@@ -40,7 +39,6 @@ cold_event!(
 cold_event!(
     AnimationIteration,
     AnimationEvent,
-    "animationiteration",
     Closure::new(move |dom_event: web_sys::AnimationEvent| {
         trigger_ev::<AnimationIteration>(dom_event);
     })
@@ -49,7 +47,6 @@ cold_event!(
 cold_event!(
     AnimationEnd,
     AnimationEvent,
-    "animationend",
     Closure::new(move |dom_event: web_sys::AnimationEvent| {
         trigger_ev::<AnimationEnd>(dom_event);
     })
@@ -58,7 +55,6 @@ cold_event!(
 cold_event!(
     AnimationCancel,
     AnimationEvent,
-    "animationcancel",
     Closure::new(move |dom_event: web_sys::AnimationEvent| {
         trigger_ev::<AnimationCancel>(dom_event);
     })

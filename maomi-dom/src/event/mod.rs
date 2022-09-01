@@ -1,6 +1,6 @@
 use maomi::event::EventHandler;
 use std::marker::PhantomData;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::base_element::DomElement;
 
@@ -106,6 +106,38 @@ pub(crate) enum ColdEventItem {
     ),
 }
 
+impl ColdEventItem {
+    pub(crate) fn apply(&self, elem: &web_sys::Element) {
+        let (ev_name, cb): (&str, &JsValue) = match self {
+            Self::MouseDown(_, cb) => ("mousedown", cb.as_ref()),
+            Self::MouseUp(_, cb) => ("mouseup", cb.as_ref()),
+            Self::MouseMove(_, cb) => ("mousemove", cb.as_ref()),
+            Self::MouseEnter(_, cb) => ("mouseenter", cb.as_ref()),
+            Self::MouseLeave(_, cb) => ("mouseleave", cb.as_ref()),
+            Self::Scroll(_, cb) => ("scroll", cb.as_ref()),
+            Self::AnimationStart(_, cb) => ("animationstart", cb.as_ref()),
+            Self::AnimationIteration(_, cb) => ("animationiteration", cb.as_ref()),
+            Self::AnimationEnd(_, cb) => ("animationend", cb.as_ref()),
+            Self::AnimationCancel(_, cb) => ("animationcancel", cb.as_ref()),
+            Self::TransitionRun(_, cb) => ("transitionrun", cb.as_ref()),
+            Self::TransitionStart(_, cb) => ("transitionstart", cb.as_ref()),
+            Self::TransitionEnd(_, cb) => ("transitionend", cb.as_ref()),
+            Self::TransitionCancel(_, cb) => ("transitioncancel", cb.as_ref()),
+        };
+        // Seriously, there should be a removal on the element dropped,
+        // otherwise the closure is lost and a js error is displayed in console.
+        // However, most events do not trigger after element removal,
+        // so here just do no removal.
+        if let Err(err) = elem.add_event_listener_with_callback(
+            ev_name,
+            cb.unchecked_ref(),
+        ) {
+            crate::log_js_error(&err);
+            log::error!("Failed adding listener for event {:?}. This event will not be triggered.", ev_name);
+        }
+    }
+}
+
 /// A DOM event that can be binded
 pub trait DomEventRegister {
     type Detail;
@@ -114,7 +146,7 @@ pub trait DomEventRegister {
     fn trigger(target: &mut DomElement, detail: &mut Self::Detail);
 }
 
-// A DOM event
+/// A DOM event
 pub struct DomEvent<M: DomEventRegister> {
     _phantom: PhantomData<M>,
 }

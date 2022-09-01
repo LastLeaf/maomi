@@ -3,10 +3,11 @@ use crate::{
     error::Error,
 };
 
+// TODO try to accept all `ToString` types to reduce comparison overhead
+
 /// A text node
 pub struct TextNode {
     backend_element_token: tree::ForestToken,
-    content: String,
 }
 
 impl TextNode {
@@ -22,7 +23,6 @@ impl TextNode {
         let elem = B::GeneralElement::create_text_node(owner, content)?;
         let this = Self {
             backend_element_token: elem.token(),
-            content: content.to_string(),
         };
         Ok((this, elem))
     }
@@ -45,13 +45,10 @@ impl TextNode {
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         text: &str,
     ) -> Result<(), Error> {
-        if self.content.as_str() != text {
-            self.content = text.to_string();
-            if let Some(mut text_node) = owner.borrow_mut_token(&self.backend_element_token) {
-                let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
-                    .ok_or(Error::TreeNodeTypeWrong)?;
-                text_node.set_text(&self.content);
-            }
+        if let Some(mut text_node) = owner.borrow_mut_token(&self.backend_element_token) {
+            let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
+                .ok_or(Error::TreeNodeTypeWrong)?;
+            text_node.set_text(text);
         }
         Ok(())
     }

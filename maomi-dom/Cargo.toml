@@ -9,6 +9,12 @@ documentation = "https://github.com/LastLeaf/maomi"
 repository = "https://github.com/LastLeaf/maomi"
 edition = "2021"
 
+[features]
+default = ["all"]
+prerendering = ["html-escape"]
+prerendering-apply = []
+all = ["prerendering", "prerendering-apply"]
+
 [dependencies]
 maomi = { version = "=0.4.0", path = "../maomi" }
 maomi-dom-macro = { version = "=0.4.0", path = "../maomi-dom-macro" }
@@ -16,6 +22,7 @@ log = "0.4"
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+html-escape = { version = "0.2", optional = true }
 
 [dependencies.web-sys]
 version = "0.3"

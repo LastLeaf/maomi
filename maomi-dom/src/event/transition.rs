@@ -37,7 +37,6 @@ fn trigger_ev<T: DomEventRegister<Detail = TransitionEvent>>(dom_event: web_sys:
 cold_event!(
     TransitionRun,
     TransitionEvent,
-    "transitionrun",
     Closure::new(move |dom_event: web_sys::TransitionEvent| {
         trigger_ev::<TransitionRun>(dom_event);
     })
@@ -46,7 +45,6 @@ cold_event!(
 cold_event!(
     TransitionStart,
     TransitionEvent,
-    "transitionstart",
     Closure::new(move |dom_event: web_sys::TransitionEvent| {
         trigger_ev::<TransitionStart>(dom_event);
     })
@@ -55,7 +53,6 @@ cold_event!(
 cold_event!(
     TransitionEnd,
     TransitionEvent,
-    "transitionend",
     Closure::new(move |dom_event: web_sys::TransitionEvent| {
         trigger_ev::<TransitionEnd>(dom_event);
     })
@@ -64,7 +61,6 @@ cold_event!(
 cold_event!(
     TransitionCancel,
     TransitionEvent,
-    "transitioncancel",
     Closure::new(move |dom_event: web_sys::TransitionEvent| {
         trigger_ev::<TransitionCancel>(dom_event);
     })

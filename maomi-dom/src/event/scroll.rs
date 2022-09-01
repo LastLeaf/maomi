@@ -62,7 +62,6 @@ fn trigger_ev<T: DomEventRegister<Detail = ScrollEvent>>(dom_event: web_sys::Eve
 cold_event!(
     Scroll,
     ScrollEvent,
-    "scroll",
     Closure::new(move |dom_event: web_sys::Event| {
         trigger_ev::<Scroll>(dom_event);
     })

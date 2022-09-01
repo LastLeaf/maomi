@@ -53,7 +53,7 @@ pub(crate) fn remove_all_children<'a>(
         match &**n {
             DomGeneralElement::Element(x) => {
                 parent
-                    .remove_child(x.dom())
+                    .remove_child(x.composing_dom())
                     .map(|_| ())
                     .unwrap_or_else(|x| {
                         crate::log_js_error(&x);
@@ -61,7 +61,7 @@ pub(crate) fn remove_all_children<'a>(
             }
             DomGeneralElement::Text(x) => {
                 parent
-                    .remove_child(x.dom())
+                    .remove_child(x.composing_dom())
                     .map(|_| ())
                     .unwrap_or_else(|x| {
                         crate::log_js_error(&x);
@@ -83,10 +83,10 @@ pub(crate) fn collect_child_frag<'a>(n: ForestNode<'a, DomGeneralElement>) -> Ch
     fn rec<'a>(n: ForestNode<'a, DomGeneralElement>, ret: &mut ChildFrag) {
         match &*n {
             DomGeneralElement::Element(x) => {
-                return ret.add(&x.dom());
+                return ret.add(&x.composing_dom());
             }
             DomGeneralElement::Text(x) => {
-                return ret.add(&x.dom());
+                return ret.add(&x.composing_dom());
             }
             DomGeneralElement::Virtual(_) => {
                 let mut cur_option = n.first_child();
@@ -111,10 +111,10 @@ pub(crate) fn find_nearest_dom_ancestor<'a>(
             let cur = n.borrow(&cur_rc);
             match &*cur {
                 DomGeneralElement::Element(x) => {
-                    return Some(x.dom().clone());
+                    return Some(x.composing_dom().clone());
                 }
                 DomGeneralElement::Text(x) => {
-                    return Some(x.dom().clone());
+                    return Some(x.composing_dom().clone());
                 }
                 DomGeneralElement::Virtual(_) => {
                     if let Some(x) = cur.parent_rc() {
@@ -133,10 +133,10 @@ pub(crate) fn find_nearest_dom_ancestor<'a>(
 fn find_first_dom_child<'a>(parent: ForestNode<'a, DomGeneralElement>) -> Option<web_sys::Node> {
     match &*parent {
         DomGeneralElement::Element(x) => {
-            return Some(x.dom().clone());
+            return Some(x.composing_dom().clone());
         }
         DomGeneralElement::Text(x) => {
-            return Some(x.dom().clone());
+            return Some(x.composing_dom().clone());
         }
         DomGeneralElement::Virtual(_) => {
             let mut cur_option = parent.first_child();

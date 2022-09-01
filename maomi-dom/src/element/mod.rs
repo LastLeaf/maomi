@@ -6,7 +6,13 @@ use maomi::{
 };
 
 use crate::{
-    base_element::*, class_list::DomClassList, event::*, tree::*, DomBackend, DomGeneralElement,
+    base_element::*,
+    class_list::DomClassList,
+    event::*,
+    tree::*,
+    DomBackend,
+    DomGeneralElement,
+    DomState,
 };
 
 fn set_style(elem: &web_sys::HtmlElement, s: &str) {
@@ -31,14 +37,26 @@ macro_rules! define_element {
                 /// An event
                 pub $event: $event_type,
             )*
-            elem: web_sys::Element,
+            dom_elem: dom_state_ty!(web_sys::Element, ()),
         }
 
         impl $tag_name {
             /// Get the underlying DOM element
+            ///
+            /// Panics if called during prerendering stage.
             #[inline]
             pub fn dom_element(&self) -> &web_sys::Element {
-                &self.elem
+                match &self.dom_elem {
+                    DomState::Normal(x) => x,
+                    #[cfg(feature = "prerendering")]
+                    DomState::Prerendering(_) => {
+                        panic!("Cannot get DOM element in prerendering stage")
+                    }
+                    #[cfg(feature = "prerendering-apply")]
+                    DomState::PrerenderingApply => {
+                        panic!("Cannot get DOM element in prerendering-apply stage")
+                    }
+                }
             }
         }
 
@@ -56,26 +74,49 @@ macro_rules! define_element {
             where
                 Self: Sized,
             {
-                let elem = crate::DOCUMENT.with(|document| document.create_element(std::stringify!($tag_name)).unwrap());
+                let tag_name = std::stringify!($tag_name);
+                let elem = match owner.is_prerendering() {
+                    DomState::Normal(_) => DomState::Normal(crate::DOCUMENT.with(|document| document.create_element(tag_name).unwrap())),
+                    #[cfg(feature = "prerendering")]
+                    DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(tag_name)),
+                    #[cfg(feature = "prerendering-apply")]
+                    DomState::PrerenderingApply => DomState::PrerenderingApply,
+                };
                 let backend_element =
                     crate::DomGeneralElement::create_dom_element(owner, &elem);
                 let this = Self {
                     backend_element_token: backend_element.token(),
-                    class: DomClassList::new(elem.class_list()),
+                    class: DomClassList::new(match &elem {
+                        DomState::Normal(x) => DomState::Normal(x.class_list()),
+                        #[cfg(feature = "prerendering")]
+                        DomState::Prerendering(_) => DomState::Prerendering(()),
+                        #[cfg(feature = "prerendering-apply")]
+                        DomState::PrerenderingApply => DomState::PrerenderingApply,
+                    }),
                     style: DomStrAttr {
                         inner: String::new(),
                         f: set_style,
+                        #[cfg(feature = "prerendering")]
+                        attr_name: "style",
                     },
                     $(
                         $prop: $prop_type {
                             inner: Default::default(),
                             f: $f,
+                            #[cfg(feature = "prerendering")]
+                            attr_name: stringify!($prop),
                         },
                     )*
                     $(
                         $event: Default::default(),
                     )*
-                    elem,
+                    dom_elem: match elem {
+                        DomState::Normal(x) => DomState::Normal(x),
+                        #[cfg(feature = "prerendering")]
+                        DomState::Prerendering(_) => DomState::Prerendering(()),
+                        #[cfg(feature = "prerendering-apply")]
+                        DomState::PrerenderingApply => DomState::PrerenderingApply,
+                    },
                 };
                 Ok((this, backend_element))
             }
@@ -121,9 +162,14 @@ macro_rules! define_element {
     };
 }
 
+fn set_id(elem: &web_sys::HtmlElement, s: &str) {
+    web_sys::Element::set_id(&elem, s)
+}
+
 macro_rules! define_element_with_shared_props {
     ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }, { $($event:ident: $event_type:ty,)* }) => {
         define_element!($tag_name, {
+            id: DomStrAttr: set_id,
             title: DomStrAttr: web_sys::HtmlElement::set_title,
             hidden: DomBoolAttr: web_sys::HtmlElement::set_hidden,
             $($prop: $prop_type: $f,)*

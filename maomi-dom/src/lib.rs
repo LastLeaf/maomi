@@ -4,8 +4,26 @@ use maomi::{
 };
 use wasm_bindgen::{JsCast, JsValue};
 
+#[cfg(not(feature = "prerendering"))]
+#[macro_export()]
+macro_rules! dom_state_ty {
+    ($t:ty, $u:ty) => {
+        DomState<$t>
+    };
+}
+
+#[cfg(feature = "prerendering")]
+#[macro_export]
+macro_rules! dom_state_ty {
+    ($t:ty, $u:ty) => {
+        DomState<$t, $u>
+    };
+}
+
 pub mod base_element;
 use base_element::DomElement;
+#[cfg(feature = "prerendering")]
+use base_element::PrerenderingElement;
 pub mod element;
 pub mod virtual_element;
 use virtual_element::DomVirtualElement;
@@ -44,11 +62,28 @@ pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
     wasm_bindgen_futures::spawn_local(fut);
 }
 
+#[cfg(not(feature = "prerendering"))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum DomState<T> {
+    Normal(T),
+    #[cfg(feature = "prerendering-apply")]
+    PrerenderingApply,
+}
+
+#[cfg(feature = "prerendering")]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum DomState<T, U> {
+    Normal(T),
+    Prerendering(U),
+    #[cfg(feature = "prerendering-apply")]
+    PrerenderingApply,
+}
+
 /// A DOM backend
 pub struct DomBackend {
     tree: tree::ForestNodeRc<DomGeneralElement>,
     #[allow(dead_code)]
-    listeners: DomListeners,
+    listeners: dom_state_ty!(DomListeners, ()),
 }
 
 impl DomBackend {
@@ -84,10 +119,10 @@ impl DomBackend {
     }
 
     fn wrap_root_element(dom_elem: web_sys::Element) -> Result<Self, Error> {
-        let listeners = event::DomListeners::new(&dom_elem);
+        let listeners = DomState::Normal(event::DomListeners::new(&dom_elem));
         let tree_root = {
             let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::Element(unsafe {
-                DomElement::new(dom_elem)
+                DomElement::new(DomState::Normal(dom_elem))
             }));
             let token = ret.token();
             if let DomGeneralElement::Element(x) = &mut *ret.borrow_mut() {
@@ -101,6 +136,81 @@ impl DomBackend {
             tree: tree_root,
             listeners,
         })
+    }
+
+    #[cfg(feature = "prerendering")]
+    #[inline]
+    pub fn prerendering() -> Self {
+        let tree_root = {
+            let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::Element(unsafe {
+                DomElement::new(DomState::Prerendering(PrerenderingElement::new("maomi")))
+            }));
+            let token = ret.token();
+            if let DomGeneralElement::Element(x) = &mut *ret.borrow_mut() {
+                x.init(token);
+            } else {
+                unreachable!()
+            }
+            ret
+        };
+        Self {
+            tree: tree_root,
+            listeners: DomState::Prerendering(()),
+        }
+    }
+
+    #[cfg(feature = "prerendering-apply")]
+    #[inline]
+    pub fn new_prerendered() -> Self {
+        let tree_root = {
+            let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::Element(unsafe {
+                DomElement::new(DomState::PrerenderingApply)
+            }));
+            let token = ret.token();
+            if let DomGeneralElement::Element(x) = &mut *ret.borrow_mut() {
+                x.init(token);
+            } else {
+                unreachable!()
+            }
+            ret
+        };
+        Self {
+            tree: tree_root,
+            listeners: DomState::PrerenderingApply,
+        }
+    }
+
+    #[cfg(feature = "prerendering-apply")]
+    pub fn apply_prerendered_element(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
+        self.apply_prerendered(dom_elem.into())
+    }
+
+    #[cfg(feature = "prerendering-apply")]
+    pub fn apply_prerendered_element_id(&mut self, id: &str) -> Result<(), Error> {
+        let dom_elem = DOCUMENT
+            .with(|document| document.get_element_by_id(id))
+            .ok_or_else(|| Error::BackendError {
+                msg: format!("Cannot find the element {:?}", id),
+                err: None,
+            })?;
+        self.apply_prerendered(dom_elem.into())
+    }
+
+    #[cfg(feature = "prerendering-apply")]
+    pub fn apply_prerendered_document_body(&mut self) -> Result<(), Error> {
+        let dom_elem =
+            DOCUMENT
+                .with(|document| document.body())
+                .ok_or_else(|| Error::BackendError {
+                    msg: "Cannot find the <body> element".into(),
+                    err: None,
+                })?;
+        self.apply_prerendered(dom_elem.into())
+    }
+
+    #[cfg(feature = "prerendering-apply")]
+    fn apply_prerendered(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
+        todo!() // TODO
     }
 }
 
@@ -129,16 +239,24 @@ impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Virtual(_) => write!(f, "[Virtual {:p}]", self),
-            Self::Text(x) => write!(f, "{:?}", x.dom().text_content().unwrap_or_default()),
+            Self::Text(x) => write!(f, "{:?}", x.composing_dom().text_content().unwrap_or_default()),
             Self::Element(x) => write!(f, "{:?}", x),
         }
     }
 }
 
 impl DomGeneralElement {
+    fn is_prerendering(&self) -> dom_state_ty!((), ()) {
+        match self {
+            Self::Virtual(x) => x.is_prerendering(),
+            Self::Text(x) => x.is_prerendering(),
+            Self::Element(x) => x.is_prerendering(),
+        }
+    }
+
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        elem: &'b web_sys::Element,
+        elem: &'b dom_state_ty!(web_sys::Element, PrerenderingElement),
     ) -> ForestNodeRc<Self> {
         let ret = this.new_tree(Self::Element(unsafe {
             DomElement::new(elem.clone())
@@ -168,46 +286,64 @@ impl DomGeneralElement {
         }
     }
 
+    /// Get the inner HTML of the specified node, writing it to a `Write`
+    #[inline]
+    pub fn write_inner_html(this: &ForestNode<Self>, w: &mut impl std::io::Write) -> std::io::Result<()> {
+        match &**this {
+            Self::Text(x) => {
+                x.write_inner_html(w)?;
+            }
+            Self::Element(x) => {
+                x.write_inner_html(this, w)?;
+            }
+            Self::Virtual(_) => {
+                let mut cur = this.first_child();
+                while let Some(c) = &cur {
+                    Self::write_outer_html(&c, w)?;
+                    cur = c.next_sibling();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Get the outer HTML of the specified node, writing it to a `Write`
+    #[inline]
+    pub fn write_outer_html(this: &ForestNode<Self>, w: &mut impl std::io::Write) -> std::io::Result<()> {
+        match &**this {
+            Self::Text(x) => {
+                x.write_inner_html(w)?;
+            }
+            Self::Element(x) => {
+                x.write_outer_html(this, w)?;
+            }
+            Self::Virtual(_) => {
+                let mut cur = this.first_child();
+                while let Some(c) = &cur {
+                    Self::write_outer_html(&c, w)?;
+                    cur = c.next_sibling();
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Get the inner HTML of the specified node
     #[inline]
     pub fn inner_html(this: &ForestNode<Self>) -> String {
-        match &**this {
-            Self::Text(x) => {
-                return x.inner_html();
-            }
-            Self::Element(x) => {
-                return x.inner_html();
-            }
-            Self::Virtual(_) => {}
-        }
-        let mut ret = String::new();
-        let mut cur = this.first_child();
-        while let Some(c) = &cur {
-            ret += Self::outer_html(&c).as_str();
-            cur = c.next_sibling();
-        }
-        ret
+        let mut ret = Vec::new();
+        Self::write_inner_html(this, &mut ret).unwrap();
+        // since all str sources are valid UTF-8, this operation is safe
+        unsafe { String::from_utf8_unchecked(ret) }
     }
 
     /// Get the outer HTML of the specified node
     #[inline]
     pub fn outer_html(this: &ForestNode<Self>) -> String {
-        match &**this {
-            Self::Text(x) => {
-                return x.inner_html();
-            }
-            Self::Element(x) => {
-                return x.outer_html();
-            }
-            Self::Virtual(_) => {}
-        }
-        let mut ret = String::new();
-        let mut cur = this.first_child();
-        while let Some(c) = &cur {
-            ret += Self::outer_html(&c).as_str();
-            cur = c.next_sibling();
-        }
-        ret
+        let mut ret = Vec::new();
+        Self::write_outer_html(this, &mut ret).unwrap();
+        // since all str sources are valid UTF-8, this operation is safe
+        unsafe { String::from_utf8_unchecked(ret) }
     }
 }
 
@@ -268,7 +404,7 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        let elem = DomVirtualElement::new();
+        let elem = DomVirtualElement::new(this);
         let child = this.new_tree(Self::Virtual(elem));
         Ok(child)
     }
@@ -281,7 +417,8 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        let child = this.new_tree(Self::Text(DomTextNode::new(content)));
+        let elem = DomTextNode::new(this, content);
+        let child = this.new_tree(Self::Text(elem));
         Ok(child)
     }
 
