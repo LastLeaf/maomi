@@ -26,37 +26,29 @@ pub struct MountPoint<B: Backend, C: Component + ComponentTemplate<B> + 'static>
 }
 
 impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
-    fn new_in_backend(
+    pub(crate) fn attach(
         backend_context: &BackendContext<B>,
-        owner: &mut tree::ForestNodeMut<B::GeneralElement>,
+        parent: &mut tree::ForestNodeMut<B::GeneralElement>,
         init: impl FnOnce(&mut C),
     ) -> Result<Self, Error> {
         let owner_weak: Box<dyn OwnerWeak> = Box::new(DanglingOwner());
         let (mut component_node, backend_element) =
             <ComponentNode<B, C> as BackendComponent<B>>::init(
                 backend_context,
-                owner,
+                parent,
                 &owner_weak,
             )?;
         <ComponentNode<B, C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,
-            owner,
+            parent,
             |comp, _| init(comp),
             |_, _, _| Ok(()),
         )?;
-        Ok(Self {
+        let this = Self {
             component_node,
             backend_element,
-        })
-    }
-
-    pub(crate) fn append_attach(
-        backend_context: &BackendContext<B>,
-        parent: &mut tree::ForestNodeMut<B::GeneralElement>,
-        init: impl FnOnce(&mut C),
-    ) -> Result<Self, Error> {
-        let this = Self::new_in_backend(backend_context, parent, init)?;
+        };
         <B::GeneralElement as BackendGeneralElement>::append(parent, &this.backend_element);
         Ok(this)
     }

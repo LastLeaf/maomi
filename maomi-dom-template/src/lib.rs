@@ -73,7 +73,7 @@ pub fn wasm_main() {
     // create a mount point
     backend_context
         .enter_sync(move |ctx| {
-            let mount_point = ctx.append_attach(|_: &mut HelloWorld| {}).unwrap();
+            let mount_point = ctx.attach(|_: &mut HelloWorld| {}).unwrap();
             // leak the mount point, so that event callbacks still work
             Box::leak(Box::new(mount_point));
         })

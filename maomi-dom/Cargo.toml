@@ -11,8 +11,8 @@ edition = "2021"
 
 [features]
 default = ["all"]
-prerendering = ["html-escape"]
-prerendering-apply = []
+prerendering = ["maomi/prerendering", "html-escape"]
+prerendering-apply = ["maomi/prerendering-apply"]
 all = ["prerendering", "prerendering-apply"]
 
 [dependencies]

@@ -83,6 +83,8 @@ impl PrerenderingElement {
             if !has_class {
                 has_class = true;
                 write!(w, r#" class=""#)?;
+            } else {
+                write!(w, " ")?;
             }
             write!(w, "{}", c)?;
         }

@@ -10,11 +10,23 @@ use crate::{
 pub mod context;
 use context::BackendContext;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BackendStage {
+    Normal,
+    #[cfg(feature = "prerendering")]
+    Prerendering,
+    #[cfg(feature = "prerendering-apply")]
+    PrerenderingApply,
+}
+
 /// A backend
 pub trait Backend: 'static {
     type GeneralElement: BackendGeneralElement<BaseBackend = Self>;
     type VirtualElement: BackendVirtualElement<BaseBackend = Self>;
     type TextNode: BackendTextNode<BaseBackend = Self>;
+
+    /// Whether the backend is in prerendering stage
+    fn backend_stage(&self) -> BackendStage;
 
     /// Get the root element
     fn root(&self) -> ForestNode<Self::GeneralElement>;

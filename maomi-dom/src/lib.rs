@@ -81,6 +81,7 @@ pub(crate) enum DomState<T, U> {
 
 /// A DOM backend
 pub struct DomBackend {
+    backend_stage: BackendStage,
     tree: tree::ForestNodeRc<DomGeneralElement>,
     #[allow(dead_code)]
     listeners: dom_state_ty!(DomListeners, ()),
@@ -133,11 +134,16 @@ impl DomBackend {
             ret
         };
         Ok(Self {
+            backend_stage: BackendStage::Normal,
             tree: tree_root,
             listeners,
         })
     }
 
+    /// Create a backend for prerendering
+    ///
+    /// The prerendering can generate HTML segment without DOM environment.
+    /// It can be used for server side rendering.
     #[cfg(feature = "prerendering")]
     #[inline]
     pub fn prerendering() -> Self {
@@ -154,11 +160,25 @@ impl DomBackend {
             ret
         };
         Self {
+            backend_stage: BackendStage::Prerendering,
             tree: tree_root,
             listeners: DomState::Prerendering(()),
         }
     }
 
+    /// Write the prerendering result to a `Write`
+    ///
+    /// The prerendering result is an HTML segment,
+    /// which should be placed into the full HTML file as the final server response.
+    #[cfg(feature = "prerendering")]
+    #[inline]
+    pub fn write_prerendering_html(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
+        DomGeneralElement::write_inner_html(&self.root(), w)
+    }
+
+    /// Prepare a backend for using the prerendering result
+    ///
+    /// The prerendering result can be attached later with one of the `apply_prerendered_*` method.
     #[cfg(feature = "prerendering-apply")]
     #[inline]
     pub fn new_prerendered() -> Self {
@@ -175,16 +195,19 @@ impl DomBackend {
             ret
         };
         Self {
+            backend_stage: BackendStage::PrerenderingApply,
             tree: tree_root,
             listeners: DomState::PrerenderingApply,
         }
     }
 
+    /// Attach the prerendering result with the specified DOM element
     #[cfg(feature = "prerendering-apply")]
     pub fn apply_prerendered_element(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
         self.apply_prerendered(dom_elem.into())
     }
 
+    /// Attach the prerendering result with the DOM element with the `id`
     #[cfg(feature = "prerendering-apply")]
     pub fn apply_prerendered_element_id(&mut self, id: &str) -> Result<(), Error> {
         let dom_elem = DOCUMENT
@@ -196,6 +219,7 @@ impl DomBackend {
         self.apply_prerendered(dom_elem.into())
     }
 
+    /// Attach the prerendering result with the DOM `<body>`
     #[cfg(feature = "prerendering-apply")]
     pub fn apply_prerendered_document_body(&mut self) -> Result<(), Error> {
         let dom_elem =
@@ -210,6 +234,7 @@ impl DomBackend {
 
     #[cfg(feature = "prerendering-apply")]
     fn apply_prerendered(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
+        self.backend_stage = BackendStage::Normal;
         todo!() // TODO
     }
 }
@@ -218,6 +243,10 @@ impl Backend for DomBackend {
     type GeneralElement = DomGeneralElement;
     type VirtualElement = DomVirtualElement;
     type TextNode = DomTextNode;
+
+    fn backend_stage(&self) -> BackendStage {
+        self.backend_stage
+    }
 
     fn root(&self) -> ForestNode<Self::GeneralElement> {
         self.tree.borrow()
@@ -432,14 +461,16 @@ impl BackendGeneralElement for DomGeneralElement {
         Self: Sized,
     {
         this.append(&child);
-        let this = this.as_ref();
-        if let Some(parent) = composing::find_nearest_dom_ancestor(this.clone()) {
-            let child = this.last_child_rc().unwrap();
-            let child = this.borrow(&child);
-            let before = composing::find_next_dom_sibling(child.clone());
-            let child_frag = composing::collect_child_frag(child);
-            if let Some(child_frag) = child_frag.dom() {
-                parent.insert_before(child_frag, before.as_ref()).unwrap();
+        if this.is_prerendering() == DomState::Normal(()) {
+            let this = this.as_ref();
+            if let Some(parent) = composing::find_nearest_dom_ancestor(this.clone()) {
+                let child = this.last_child_rc().unwrap();
+                let child = this.borrow(&child);
+                let before = composing::find_next_dom_sibling(child.clone());
+                let child_frag = composing::collect_child_frag(child);
+                if let Some(child_frag) = child_frag.dom() {
+                    parent.insert_before(child_frag, before.as_ref()).unwrap();
+                }
             }
         }
     }
@@ -454,12 +485,14 @@ impl BackendGeneralElement for DomGeneralElement {
         Self: Sized,
     {
         this.insert(&target);
-        let target = this.as_ref().borrow(&target);
-        if let Some(parent) = composing::find_nearest_dom_ancestor(target.clone()) {
-            let before = composing::find_next_dom_sibling(target.clone());
-            let child_frag = composing::collect_child_frag(target);
-            if let Some(child_frag) = child_frag.dom() {
-                parent.insert_before(child_frag, before.as_ref()).unwrap();
+        if this.is_prerendering() == DomState::Normal(()) {
+            let target = this.as_ref().borrow(&target);
+            if let Some(parent) = composing::find_nearest_dom_ancestor(target.clone()) {
+                let before = composing::find_next_dom_sibling(target.clone());
+                let child_frag = composing::collect_child_frag(target);
+                if let Some(child_frag) = child_frag.dom() {
+                    parent.insert_before(child_frag, before.as_ref()).unwrap();
+                }
             }
         }
     }
@@ -481,7 +514,7 @@ impl BackendGeneralElement for DomGeneralElement {
     where
         Self: Sized,
     {
-        {
+        if this.is_prerendering() == DomState::Normal(()) {
             let this = this.as_ref();
             if let Some(parent) = composing::find_nearest_dom_ancestor(this.clone()) {
                 composing::remove_all_children(&parent, this);

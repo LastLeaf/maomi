@@ -7,8 +7,10 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use super::{tree, Backend};
+use super::{tree, Backend, BackendStage};
 use crate::component::Component;
+#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
+use crate::component::PrerenderableComponent;
 use crate::error::Error;
 use crate::mount_point::MountPoint;
 use crate::template::ComponentTemplate;
@@ -64,6 +66,7 @@ pub struct BackendContext<B: Backend> {
 }
 
 struct BackendContextInner<B: Backend> {
+    initial_backend_stage: Cell<BackendStage>,
     entered: RefCell<EnteredBackendContext<B>>,
     event_queue: RefCell<VecDeque<BackendContextEvent<B>>>,
 }
@@ -79,14 +82,21 @@ impl<B: Backend> Clone for BackendContext<B> {
 impl<B: Backend> BackendContext<B> {
     /// Create a new backend context
     pub fn new(backend: B) -> Self {
+        let initial_backend_stage = Cell::new(backend.backend_stage());
         let entered = RefCell::new(EnteredBackendContext { backend, ctx: None });
         let inner = Rc::new(BackendContextInner {
+            initial_backend_stage,
             entered,
             event_queue: Default::default(),
         });
         let w = Rc::downgrade(&inner);
         inner.entered.borrow_mut().ctx = Some(w);
         Self { inner }
+    }
+
+    /// Get the current backend stage
+    pub fn initial_backend_stage(&self) -> BackendStage {
+        self.inner.initial_backend_stage.get()
     }
 
     fn exec_queue(&self, entered: &mut EnteredBackendContext<B>) {
@@ -141,6 +151,19 @@ impl<B: Backend> BackendContext<B> {
             Err(f)
         }
     }
+
+    /// Get the prerendering data of a component
+    ///
+    /// The `QueryData` should be provided to the `PrerenderableComponent` .
+    #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
+    pub async fn prerendering_data<C: PrerenderableComponent>(
+        &self,
+        query_data: &C::QueryData,
+    ) -> PrerenderingData<C> {
+        PrerenderingData::new(
+            C::prerendering_data(query_data).await,
+        )
+    }
 }
 
 /// An entered backend context
@@ -153,18 +176,35 @@ impl<B: Backend> EnteredBackendContext<B> {
     /// Create a mount point
     ///
     /// The `init` provides a way to do some updates before the component `created` lifetime.
-    /// It is encouraged to change template data bindings in `init` .
-    pub fn append_attach<C: Component + ComponentTemplate<B> + 'static>(
+    pub fn attach<C: Component + ComponentTemplate<B> + 'static>(
         &mut self,
         init: impl FnOnce(&mut C),
     ) -> Result<MountPoint<B, C>, Error> {
         let mut root = self.backend.root_mut();
-        MountPoint::append_attach(
+        MountPoint::attach(
             &BackendContext {
                 inner: self.ctx.as_ref().unwrap().upgrade().unwrap(),
             },
             &mut root,
             init,
+        )
+    }
+
+    /// Create a mount point and apply the prerendering data
+    #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
+    pub fn prerendering_attach<C: PrerenderableComponent + ComponentTemplate<B> + 'static>(
+        &mut self,
+        prerendering_data: PrerenderingData<C>,
+    ) -> Result<MountPoint<B, C>, Error> {
+        let mut root = self.backend.root_mut();
+        MountPoint::attach(
+            &BackendContext {
+                inner: self.ctx.as_ref().unwrap().upgrade().unwrap(),
+            },
+            &mut root,
+            |comp| {
+                PrerenderableComponent::apply_prerendering_data(comp, prerendering_data.data);
+            },
         )
     }
 
@@ -178,5 +218,40 @@ impl<B: Backend> EnteredBackendContext<B> {
     #[inline]
     pub fn root_mut(&mut self) -> tree::ForestNodeMut<B::GeneralElement> {
         self.backend.root_mut()
+    }
+}
+
+impl<B: Backend> std::ops::Deref for EnteredBackendContext<B> {
+    type Target = B;
+
+    fn deref(&self) -> &Self::Target {
+        &self.backend
+    }
+}
+
+impl<B: Backend> std::ops::DerefMut for EnteredBackendContext<B> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.backend
+    }
+}
+
+/// A helper for the prerendering data
+#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
+pub struct PrerenderingData<C: PrerenderableComponent> {
+    data: C::PrerenderingData,
+}
+
+#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
+impl<C: PrerenderableComponent> PrerenderingData<C> {
+    /// Wrap the prerendering data
+    pub fn new(data: C::PrerenderingData) -> Self {
+        Self {
+            data,
+        }
+    }
+
+    /// Get the underlying prerendering data
+    pub fn get(&self) -> &C::PrerenderingData {
+        &self.data
     }
 }

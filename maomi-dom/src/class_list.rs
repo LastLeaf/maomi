@@ -28,11 +28,11 @@ impl ListPropertyUpdate<bool> for DomClassList {
     type ItemValue = &'static str;
 
     #[inline]
-    fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext) {
+    fn init_list(dest: &mut Self, count: usize, _ctx: &mut Self::UpdateContext) {
         dest.enabled.resize(count, false);
         dest.enabled.reserve_exact(0);
         #[cfg(feature = "prerendering")]
-        if let DomState::Prerendering(x) = &mut ctx.elem {
+        if let DomState::Prerendering(x) = &mut _ctx.elem {
             x.set_class_count(count);
         }
     }

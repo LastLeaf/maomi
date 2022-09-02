@@ -7,7 +7,11 @@ use std::{
 
 use crate::{
     backend::{
-        context::AsyncCallback, tree::*, Backend, BackendComponent, BackendGeneralElement,
+        context::AsyncCallback,
+        tree::*,
+        Backend,
+        BackendComponent,
+        BackendGeneralElement,
         SupportBackend,
     },
     error::Error,
@@ -279,6 +283,35 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     }
 }
 
+/// A component that can be used as mount point when prerendering
+///
+/// In prerendering stage,
+/// components can do some async tasks (network request, etc.)
+/// before actually doing the build of the component.
+#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
+#[async_trait]
+pub trait PrerenderableComponent: Component {
+    type QueryData;
+    type PrerenderingData;
+
+    /// Generate the prerendering data
+    ///
+    /// This function accepts `QueryData` which represents some startup state,
+    /// i.e. the URL params or the POST data.
+    /// The generated `PrerenderingData` will be used in `apply_prerendering_data` .
+    /// This function will be called either in prerendering process (server-side)
+    /// or in prerendering-apply process (client-side).
+    /// This also requires the `PrerenderingData` to be transferable.
+    async fn prerendering_data(query_data: &Self::QueryData) -> Self::PrerenderingData;
+
+    /// Apply the prerendering data
+    ///
+    /// This function will be called
+    /// both in prerendering process (server-side) and in prerendering-apply process (client-side).
+    /// The result **must** be the same in two processes.
+    fn apply_prerendering_data(&mut self, data: Self::PrerenderingData);
+}
+
 pub(crate) trait UpdateScheduler: 'static {
     type EnterType;
     // fn clone_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
@@ -540,7 +573,12 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                 &mut backend_element,
                 slot_fn,
             )?;
+            #[cfg(not(feature = "prerendering"))]
             <C as Component>::created(&comp);
+            #[cfg(feature = "prerendering")]
+            if backend_context.initial_backend_stage() != crate::backend::BackendStage::Prerendering {
+                <C as Component>::created(&comp);
+            }
             Ok(())
         } else {
             Err(Error::RecursiveUpdate)

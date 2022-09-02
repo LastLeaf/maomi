@@ -6,6 +6,7 @@ use maomi_dom::prelude::*;
 pub mod component;
 pub mod event;
 pub mod template;
+pub mod prerendering;
 
 static INIT: Once = Once::new();
 
@@ -44,7 +45,7 @@ pub async fn test_component<T: Component + ComponentTemplate<DomBackend> + Compo
         .enter_sync(move |ctx| {
             let (fut, cb) = AsyncCallback::new();
             let mount_point = ctx
-                .append_attach(move |comp: &mut T| {
+                .attach(move |comp: &mut T| {
                     comp.set_callback(Box::new(|| cb(())));
                 })
                 .unwrap();
@@ -53,4 +54,28 @@ pub async fn test_component<T: Component + ComponentTemplate<DomBackend> + Compo
         .map_err(|_| "Cannot init mount point")
         .unwrap();
     fut.await
+}
+
+#[cfg(feature = "prerendering")]
+pub async fn test_component_prerendering<
+    T: PrerenderableComponent + ComponentTemplate<DomBackend> + ComponentTest,
+>(
+    query_data: &T::QueryData,
+) -> String {
+    init();
+    let dom_backend = DomBackend::prerendering();
+    let backend_context = maomi::BackendContext::new(dom_backend);
+    let prerendering_data = backend_context.prerendering_data::<T>(query_data).await;
+    let (_mount_point, ret) = backend_context
+        .enter_sync(move |ctx| {
+            let mount_point = ctx
+                .prerendering_attach(prerendering_data)
+                .unwrap();
+            let mut ret = vec![];
+            ctx.write_prerendering_html(&mut ret).unwrap();
+            (mount_point, ret)
+        })
+        .map_err(|_| "Cannot init mount point")
+        .unwrap();
+    String::from_utf8(ret).unwrap()
 }
