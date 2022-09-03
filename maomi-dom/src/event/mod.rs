@@ -128,12 +128,12 @@ impl ColdEventItem {
         // otherwise the closure is lost and a js error is displayed in console.
         // However, most events do not trigger after element removal,
         // so here just do no removal.
-        if let Err(err) = elem.add_event_listener_with_callback(
-            ev_name,
-            cb.unchecked_ref(),
-        ) {
+        if let Err(err) = elem.add_event_listener_with_callback(ev_name, cb.unchecked_ref()) {
             crate::log_js_error(&err);
-            log::error!("Failed adding listener for event {:?}. This event will not be triggered.", ev_name);
+            log::error!(
+                "Failed adding listener for event {:?}. This event will not be triggered.",
+                ev_name
+            );
         }
     }
 }

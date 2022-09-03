@@ -5,8 +5,8 @@ use maomi_dom::prelude::*;
 
 pub mod component;
 pub mod event;
-pub mod template;
 pub mod prerendering;
+pub mod template;
 
 static INIT: Once = Once::new();
 
@@ -68,9 +68,7 @@ pub async fn test_component_prerendering<
     let prerendering_data = backend_context.prerendering_data::<T>(query_data).await;
     let (_mount_point, ret) = backend_context
         .enter_sync(move |ctx| {
-            let mount_point = ctx
-                .prerendering_attach(prerendering_data)
-                .unwrap();
+            let mount_point = ctx.prerendering_attach(prerendering_data).unwrap();
             let mut ret = vec![];
             ctx.write_prerendering_html(&mut ret).unwrap();
             (mount_point, ret)

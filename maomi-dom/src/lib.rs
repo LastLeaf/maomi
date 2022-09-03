@@ -29,8 +29,8 @@ pub mod virtual_element;
 use virtual_element::DomVirtualElement;
 pub mod text_node;
 use text_node::DomTextNode;
-mod composing;
 pub mod class_list;
+mod composing;
 pub mod event;
 use event::DomListeners;
 
@@ -268,7 +268,11 @@ impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Virtual(_) => write!(f, "[Virtual {:p}]", self),
-            Self::Text(x) => write!(f, "{:?}", x.composing_dom().text_content().unwrap_or_default()),
+            Self::Text(x) => write!(
+                f,
+                "{:?}",
+                x.composing_dom().text_content().unwrap_or_default()
+            ),
             Self::Element(x) => write!(f, "{:?}", x),
         }
     }
@@ -287,9 +291,7 @@ impl DomGeneralElement {
         this: &'b mut ForestNodeMut<Self>,
         elem: &'b dom_state_ty!(web_sys::Element, PrerenderingElement),
     ) -> ForestNodeRc<Self> {
-        let ret = this.new_tree(Self::Element(unsafe {
-            DomElement::new(elem.clone())
-        }));
+        let ret = this.new_tree(Self::Element(unsafe { DomElement::new(elem.clone()) }));
         let token = ret.token();
         if let Self::Element(x) = &mut *this.borrow_mut(&ret) {
             x.init(token);
@@ -317,7 +319,10 @@ impl DomGeneralElement {
 
     /// Get the inner HTML of the specified node, writing it to a `Write`
     #[inline]
-    pub fn write_inner_html(this: &ForestNode<Self>, w: &mut impl std::io::Write) -> std::io::Result<()> {
+    pub fn write_inner_html(
+        this: &ForestNode<Self>,
+        w: &mut impl std::io::Write,
+    ) -> std::io::Result<()> {
         match &**this {
             Self::Text(x) => {
                 x.write_inner_html(w)?;
@@ -338,7 +343,10 @@ impl DomGeneralElement {
 
     /// Get the outer HTML of the specified node, writing it to a `Write`
     #[inline]
-    pub fn write_outer_html(this: &ForestNode<Self>, w: &mut impl std::io::Write) -> std::io::Result<()> {
+    pub fn write_outer_html(
+        this: &ForestNode<Self>,
+        w: &mut impl std::io::Write,
+    ) -> std::io::Result<()> {
         match &**this {
             Self::Text(x) => {
                 x.write_inner_html(w)?;

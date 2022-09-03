@@ -1,6 +1,6 @@
 use maomi::backend::*;
 
-use crate::{DomState, DomGeneralElement};
+use crate::{DomGeneralElement, DomState};
 
 #[doc(hidden)]
 pub struct DomTextNode {
@@ -19,12 +19,11 @@ impl DomTextNode {
         }
     }
 
-    pub(crate) fn new(
-        this: &mut tree::ForestNodeMut<DomGeneralElement>,
-        content: &str,
-    ) -> Self {
+    pub(crate) fn new(this: &mut tree::ForestNodeMut<DomGeneralElement>, content: &str) -> Self {
         let dom_elem = match this.is_prerendering() {
-            DomState::Normal(_) => DomState::Normal(crate::DOCUMENT.with(|document| document.create_text_node(content))),
+            DomState::Normal(_) => DomState::Normal(
+                crate::DOCUMENT.with(|document| document.create_text_node(content)),
+            ),
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => DomState::Prerendering(()),
             #[cfg(feature = "prerendering-apply")]

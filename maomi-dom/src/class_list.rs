@@ -18,7 +18,10 @@ impl DomClassList {
     }
 
     #[cfg(feature = "prerendering-apply")]
-    pub(crate) fn apply_prerendered_class_list(&mut self, class_list: dom_state_ty!(DomTokenList, ())) {
+    pub(crate) fn apply_prerendered_class_list(
+        &mut self,
+        class_list: dom_state_ty!(DomTokenList, ()),
+    ) {
         // TODO
     }
 }

@@ -1,5 +1,5 @@
 use maomi::{
-    backend::tree::{ForestNodeRc, ForestToken, ForestTokenAddr, ForestNode},
+    backend::tree::{ForestNode, ForestNodeRc, ForestToken, ForestTokenAddr},
     prop::PropertyUpdate,
 };
 use std::{
@@ -11,8 +11,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
     event::{ColdEventList, HotEventList},
-    DomGeneralElement,
-    DomState,
+    DomGeneralElement, DomState,
 };
 
 #[wasm_bindgen]
@@ -65,7 +64,11 @@ impl PrerenderingElement {
     }
 
     #[cfg(feature = "prerendering")]
-    pub(crate) fn write_children_html(&self, w: &mut impl std::io::Write, this: &ForestNode<DomGeneralElement>) -> std::io::Result<()> {
+    pub(crate) fn write_children_html(
+        &self,
+        w: &mut impl std::io::Write,
+        this: &ForestNode<DomGeneralElement>,
+    ) -> std::io::Result<()> {
         let mut cur = this.first_child();
         while let Some(c) = &cur {
             DomGeneralElement::write_outer_html(&c, w)?;
@@ -75,11 +78,17 @@ impl PrerenderingElement {
     }
 
     #[cfg(feature = "prerendering")]
-    pub(crate) fn write_html(&self, w: &mut impl std::io::Write, this: &ForestNode<DomGeneralElement>) -> std::io::Result<()> {
+    pub(crate) fn write_html(
+        &self,
+        w: &mut impl std::io::Write,
+        this: &ForestNode<DomGeneralElement>,
+    ) -> std::io::Result<()> {
         write!(w, "<{}", self.tag_name)?;
         let mut has_class = false;
         for c in &self.classes {
-            if c.len() == 0 { continue };
+            if c.len() == 0 {
+                continue;
+            };
             if !has_class {
                 has_class = true;
                 write!(w, r#" class=""#)?;
@@ -190,11 +199,11 @@ impl DomElement {
         match &self.elem {
             DomState::Normal(x) => {
                 write!(w, "{}", x.inner_html())?;
-            },
+            }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
                 x.write_children_html(w, _this).unwrap();
-            },
+            }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply => {}
         }
@@ -209,11 +218,11 @@ impl DomElement {
         match &self.elem {
             DomState::Normal(x) => {
                 write!(w, "{}", x.outer_html())?;
-            },
+            }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
                 x.write_html(w, _this).unwrap();
-            },
+            }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply => {}
         }
@@ -240,7 +249,8 @@ impl DomElement {
         // TODO write event token after prerendering
         match &self.elem {
             DomState::Normal(x) => {
-                x.unchecked_ref::<MaomiDomElement>().set_maomi(Some(ptr as u32));
+                x.unchecked_ref::<MaomiDomElement>()
+                    .set_maomi(Some(ptr as u32));
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => {}

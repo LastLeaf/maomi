@@ -6,12 +6,7 @@ use maomi::{
 };
 
 use crate::{
-    base_element::*,
-    class_list::DomClassList,
-    event::*,
-    tree::*,
-    DomBackend,
-    DomGeneralElement,
+    base_element::*, class_list::DomClassList, event::*, tree::*, DomBackend, DomGeneralElement,
     DomState,
 };
 

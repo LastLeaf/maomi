@@ -160,9 +160,7 @@ impl<B: Backend> BackendContext<B> {
         &self,
         query_data: &C::QueryData,
     ) -> PrerenderingData<C> {
-        PrerenderingData::new(
-            C::prerendering_data(query_data).await,
-        )
+        PrerenderingData::new(C::prerendering_data(query_data).await)
     }
 }
 
@@ -245,9 +243,7 @@ pub struct PrerenderingData<C: PrerenderableComponent> {
 impl<C: PrerenderableComponent> PrerenderingData<C> {
     /// Wrap the prerendering data
     pub fn new(data: C::PrerenderingData) -> Self {
-        Self {
-            data,
-        }
+        Self { data }
     }
 
     /// Get the underlying prerendering data

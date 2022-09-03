@@ -37,7 +37,10 @@ macro_rules! cold_event {
             type Detail = $detail;
 
             #[inline]
-            fn bind(target: &mut crate::base_element::DomElement, f: Box<dyn 'static + Fn(&mut Self::Detail)>) {
+            fn bind(
+                target: &mut crate::base_element::DomElement,
+                f: Box<dyn 'static + Fn(&mut Self::Detail)>,
+            ) {
                 for item in target.cold_event_list_mut() {
                     if let ColdEventItem::$arm(x, _) = item {
                         *x = f;
@@ -60,12 +63,13 @@ macro_rules! cold_event {
             #[inline]
             fn trigger(target: &mut crate::base_element::DomElement, detail: &mut Self::Detail) {
                 if let Some(list) = target.cold_event_list() {
-                    let f = list.iter()
-                        .find_map(|x| if let ColdEventItem::$arm(x, _) = x {
+                    let f = list.iter().find_map(|x| {
+                        if let ColdEventItem::$arm(x, _) = x {
                             Some(x)
                         } else {
                             None
-                        });
+                        }
+                    });
                     if let Some(f) = f {
                         f(detail);
                     }

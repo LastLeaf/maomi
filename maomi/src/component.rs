@@ -7,11 +7,7 @@ use std::{
 
 use crate::{
     backend::{
-        context::AsyncCallback,
-        tree::*,
-        Backend,
-        BackendComponent,
-        BackendGeneralElement,
+        context::AsyncCallback, tree::*, Backend, BackendComponent, BackendGeneralElement,
         SupportBackend,
     },
     error::Error,
@@ -576,7 +572,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             #[cfg(not(feature = "prerendering"))]
             <C as Component>::created(&comp);
             #[cfg(feature = "prerendering")]
-            if backend_context.initial_backend_stage() != crate::backend::BackendStage::Prerendering {
+            if backend_context.initial_backend_stage() != crate::backend::BackendStage::Prerendering
+            {
                 <C as Component>::created(&comp);
             }
             Ok(())

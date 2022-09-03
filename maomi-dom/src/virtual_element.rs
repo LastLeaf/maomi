@@ -1,6 +1,6 @@
 use maomi::backend::*;
 
-use crate::{DomState, DomGeneralElement};
+use crate::{DomGeneralElement, DomState};
 
 #[doc(hidden)]
 pub struct DomVirtualElement {
@@ -9,9 +9,7 @@ pub struct DomVirtualElement {
 
 impl DomVirtualElement {
     #[inline]
-    pub(crate) fn new(
-        this: &mut tree::ForestNodeMut<DomGeneralElement>,
-    ) -> Self {
+    pub(crate) fn new(this: &mut tree::ForestNodeMut<DomGeneralElement>) -> Self {
         let dom_elem = match this.is_prerendering() {
             DomState::Normal(_) => DomState::Normal(()),
             #[cfg(feature = "prerendering")]
@@ -19,9 +17,7 @@ impl DomVirtualElement {
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply => DomState::PrerenderingApply,
         };
-        Self {
-            dom_elem,
-        }
+        Self { dom_elem }
     }
 
     pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), ()) {
