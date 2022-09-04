@@ -108,7 +108,9 @@ impl<T> ForestNodeRc<T> {
     /// Get a mutable reference of the tree root
     #[inline]
     pub fn borrow_mut<'a>(&'a self) -> ForestNodeMut<'a, T> {
-        self.try_borrow_mut().expect("Cannot borrow the forest node when a node has been borrowed in the same forest")
+        self.try_borrow_mut().expect(
+            "Cannot borrow the forest node when a node has been borrowed in the same forest",
+        )
     }
 
     /// Get a token

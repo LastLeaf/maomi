@@ -63,18 +63,16 @@ impl ListPropertyUpdate<bool> for DomClassList {
                     }
                 }
                 #[cfg(feature = "prerendering-apply")]
-                class_list => {
-                    match &ctx.elem {
-                        DomState::Normal(x) => {
-                            let cl = x.class_list();
-                            cl.toggle_with_force(class_name, v).unwrap();
-                            *class_list = DomState::Normal(cl);
-                        }
-                        #[cfg(feature = "prerendering")]
-                        DomState::Prerendering(_) => {}
-                        DomState::PrerenderingApply(_) => {}
+                class_list => match &ctx.elem {
+                    DomState::Normal(x) => {
+                        let cl = x.class_list();
+                        cl.toggle_with_force(class_name, v).unwrap();
+                        *class_list = DomState::Normal(cl);
                     }
-                }
+                    #[cfg(feature = "prerendering")]
+                    DomState::Prerendering(_) => {}
+                    DomState::PrerenderingApply(_) => {}
+                },
             }
         }
     }

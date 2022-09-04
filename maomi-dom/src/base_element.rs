@@ -112,7 +112,7 @@ impl PrerenderingElement {
         self.write_children_html(w, this, state)?;
         write!(w, "</{}>", self.tag_name)?;
         state.prev_is_text_node = false;
-    Ok(())
+        Ok(())
     }
 }
 
@@ -125,7 +125,9 @@ pub(crate) struct RematchedDomElem {
 #[cfg(feature = "prerendering-apply")]
 impl RematchedDomElem {
     pub(crate) fn new() -> Self {
-        Self { inner: Default::default() }
+        Self {
+            inner: Default::default(),
+        }
     }
 
     pub(crate) fn set(&mut self, e: web_sys::Element) {
@@ -179,7 +181,9 @@ impl std::fmt::Debug for DomElement {
 
 impl DomElement {
     // Safety: must call `init` later (before dropped)
-    pub(crate) unsafe fn new(elem: dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem)) -> Self {
+    pub(crate) unsafe fn new(
+        elem: dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem),
+    ) -> Self {
         Self {
             elem,
             forest_token: ManuallyDrop::new(MaybeUninit::uninit().assume_init()),

@@ -55,7 +55,11 @@ impl DomTextNode {
         }
     }
 
-    pub(crate) fn write_inner_html(&self, w: &mut impl std::io::Write, _state: &mut WriteHtmlState) -> std::io::Result<()> {
+    pub(crate) fn write_inner_html(
+        &self,
+        w: &mut impl std::io::Write,
+        _state: &mut WriteHtmlState,
+    ) -> std::io::Result<()> {
         match &self.dom_elem {
             DomState::Normal(x) => {
                 let s = x.text_content().unwrap_or_default();

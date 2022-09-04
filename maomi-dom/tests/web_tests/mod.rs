@@ -1,9 +1,9 @@
-use std::sync::Once;
 use js_sys::Reflect;
-use wasm_bindgen::{JsValue, JsCast};
+use std::sync::Once;
+use wasm_bindgen::{JsCast, JsValue};
 
 use maomi::{prelude::*, template::ComponentTemplate, AsyncCallback};
-use maomi_dom::{prelude::*, async_task};
+use maomi_dom::{async_task, prelude::*};
 
 pub mod component;
 pub mod event;
@@ -109,9 +109,12 @@ pub async fn test_component_prerendering_apply<
             ctx.apply_prerendered_element(elem).unwrap();
             let root_rc = mount_point.root_component().rc();
             maomi_dom::async_task(async move {
-                root_rc.update(|comp| {
-                    comp.set_callback(Box::new(|| cb(())));
-                }).await.unwrap();
+                root_rc
+                    .update(|comp| {
+                        comp.set_callback(Box::new(|| cb(())));
+                    })
+                    .await
+                    .unwrap();
             });
             (fut, mount_point)
         })

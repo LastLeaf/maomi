@@ -216,7 +216,9 @@ impl DomBackend {
     pub fn new_prerendered() -> Self {
         let tree_root = {
             let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::Element(unsafe {
-                DomElement::new(DomState::PrerenderingApply(base_element::RematchedDomElem::new()))
+                DomElement::new(DomState::PrerenderingApply(
+                    base_element::RematchedDomElem::new(),
+                ))
             }));
             let token = ret.token();
             if let DomGeneralElement::Element(x) = &mut *ret.borrow_mut() {
@@ -284,9 +286,15 @@ impl DomBackend {
                 let ge: &mut DomGeneralElement = n;
                 match ge {
                     DomGeneralElement::Text(x) => {
-                        let mut e = next_dom_elem.ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
+                        let mut e = next_dom_elem.ok_or(Error::BackendError {
+                            msg: "Failed to apply a prerendered node".to_string(),
+                            err: None,
+                        })?;
                         if state.prev_is_text_node {
-                            e = e.next_sibling().ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
+                            e = e.next_sibling().ok_or(Error::BackendError {
+                                msg: "Failed to apply a prerendered node".to_string(),
+                                err: None,
+                            })?;
                         } else {
                             state.prev_is_text_node = true;
                         };
@@ -294,11 +302,12 @@ impl DomBackend {
                         x.rematch_dom(e);
                         return Ok(ret);
                     }
-                    DomGeneralElement::Virtual(_) => {
-                        ChildMatchKind::Virtual(next_dom_elem)
-                    }
+                    DomGeneralElement::Virtual(_) => ChildMatchKind::Virtual(next_dom_elem),
                     DomGeneralElement::Element(x) => {
-                        let e = next_dom_elem.ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
+                        let e = next_dom_elem.ok_or(Error::BackendError {
+                            msg: "Failed to apply a prerendered node".to_string(),
+                            err: None,
+                        })?;
                         x.rematch_dom(e.clone());
                         state.prev_is_text_node = false;
                         ChildMatchKind::NonVirtual(e)
@@ -324,9 +333,7 @@ impl DomBackend {
                 Ok(child_dom_elem)
             };
             match child_match_kind {
-                ChildMatchKind::Virtual(x) => {
-                    rematch_child(x)
-                }
+                ChildMatchKind::Virtual(x) => rematch_child(x),
                 ChildMatchKind::NonVirtual(x) => {
                     rematch_child(x.first_child())?;
                     state.prev_is_text_node = false;
@@ -334,9 +341,15 @@ impl DomBackend {
                 }
             }
         }
-        let mut tree = self.tree.try_borrow_mut()
-            .ok_or(Error::BackendError { msg: "Cannot apply prerendered tree while visiting".to_string(), err: None })?;
-        rematch_dom(&mut tree, Some(dom_elem.unchecked_into()), &mut Default::default())?;
+        let mut tree = self.tree.try_borrow_mut().ok_or(Error::BackendError {
+            msg: "Cannot apply prerendered tree while visiting".to_string(),
+            err: None,
+        })?;
+        rematch_dom(
+            &mut tree,
+            Some(dom_elem.unchecked_into()),
+            &mut Default::default(),
+        )?;
         Ok(())
     }
 }
@@ -370,11 +383,7 @@ impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Virtual(_) => write!(f, "[Virtual {:p}]", self),
-            Self::Text(x) => write!(
-                f,
-                "{:?}",
-                x.text_content(),
-            ),
+            Self::Text(x) => write!(f, "{:?}", x.text_content(),),
             Self::Element(x) => write!(f, "{:?}", x),
         }
     }
