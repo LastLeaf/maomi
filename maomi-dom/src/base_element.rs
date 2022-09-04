@@ -107,17 +107,12 @@ impl PrerenderingElement {
             html_escape::encode_double_quoted_attribute_to_writer(&value, w)?;
             write!(w, r#"""#)?;
         }
-        if this.first_child().is_some() {
-            write!(w, ">")?;
-            state.prev_is_text_node = false;
-            self.write_children_html(w, this, state)?;
-            write!(w, "</{}>", self.tag_name)?;
-            state.prev_is_text_node = false;
-        } else {
-            write!(w, "/>")?;
-            state.prev_is_text_node = false;
-        }
-        Ok(())
+        write!(w, ">")?;
+        state.prev_is_text_node = false;
+        self.write_children_html(w, this, state)?;
+        write!(w, "</{}>", self.tag_name)?;
+        state.prev_is_text_node = false;
+    Ok(())
     }
 }
 
@@ -222,7 +217,13 @@ impl DomElement {
         if let DomState::PrerenderingApply(x) = &mut self.elem {
             x.set(e.clone().unchecked_into());
         }
+        for item in self.cold_event_list_mut() {
+            item.apply(e.unchecked_ref());
+        }
         self.elem = DomState::Normal(e.unchecked_into());
+        if self.hot_event_list.is_some() || self.cold_event_list.is_some() {
+            self.init_event_token();
+        }
     }
 
     pub(crate) fn write_inner_html(
@@ -282,7 +283,6 @@ impl DomElement {
 
     fn init_event_token(&mut self) {
         let ptr = self.forest_token.stable_addr().ptr() as usize;
-        // TODO write event token after prerendering
         match &self.elem {
             DomState::Normal(x) => {
                 x.unchecked_ref::<MaomiDomElement>()

@@ -114,7 +114,7 @@ macro_rules! define_element {
                     $(
                         $event: Default::default(),
                     )*
-                    dom_elem_lazy: std::cell::UnsafeCell::new(match elem { // TODO update on rematch
+                    dom_elem_lazy: std::cell::UnsafeCell::new(match elem {
                         DomState::Normal(x) => DomState::Normal(x),
                         #[cfg(feature = "prerendering")]
                         DomState::Prerendering(_) => DomState::Prerendering(()),

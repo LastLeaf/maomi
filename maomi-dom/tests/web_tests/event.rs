@@ -1,56 +1,10 @@
-use js_sys::Reflect;
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
 use maomi_dom::{async_task, element::*, event::*, prelude::*};
 
 use super::*;
-
-fn simulate_event(
-    target: &web_sys::EventTarget,
-    ty: &str,
-    bubbles: bool,
-    props: impl IntoIterator<Item = (&'static str, JsValue)>,
-) {
-    let mut event_init = web_sys::EventInit::new();
-    event_init.bubbles(bubbles);
-    let ev = web_sys::Event::new_with_event_init_dict(ty, &event_init).unwrap();
-    for (k, v) in props {
-        Reflect::set(&ev, &JsValue::from_str(k), &v).unwrap();
-    }
-    let target = target.clone();
-    async_task(async move {
-        target.dispatch_event(&ev).unwrap();
-    });
-}
-
-fn generate_fake_touch(
-    target: &web_sys::Element,
-    identifier: u32,
-    client_x: i32,
-    client_y: i32,
-) -> JsValue {
-    let v = JsValue::from_serde(&FakeTouch {
-        identifier,
-        client_x,
-        client_y,
-    })
-    .unwrap();
-    Reflect::set(&v, &JsValue::from_str("target"), target).unwrap();
-    let arr = js_sys::Array::new();
-    arr.push(&v);
-    arr.dyn_into().unwrap()
-}
-
-#[derive(serde::Serialize)]
-struct FakeTouch {
-    identifier: u32,
-    #[serde(rename = "clientX")]
-    client_x: i32,
-    #[serde(rename = "clientY")]
-    client_y: i32,
-}
 
 #[wasm_bindgen_test]
 async fn animation_event() {

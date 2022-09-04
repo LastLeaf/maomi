@@ -8,7 +8,7 @@ pub mod node;
 pub mod prop;
 pub mod template;
 pub mod text_node;
-pub use backend::context::{AsyncCallback, BackendContext};
+pub use backend::context::{AsyncCallback, BackendContext, PrerenderingData};
 
 pub mod prelude {
     #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]

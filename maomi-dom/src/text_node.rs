@@ -9,6 +9,10 @@ pub struct DomTextNode {
 }
 
 impl DomTextNode {
+    pub(crate) fn text_content(&self) -> &str {
+        &self.content
+    }
+
     pub(crate) fn composing_dom(&self) -> &web_sys::Node {
         match &self.dom_elem {
             DomState::Normal(x) => &x,

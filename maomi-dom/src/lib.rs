@@ -270,6 +270,7 @@ impl DomBackend {
             panic!("The backend is not in prerendering-apply stage");
         }
         self.backend_stage = BackendStage::Normal;
+        self.listeners = DomState::Normal(event::DomListeners::new(&dom_elem));
         fn rematch_dom<'a>(
             n: &mut ForestNodeMut<'a, DomGeneralElement>,
             next_dom_elem: Option<web_sys::Node>,
@@ -293,7 +294,9 @@ impl DomBackend {
                         x.rematch_dom(e);
                         return Ok(ret);
                     }
-                    DomGeneralElement::Virtual(_) => ChildMatchKind::Virtual(next_dom_elem),
+                    DomGeneralElement::Virtual(_) => {
+                        ChildMatchKind::Virtual(next_dom_elem)
+                    }
                     DomGeneralElement::Element(x) => {
                         let e = next_dom_elem.ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
                         x.rematch_dom(e.clone());
@@ -333,7 +336,7 @@ impl DomBackend {
         }
         let mut tree = self.tree.try_borrow_mut()
             .ok_or(Error::BackendError { msg: "Cannot apply prerendered tree while visiting".to_string(), err: None })?;
-        rematch_dom(&mut tree, dom_elem.first_child(), &mut Default::default())?;
+        rematch_dom(&mut tree, Some(dom_elem.unchecked_into()), &mut Default::default())?;
         Ok(())
     }
 }
@@ -370,7 +373,7 @@ impl std::fmt::Debug for DomGeneralElement {
             Self::Text(x) => write!(
                 f,
                 "{:?}",
-                x.composing_dom().text_content().unwrap_or_default()
+                x.text_content(),
             ),
             Self::Element(x) => write!(f, "{:?}", x),
         }

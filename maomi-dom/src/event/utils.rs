@@ -56,7 +56,6 @@ macro_rules! cold_event {
                     #[cfg(feature = "prerendering-apply")]
                     crate::DomState::PrerenderingApply(_) => {}
                 }
-                // TODO bind cold event when prerendering
                 target.cold_event_list_mut().push(item);
             }
 
