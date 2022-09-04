@@ -32,7 +32,7 @@ macro_rules! define_element {
                 /// An event
                 pub $event: $event_type,
             )*
-            dom_elem: dom_state_ty!(web_sys::Element, ()),
+            dom_elem_lazy: std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)>,
         }
 
         impl $tag_name {
@@ -41,14 +41,23 @@ macro_rules! define_element {
             /// Panics if called during prerendering stage.
             #[inline]
             pub fn dom_element(&self) -> &web_sys::Element {
-                match &self.dom_elem {
+                let ptr = self.dom_elem_lazy.get();
+                #[cfg(feature = "prerendering-apply")]
+                if let DomState::PrerenderingApply(x) = unsafe { &*ptr } {
+                    // it is safe
+                    // because there cannot be another one that takes refs in DomState::PrerenderingApply state
+                    if let Some(e) = x.take() {
+                        unsafe { *ptr = DomState::Normal(e); }
+                    }
+                }
+                match unsafe { &*ptr } {
                     DomState::Normal(x) => x,
                     #[cfg(feature = "prerendering")]
                     DomState::Prerendering(_) => {
                         panic!("Cannot get DOM element in prerendering stage")
                     }
                     #[cfg(feature = "prerendering-apply")]
-                    DomState::PrerenderingApply => {
+                    DomState::PrerenderingApply(_) => {
                         panic!("Cannot get DOM element in prerendering-apply stage")
                     }
                 }
@@ -75,7 +84,7 @@ macro_rules! define_element {
                     #[cfg(feature = "prerendering")]
                     DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(tag_name)),
                     #[cfg(feature = "prerendering-apply")]
-                    DomState::PrerenderingApply => DomState::PrerenderingApply,
+                    DomState::PrerenderingApply(_) => DomState::PrerenderingApply(RematchedDomElem::new()),
                 };
                 let backend_element =
                     crate::DomGeneralElement::create_dom_element(owner, &elem);
@@ -86,7 +95,7 @@ macro_rules! define_element {
                         #[cfg(feature = "prerendering")]
                         DomState::Prerendering(_) => DomState::Prerendering(()),
                         #[cfg(feature = "prerendering-apply")]
-                        DomState::PrerenderingApply => DomState::PrerenderingApply,
+                        DomState::PrerenderingApply(_) => DomState::PrerenderingApply(()),
                     }),
                     style: DomStrAttr {
                         inner: String::new(),
@@ -105,13 +114,13 @@ macro_rules! define_element {
                     $(
                         $event: Default::default(),
                     )*
-                    dom_elem: match elem {
+                    dom_elem_lazy: std::cell::UnsafeCell::new(match elem { // TODO update on rematch
                         DomState::Normal(x) => DomState::Normal(x),
                         #[cfg(feature = "prerendering")]
                         DomState::Prerendering(_) => DomState::Prerendering(()),
                         #[cfg(feature = "prerendering-apply")]
-                        DomState::PrerenderingApply => DomState::PrerenderingApply,
-                    },
+                        DomState::PrerenderingApply(x) => DomState::PrerenderingApply(x.clone()),
+                    }),
                 };
                 Ok((this, backend_element))
             }

@@ -4,7 +4,7 @@ use crate::{DomGeneralElement, DomState};
 
 #[doc(hidden)]
 pub struct DomVirtualElement {
-    dom_elem: dom_state_ty!((), ()),
+    dom_elem: dom_state_ty!((), (), ()),
 }
 
 impl DomVirtualElement {
@@ -15,18 +15,18 @@ impl DomVirtualElement {
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => DomState::Prerendering(()),
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => DomState::PrerenderingApply,
+            DomState::PrerenderingApply(_) => DomState::PrerenderingApply(()),
         };
         Self { dom_elem }
     }
 
-    pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), ()) {
+    pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), (), ()) {
         match &self.dom_elem {
             DomState::Normal(_) => DomState::Normal(()),
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => DomState::Prerendering(()),
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => DomState::PrerenderingApply,
+            DomState::PrerenderingApply(_) => DomState::PrerenderingApply(()),
         }
     }
 }

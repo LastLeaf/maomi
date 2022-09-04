@@ -5,24 +5,16 @@ use crate::{base_element::DomElement, DomState};
 
 /// The manager for DOM `ClassList`
 pub struct DomClassList {
-    class_list: dom_state_ty!(DomTokenList, ()),
+    class_list: dom_state_ty!(DomTokenList, (), ()),
     enabled: Vec<bool>,
 }
 
 impl DomClassList {
-    pub(crate) fn new(class_list: dom_state_ty!(DomTokenList, ())) -> Self {
+    pub(crate) fn new(class_list: dom_state_ty!(DomTokenList, (), ())) -> Self {
         Self {
             class_list,
             enabled: Vec::with_capacity(0),
         }
-    }
-
-    #[cfg(feature = "prerendering-apply")]
-    pub(crate) fn apply_prerendered_class_list(
-        &mut self,
-        class_list: dom_state_ty!(DomTokenList, ()),
-    ) {
-        // TODO
     }
 }
 
@@ -56,7 +48,7 @@ impl ListPropertyUpdate<bool> for DomClassList {
         let old_v = dest.enabled.get_mut(index).unwrap();
         if *old_v != v {
             *old_v = v;
-            match &dest.class_list {
+            match &mut dest.class_list {
                 DomState::Normal(x) => {
                     x.toggle_with_force(class_name, v).unwrap();
                 }
@@ -71,7 +63,18 @@ impl ListPropertyUpdate<bool> for DomClassList {
                     }
                 }
                 #[cfg(feature = "prerendering-apply")]
-                DomState::PrerenderingApply => {}
+                class_list => {
+                    match &ctx.elem {
+                        DomState::Normal(x) => {
+                            let cl = x.class_list();
+                            cl.toggle_with_force(class_name, v).unwrap();
+                            *class_list = DomState::Normal(cl);
+                        }
+                        #[cfg(feature = "prerendering")]
+                        DomState::Prerendering(_) => {}
+                        DomState::PrerenderingApply(_) => {}
+                    }
+                }
             }
         }
     }

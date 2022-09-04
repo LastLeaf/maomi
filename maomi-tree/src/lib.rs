@@ -69,34 +69,46 @@ impl<T> ForestNodeRc<T> {
     }
 
     /// Get an immutable reference of the node
+    ///
+    /// Returns `None` if already borrowed.
     #[inline]
-    pub fn borrow<'a>(&'a self) -> ForestNode<'a, T> {
+    pub fn try_borrow<'a>(&'a self) -> Option<ForestNode<'a, T>> {
         let inner = &self.inner;
         let ctx = &unsafe { inner.data_ref() }.ctx;
         if ctx.mut_count.get() > 0 {
-            panic!(
-                "Cannot borrow the forest node when a node is mutably borrowed in the same forest"
-            )
+            None?;
         }
         ctx.ref_count.set(ctx.ref_count.get() + 1);
-        ForestNode { inner }
+        Some(ForestNode { inner })
+    }
+
+    /// Get an immutable reference of the node
+    #[inline]
+    pub fn borrow<'a>(&'a self) -> ForestNode<'a, T> {
+        self.try_borrow().expect("Cannot borrow the forest node when a node has been mutably borrowed in the same forest")
+    }
+
+    /// Get a mutable reference of the tree root
+    ///
+    /// Returns `None` if already borrowed.
+    #[inline]
+    pub fn try_borrow_mut<'a>(&'a self) -> Option<ForestNodeMut<'a, T>> {
+        let inner = self.inner.clone();
+        let ctx = &unsafe { inner.data_ref() }.ctx;
+        if ctx.ref_count.get() > 0 || ctx.mut_count.get() > 0 {
+            None?;
+        }
+        ctx.mut_count.set(1);
+        Some(ForestNodeMut {
+            inner,
+            _phantom: PhantomData,
+        })
     }
 
     /// Get a mutable reference of the tree root
     #[inline]
     pub fn borrow_mut<'a>(&'a self) -> ForestNodeMut<'a, T> {
-        let inner = self.inner.clone();
-        let ctx = &unsafe { inner.data_ref() }.ctx;
-        if ctx.ref_count.get() > 0 || ctx.mut_count.get() > 0 {
-            panic!(
-                "Cannot mutably borrow the forest node when a node is borrowed in the same forest"
-            )
-        }
-        ctx.mut_count.set(1);
-        ForestNodeMut {
-            inner,
-            _phantom: PhantomData,
-        }
+        self.try_borrow_mut().expect("Cannot borrow the forest node when a node has been borrowed in the same forest")
     }
 
     /// Get a token

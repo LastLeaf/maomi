@@ -11,7 +11,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
     event::{ColdEventList, HotEventList},
-    DomGeneralElement, DomState,
+    DomGeneralElement, DomState, WriteHtmlState,
 };
 
 #[wasm_bindgen]
@@ -68,10 +68,11 @@ impl PrerenderingElement {
         &self,
         w: &mut impl std::io::Write,
         this: &ForestNode<DomGeneralElement>,
+        state: &mut WriteHtmlState,
     ) -> std::io::Result<()> {
         let mut cur = this.first_child();
         while let Some(c) = &cur {
-            DomGeneralElement::write_outer_html(&c, w)?;
+            DomGeneralElement::write_outer_html(&c, w, state)?;
             cur = c.next_sibling();
         }
         Ok(())
@@ -82,6 +83,7 @@ impl PrerenderingElement {
         &self,
         w: &mut impl std::io::Write,
         this: &ForestNode<DomGeneralElement>,
+        state: &mut WriteHtmlState,
     ) -> std::io::Result<()> {
         write!(w, "<{}", self.tag_name)?;
         let mut has_class = false;
@@ -107,18 +109,42 @@ impl PrerenderingElement {
         }
         if this.first_child().is_some() {
             write!(w, ">")?;
-            self.write_children_html(w, this)?;
+            state.prev_is_text_node = false;
+            self.write_children_html(w, this, state)?;
             write!(w, "</{}>", self.tag_name)?;
+            state.prev_is_text_node = false;
         } else {
             write!(w, "/>")?;
+            state.prev_is_text_node = false;
         }
         Ok(())
     }
 }
 
+#[cfg(feature = "prerendering-apply")]
+#[derive(Clone)]
+pub(crate) struct RematchedDomElem {
+    inner: std::rc::Rc<std::cell::Cell<Option<web_sys::Element>>>,
+}
+
+#[cfg(feature = "prerendering-apply")]
+impl RematchedDomElem {
+    pub(crate) fn new() -> Self {
+        Self { inner: Default::default() }
+    }
+
+    pub(crate) fn set(&mut self, e: web_sys::Element) {
+        self.inner.set(Some(e));
+    }
+
+    pub(crate) fn take(&self) -> Option<web_sys::Element> {
+        self.inner.take()
+    }
+}
+
 #[doc(hidden)]
 pub struct DomElement {
-    pub(crate) elem: dom_state_ty!(web_sys::Element, PrerenderingElement),
+    pub(crate) elem: dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem),
     pub(crate) forest_token: ManuallyDrop<ForestToken>,
     hot_event_list: Option<Box<HotEventList>>,
     cold_event_list: Option<Box<ColdEventList>>,
@@ -134,7 +160,7 @@ impl Drop for DomElement {
                 #[cfg(feature = "prerendering")]
                 DomState::Prerendering(_) => {}
                 #[cfg(feature = "prerendering-apply")]
-                DomState::PrerenderingApply => {}
+                DomState::PrerenderingApply(_) => {}
             }
             crate::event::tap::remove_element_touch_state(&self.forest_token);
         }
@@ -151,14 +177,14 @@ impl std::fmt::Debug for DomElement {
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => write!(f, "<(prerendering)>"),
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => write!(f, "<(prerendering)>"),
+            DomState::PrerenderingApply(_) => write!(f, "<(prerendering)>"),
         }
     }
 }
 
 impl DomElement {
     // Safety: must call `init` later (before dropped)
-    pub(crate) unsafe fn new(elem: dom_state_ty!(web_sys::Element, PrerenderingElement)) -> Self {
+    pub(crate) unsafe fn new(elem: dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem)) -> Self {
         Self {
             elem,
             forest_token: ManuallyDrop::new(MaybeUninit::uninit().assume_init()),
@@ -171,13 +197,13 @@ impl DomElement {
         self.forest_token = ManuallyDrop::new(forest_token);
     }
 
-    pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), ()) {
+    pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), (), ()) {
         match &self.elem {
             DomState::Normal(_) => DomState::Normal(()),
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => DomState::Prerendering(()),
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => DomState::PrerenderingApply,
+            DomState::PrerenderingApply(_) => DomState::PrerenderingApply(()),
         }
     }
 
@@ -187,14 +213,23 @@ impl DomElement {
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => unreachable!(),
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => unreachable!(),
+            DomState::PrerenderingApply(_) => unreachable!(),
         }
+    }
+
+    #[cfg(feature = "prerendering-apply")]
+    pub(crate) fn rematch_dom(&mut self, e: web_sys::Node) {
+        if let DomState::PrerenderingApply(x) = &mut self.elem {
+            x.set(e.clone().unchecked_into());
+        }
+        self.elem = DomState::Normal(e.unchecked_into());
     }
 
     pub(crate) fn write_inner_html(
         &self,
         _this: &ForestNode<DomGeneralElement>,
         w: &mut impl std::io::Write,
+        _state: &mut WriteHtmlState,
     ) -> std::io::Result<()> {
         match &self.elem {
             DomState::Normal(x) => {
@@ -202,10 +237,10 @@ impl DomElement {
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
-                x.write_children_html(w, _this).unwrap();
+                x.write_children_html(w, _this, _state).unwrap();
             }
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => {}
+            DomState::PrerenderingApply(_) => {}
         }
         Ok(())
     }
@@ -214,6 +249,7 @@ impl DomElement {
         &self,
         _this: &ForestNode<DomGeneralElement>,
         w: &mut impl std::io::Write,
+        _state: &mut WriteHtmlState,
     ) -> std::io::Result<()> {
         match &self.elem {
             DomState::Normal(x) => {
@@ -221,10 +257,10 @@ impl DomElement {
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
-                x.write_html(w, _this).unwrap();
+                x.write_html(w, _this, _state).unwrap();
             }
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => {}
+            DomState::PrerenderingApply(_) => {}
         }
         Ok(())
     }
@@ -255,7 +291,7 @@ impl DomElement {
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => {}
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => {}
+            DomState::PrerenderingApply(_) => {}
         }
     }
 
@@ -325,7 +361,7 @@ where
                 x.set_attribute(dest.attr_name, dest.inner.clone());
             }
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => {}
+            DomState::PrerenderingApply(_) => {}
         }
     }
 }
@@ -371,7 +407,7 @@ where
                 }
             }
             #[cfg(feature = "prerendering-apply")]
-            DomState::PrerenderingApply => {}
+            DomState::PrerenderingApply(_) => {}
         }
     }
 }

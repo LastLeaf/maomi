@@ -3,8 +3,6 @@ use crate::{
     error::Error,
 };
 
-// TODO try to accept all `ToString` types to reduce comparison overhead
-
 /// A text node
 pub struct TextNode {
     backend_element_token: tree::ForestToken,

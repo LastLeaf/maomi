@@ -4,19 +4,31 @@ use maomi::{
 };
 use wasm_bindgen::{JsCast, JsValue};
 
-#[cfg(not(feature = "prerendering"))]
-#[macro_export()]
+#[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
 macro_rules! dom_state_ty {
-    ($t:ty, $u:ty) => {
+    ($t:ty, $u:ty, $v:ty) => {
         DomState<$t>
     };
 }
 
-#[cfg(feature = "prerendering")]
-#[macro_export]
+#[cfg(all(not(feature = "prerendering"), feature = "prerendering-apply"))]
 macro_rules! dom_state_ty {
-    ($t:ty, $u:ty) => {
+    ($t:ty, $u:ty, $v:ty) => {
+        DomState<$t, $v>
+    };
+}
+
+#[cfg(all(feature = "prerendering", not(feature = "prerendering-apply")))]
+macro_rules! dom_state_ty {
+    ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $u>
+    };
+}
+
+#[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
+macro_rules! dom_state_ty {
+    ($t:ty, $u:ty, $v:ty) => {
+        DomState<$t, $u, $v>
     };
 }
 
@@ -24,6 +36,8 @@ pub mod base_element;
 use base_element::DomElement;
 #[cfg(feature = "prerendering")]
 use base_element::PrerenderingElement;
+#[cfg(feature = "prerendering-apply")]
+use base_element::RematchedDomElem;
 pub mod element;
 pub mod virtual_element;
 use virtual_element::DomVirtualElement;
@@ -62,21 +76,38 @@ pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
     wasm_bindgen_futures::spawn_local(fut);
 }
 
-#[cfg(not(feature = "prerendering"))]
+#[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum DomState<T> {
     Normal(T),
-    #[cfg(feature = "prerendering-apply")]
-    PrerenderingApply,
 }
 
-#[cfg(feature = "prerendering")]
+#[cfg(all(not(feature = "prerendering"), feature = "prerendering-apply"))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum DomState<T, V> {
+    Normal(T),
+    PrerenderingApply(V),
+}
+
+#[cfg(all(feature = "prerendering", not(feature = "prerendering-apply")))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum DomState<T, U> {
     Normal(T),
     Prerendering(U),
-    #[cfg(feature = "prerendering-apply")]
-    PrerenderingApply,
+}
+
+#[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum DomState<T, U, V> {
+    Normal(T),
+    Prerendering(U),
+    PrerenderingApply(V),
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct WriteHtmlState {
+    #[allow(dead_code)]
+    prev_is_text_node: bool,
 }
 
 /// A DOM backend
@@ -84,7 +115,7 @@ pub struct DomBackend {
     backend_stage: BackendStage,
     tree: tree::ForestNodeRc<DomGeneralElement>,
     #[allow(dead_code)]
-    listeners: dom_state_ty!(DomListeners, ()),
+    listeners: dom_state_ty!(DomListeners, (), ()),
 }
 
 impl DomBackend {
@@ -173,7 +204,8 @@ impl DomBackend {
     #[cfg(feature = "prerendering")]
     #[inline]
     pub fn write_prerendering_html(&self, w: &mut impl std::io::Write) -> std::io::Result<()> {
-        DomGeneralElement::write_inner_html(&self.root(), w)
+        let mut state = Default::default();
+        DomGeneralElement::write_inner_html(&self.root(), w, &mut state)
     }
 
     /// Prepare a backend for using the prerendering result
@@ -184,7 +216,7 @@ impl DomBackend {
     pub fn new_prerendered() -> Self {
         let tree_root = {
             let ret = tree::ForestNodeRc::new_forest(DomGeneralElement::Element(unsafe {
-                DomElement::new(DomState::PrerenderingApply)
+                DomElement::new(DomState::PrerenderingApply(base_element::RematchedDomElem::new()))
             }));
             let token = ret.token();
             if let DomGeneralElement::Element(x) = &mut *ret.borrow_mut() {
@@ -197,7 +229,7 @@ impl DomBackend {
         Self {
             backend_stage: BackendStage::PrerenderingApply,
             tree: tree_root,
-            listeners: DomState::PrerenderingApply,
+            listeners: DomState::PrerenderingApply(()),
         }
     }
 
@@ -234,8 +266,75 @@ impl DomBackend {
 
     #[cfg(feature = "prerendering-apply")]
     fn apply_prerendered(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
+        if self.backend_stage != BackendStage::PrerenderingApply {
+            panic!("The backend is not in prerendering-apply stage");
+        }
         self.backend_stage = BackendStage::Normal;
-        todo!() // TODO
+        fn rematch_dom<'a>(
+            n: &mut ForestNodeMut<'a, DomGeneralElement>,
+            next_dom_elem: Option<web_sys::Node>,
+            state: &mut WriteHtmlState,
+        ) -> Result<Option<web_sys::Node>, Error> {
+            enum ChildMatchKind {
+                Virtual(Option<web_sys::Node>),
+                NonVirtual(web_sys::Node),
+            }
+            let child_match_kind = {
+                let ge: &mut DomGeneralElement = n;
+                match ge {
+                    DomGeneralElement::Text(x) => {
+                        let mut e = next_dom_elem.ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
+                        if state.prev_is_text_node {
+                            e = e.next_sibling().ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
+                        } else {
+                            state.prev_is_text_node = true;
+                        };
+                        let ret = e.next_sibling();
+                        x.rematch_dom(e);
+                        return Ok(ret);
+                    }
+                    DomGeneralElement::Virtual(_) => ChildMatchKind::Virtual(next_dom_elem),
+                    DomGeneralElement::Element(x) => {
+                        let e = next_dom_elem.ok_or(Error::BackendError { msg: "Failed to apply a prerendered node".to_string(), err: None })?;
+                        x.rematch_dom(e.clone());
+                        state.prev_is_text_node = false;
+                        ChildMatchKind::NonVirtual(e)
+                    }
+                }
+            };
+            let mut rematch_child = |mut child_dom_elem| -> Result<_, Error> {
+                if let Some(mut child) = n.first_child_rc() {
+                    loop {
+                        let c = {
+                            let child_mut = &mut n.borrow_mut(&child);
+                            child_dom_elem = rematch_dom(child_mut, child_dom_elem, state)?;
+                            child_mut.next_sibling_rc()
+                        };
+                        match c {
+                            None => break,
+                            Some(c) => {
+                                child = c;
+                            }
+                        }
+                    }
+                }
+                Ok(child_dom_elem)
+            };
+            match child_match_kind {
+                ChildMatchKind::Virtual(x) => {
+                    rematch_child(x)
+                }
+                ChildMatchKind::NonVirtual(x) => {
+                    rematch_child(x.first_child())?;
+                    state.prev_is_text_node = false;
+                    Ok(x.next_sibling())
+                }
+            }
+        }
+        let mut tree = self.tree.try_borrow_mut()
+            .ok_or(Error::BackendError { msg: "Cannot apply prerendered tree while visiting".to_string(), err: None })?;
+        rematch_dom(&mut tree, dom_elem.first_child(), &mut Default::default())?;
+        Ok(())
     }
 }
 
@@ -279,7 +378,7 @@ impl std::fmt::Debug for DomGeneralElement {
 }
 
 impl DomGeneralElement {
-    fn is_prerendering(&self) -> dom_state_ty!((), ()) {
+    fn is_prerendering(&self) -> dom_state_ty!((), (), ()) {
         match self {
             Self::Virtual(x) => x.is_prerendering(),
             Self::Text(x) => x.is_prerendering(),
@@ -289,7 +388,7 @@ impl DomGeneralElement {
 
     fn create_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
-        elem: &'b dom_state_ty!(web_sys::Element, PrerenderingElement),
+        elem: &'b dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem),
     ) -> ForestNodeRc<Self> {
         let ret = this.new_tree(Self::Element(unsafe { DomElement::new(elem.clone()) }));
         let token = ret.token();
@@ -317,23 +416,22 @@ impl DomGeneralElement {
         }
     }
 
-    /// Get the inner HTML of the specified node, writing it to a `Write`
-    #[inline]
-    pub fn write_inner_html(
+    pub(crate) fn write_inner_html(
         this: &ForestNode<Self>,
         w: &mut impl std::io::Write,
+        state: &mut WriteHtmlState,
     ) -> std::io::Result<()> {
         match &**this {
             Self::Text(x) => {
-                x.write_inner_html(w)?;
+                x.write_inner_html(w, state)?;
             }
             Self::Element(x) => {
-                x.write_inner_html(this, w)?;
+                x.write_inner_html(this, w, state)?;
             }
             Self::Virtual(_) => {
                 let mut cur = this.first_child();
                 while let Some(c) = &cur {
-                    Self::write_outer_html(&c, w)?;
+                    Self::write_outer_html(&c, w, state)?;
                     cur = c.next_sibling();
                 }
             }
@@ -341,23 +439,22 @@ impl DomGeneralElement {
         Ok(())
     }
 
-    /// Get the outer HTML of the specified node, writing it to a `Write`
-    #[inline]
-    pub fn write_outer_html(
+    pub(crate) fn write_outer_html(
         this: &ForestNode<Self>,
         w: &mut impl std::io::Write,
+        state: &mut WriteHtmlState,
     ) -> std::io::Result<()> {
         match &**this {
             Self::Text(x) => {
-                x.write_inner_html(w)?;
+                x.write_inner_html(w, state)?;
             }
             Self::Element(x) => {
-                x.write_outer_html(this, w)?;
+                x.write_outer_html(this, w, state)?;
             }
             Self::Virtual(_) => {
                 let mut cur = this.first_child();
                 while let Some(c) = &cur {
-                    Self::write_outer_html(&c, w)?;
+                    Self::write_outer_html(&c, w, state)?;
                     cur = c.next_sibling();
                 }
             }
@@ -369,7 +466,8 @@ impl DomGeneralElement {
     #[inline]
     pub fn inner_html(this: &ForestNode<Self>) -> String {
         let mut ret = Vec::new();
-        Self::write_inner_html(this, &mut ret).unwrap();
+        let mut state = Default::default();
+        Self::write_inner_html(this, &mut ret, &mut state).unwrap();
         // since all str sources are valid UTF-8, this operation is safe
         unsafe { String::from_utf8_unchecked(ret) }
     }
@@ -378,7 +476,8 @@ impl DomGeneralElement {
     #[inline]
     pub fn outer_html(this: &ForestNode<Self>) -> String {
         let mut ret = Vec::new();
-        Self::write_outer_html(this, &mut ret).unwrap();
+        let mut state = Default::default();
+        Self::write_outer_html(this, &mut ret, &mut state).unwrap();
         // since all str sources are valid UTF-8, this operation is safe
         unsafe { String::from_utf8_unchecked(ret) }
     }
