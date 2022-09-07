@@ -547,92 +547,93 @@ async fn template_for() {
     test_component::<Parent>().await;
 }
 
-// #[wasm_bindgen_test]
-// async fn class_attr() {
-//     dom_css! {
-//         .static-class {
-//             color: red;
-//         }
-//         .dyn_class {
-//             color: blue;
-//         }
-//     }
+#[wasm_bindgen_test]
+async fn class_attr() {
+    dom_css! {
+        @config name_mangling: off;
+        .static-class {
+            color: red;
+        }
+        .dyn_class {
+            color: blue;
+        }
+    }
 
-//     #[component(Backend = DomBackend)]
-//     struct Parent {
-//         callback: Option<ComponentTestCb>,
-//         template: template! {
-//             <div class:static_class class:dyn_class={&self.v} />
-//         },
-//         v: bool,
-//     }
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div class:static_class class:dyn_class={&self.v} />
+        },
+        v: bool,
+    }
 
-//     impl Component for Parent {
-//         fn new() -> Self {
-//             Self {
-//                 callback: None,
-//                 template: Default::default(),
-//                 v: false,
-//             }
-//         }
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                v: false,
+            }
+        }
 
-//         fn created(&self) {
-//             let this = self.rc();
-//             async_task(async move {
-//                 this.update(|this| {
-//                     assert_eq!(
-//                         this.template_structure()
-//                             .unwrap()
-//                             .0
-//                             .tag
-//                             .dom_element()
-//                             .outer_html(),
-//                         r#"<div class="static-class"></div>"#,
-//                     );
-//                     this.v = true;
-//                 })
-//                 .await
-//                 .unwrap();
-//                 this.update(|this| {
-//                     assert_eq!(
-//                         this.template_structure()
-//                             .unwrap()
-//                             .0
-//                             .tag
-//                             .dom_element()
-//                             .outer_html(),
-//                         r#"<div class="static-class dyn_class"></div>"#,
-//                     );
-//                     this.v = false;
-//                 })
-//                 .await
-//                 .unwrap();
-//                 this.get_mut(|this| {
-//                     assert_eq!(
-//                         this.template_structure()
-//                             .unwrap()
-//                             .0
-//                             .tag
-//                             .dom_element()
-//                             .outer_html(),
-//                         r#"<div class="static-class"></div>"#,
-//                     );
-//                     (this.callback.take().unwrap())();
-//                 })
-//                 .await
-//                 .unwrap();
-//             });
-//         }
-//     }
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
+                        r#"<div class="static-class"></div>"#,
+                    );
+                    this.v = true;
+                })
+                .await
+                .unwrap();
+                this.update(|this| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
+                        r#"<div class="static-class dyn-class"></div>"#,
+                    );
+                    this.v = false;
+                })
+                .await
+                .unwrap();
+                this.get_mut(|this, _| {
+                    assert_eq!(
+                        this.template_structure()
+                            .unwrap()
+                            .0
+                            .tag
+                            .dom_element()
+                            .outer_html(),
+                        r#"<div class="static-class"></div>"#,
+                    );
+                    (this.callback.take().unwrap())();
+                })
+                .await
+                .unwrap();
+            });
+        }
+    }
 
-//     impl ComponentTest for Parent {
-//         fn set_callback(&mut self, callback: ComponentTestCb) {
-//             self.callback = Some(callback);
-//         }
-//     }
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
 
-//     test_component::<Parent>().await;
-// }
+    test_component::<Parent>().await;
+}
 
 #[wasm_bindgen_test]
 async fn style_attr() {

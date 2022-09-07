@@ -21,7 +21,13 @@ impl std::fmt::Display for Number {
 
 pub struct CssIdent {
     pub span: Span,
-    pub name: String,
+    pub formal_name: String,
+}
+
+impl CssIdent {
+    pub fn css_name(&self) -> String {
+        self.formal_name.replace('_', "-")
+    }
 }
 
 impl Spanned for CssIdent {
@@ -32,7 +38,7 @@ impl Spanned for CssIdent {
 
 impl Parse for CssIdent {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut name = String::new();
+        let mut formal_name = String::new();
         let mut span = None;
         loop {
             let la = input.lookahead1();
@@ -41,7 +47,7 @@ impl Parse for CssIdent {
                 if span.is_none() {
                     span = Some(t.span())
                 }
-                name.push('-');
+                formal_name.push('_');
                 true
             } else if la.peek(Ident) {
                 let t: Ident = input.parse()?;
@@ -49,7 +55,7 @@ impl Parse for CssIdent {
                     span = Some(t.span())
                 }
                 let s: &str = &t.to_string();
-                name += s.strip_prefix("r#").unwrap_or(s);
+                formal_name += s.strip_prefix("r#").unwrap_or(s);
                 false
             } else {
                 loop {
@@ -60,7 +66,7 @@ impl Parse for CssIdent {
                                 if span.is_none() {
                                     span = Some(t.span())
                                 }
-                                name += stringify!($x);
+                                formal_name += stringify!($x);
                                 break false;
                             }
                         };
@@ -127,7 +133,7 @@ impl Parse for CssIdent {
             }
         }
         Ok(Self {
-            name,
+            formal_name,
             span: span.unwrap(),
         })
     }
@@ -153,7 +159,7 @@ impl WriteCss for CssIdent {
                 _ => {}
             }
         }
-        write!(w, "{}", self.name)?;
+        write!(w, "{}", self.css_name())?;
         Ok(WriteCssSepCond::Ident)
     }
 }
@@ -161,7 +167,13 @@ impl WriteCss for CssIdent {
 pub struct CssAtKeyword {
     pub span: Span,
     pub at_token: token::At,
-    pub name: String,
+    pub formal_name: String,
+}
+
+impl CssAtKeyword {
+    pub fn css_name(&self) -> String {
+        self.formal_name.replace('_', "-")
+    }
 }
 
 impl Spanned for CssAtKeyword {
@@ -173,11 +185,11 @@ impl Spanned for CssAtKeyword {
 impl Parse for CssAtKeyword {
     fn parse(input: ParseStream) -> Result<Self> {
         let at_token: token::At = input.parse()?;
-        let name = CssIdent::parse(input)?.name;
+        let formal_name = CssIdent::parse(input)?.formal_name;
         Ok(Self {
             span: at_token.span(),
             at_token,
-            name,
+            formal_name,
         })
     }
 }
@@ -192,7 +204,7 @@ impl WriteCss for CssAtKeyword {
         if debug_mode {
             write!(w, " ")?;
         }
-        write!(w, "@{}", self.name)?;
+        write!(w, "@{}", self.css_name())?;
         Ok(WriteCssSepCond::NonIdentAlpha)
     }
 }
@@ -566,9 +578,15 @@ impl WriteCss for CssDimension {
 
 pub struct CssFunction<T> {
     pub span: Span,
-    pub name: String,
+    pub formal_name: String,
     pub paren_token: token::Paren,
     pub block: T,
+}
+
+impl<T> CssFunction<T> {
+    pub fn css_name(&self) -> String {
+        self.formal_name.replace('_', "-")
+    }
 }
 
 impl<T> Spanned for CssFunction<T> {
@@ -579,13 +597,13 @@ impl<T> Spanned for CssFunction<T> {
 
 impl<T: Parse> Parse for CssFunction<T> {
     fn parse(input: ParseStream) -> Result<Self> {
-        let CssIdent { span, name } = CssIdent::parse(input)?;
+        let CssIdent { span, formal_name } = CssIdent::parse(input)?;
         let content;
         let paren_token = parenthesized!(content in input);
         let block = content.parse()?;
         Ok(Self {
             span,
-            name,
+            formal_name,
             paren_token,
             block,
         })
@@ -612,7 +630,7 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
                 _ => {}
             }
         }
-        write!(w, "{}(", self.name)?;
+        write!(w, "{}(", self.css_name())?;
         self.block
             .write_css(WriteCssSepCond::Other, debug_mode, w)?;
         if debug_mode {
@@ -885,7 +903,7 @@ impl Parse for CssToken {
                 let block = content.parse()?;
                 Self::Function(CssFunction {
                     span: x.span,
-                    name: x.name,
+                    formal_name: x.formal_name,
                     paren_token,
                     block,
                 })

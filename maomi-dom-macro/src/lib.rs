@@ -7,9 +7,9 @@ use quote::{quote, quote_spanned, TokenStreamExt};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use syn::parse::Parse;
+use syn::Error;
 
-use maomi_skin::parser::{CssToken, Repeat, StyleSheetConstructor};
+use maomi_skin::parser::{CssToken, Repeat, StyleSheetConstructor, ParseStyleSheetValue, CssIdent};
 use maomi_skin::parser::{
     PropertyOrSubRule, StyleSheet, StyleSheetItem, WriteCss, WriteCssSepCond,
 };
@@ -70,8 +70,8 @@ struct DomCssProperty {
     inner: Repeat<CssToken>,
 }
 
-impl Parse for DomCssProperty {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+impl ParseStyleSheetValue for DomCssProperty {
+    fn parse_value(_: &CssIdent, input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(Self {
             inner: Repeat::parse_while(input, |x| !x.peek(syn::token::Semi))?,
         })
@@ -89,9 +89,38 @@ impl WriteCss for DomCssProperty {
     }
 }
 
+enum DomStyleSheetConfig {
+    NameMangling(bool),
+}
+
+impl ParseStyleSheetValue for DomStyleSheetConfig {
+    fn parse_value(
+        name: &maomi_skin::parser::CssIdent,
+        input: syn::parse::ParseStream,
+    ) -> syn::Result<Self> where Self: Sized {
+        let ret = match name.formal_name.as_str() {
+            "name_mangling" => {
+                let v: CssIdent = input.parse()?;
+                match v.formal_name.as_str() {
+                    "off" => Self::NameMangling(false),
+                    "on" => Self::NameMangling(true),
+                    _ => {
+                        return Err(Error::new(name.span, "Unsupported config value"));
+                    }
+                }
+            }
+            _ => {
+                return Err(Error::new(name.span, "Unknown config item"));
+            }
+        };
+        Ok(ret)
+    }
+}
+
 struct DomStyleSheet {}
 
 impl StyleSheetConstructor for DomStyleSheet {
+    type ConfigValue = DomStyleSheetConfig;
     type PropertyValue = DomCssProperty;
     type FontFacePropertyValue = DomCssProperty;
 
@@ -100,6 +129,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         Self: Sized,
     {
         let debug_mode = CSS_OUT_MODE.with(|x| *x == CssOutMode::Debug);
+        let mut name_mangling = true;
 
         // a helper for proc macro output
         fn write_proc_macro_class(
@@ -129,8 +159,16 @@ impl StyleSheetConstructor for DomStyleSheet {
         // generate css output
         for item in ss.items.iter() {
             match item {
-                StyleSheetItem::Macro { .. } => unreachable!(),
                 StyleSheetItem::Import { .. } => unreachable!(),
+                StyleSheetItem::Config { value, .. } => {
+                    match value {
+                        DomStyleSheetConfig::NameMangling(enabled) => {
+                            name_mangling = *enabled;
+                        }
+                    }
+                },
+                StyleSheetItem::Macro { .. } => unreachable!(),
+                StyleSheetItem::Const { .. } => todo!(),
                 StyleSheetItem::KeyFrames {
                     at_keyword,
                     name,
@@ -149,15 +187,17 @@ impl StyleSheetConstructor for DomStyleSheet {
                 StyleSheetItem::Rule { ident, items, .. } => {
                     let class_id_start = nanoid!(1, &CLASS_START_CHARS);
                     let class_id = nanoid!(10, &CLASS_CHARS);
-                    let class_name = if debug_mode {
-                        ident.name.clone() + "__" + &class_id_start + &class_id
+                    let class_name = if !name_mangling {
+                        ident.css_name()
+                    } else if debug_mode {
+                        ident.css_name() + "_" + &class_id_start + &class_id
                     } else {
                         class_id_start + &class_id
                     };
                     write_proc_macro_class(
                         tokens,
                         ident.span,
-                        &syn::Ident::new(&ident.name.replace('-', "_"), ident.span),
+                        &syn::Ident::new(&ident.formal_name, ident.span),
                         &class_name,
                     );
                     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {

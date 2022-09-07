@@ -12,12 +12,21 @@ use mac::MacroDefinition;
 
 /// Handlers for CSS details (varies between backends)
 pub trait StyleSheetConstructor {
-    type PropertyValue: Parse;
-    type FontFacePropertyValue: Parse;
+    type ConfigValue: ParseStyleSheetValue;
+    type PropertyValue: ParseStyleSheetValue;
+    type FontFacePropertyValue: ParseStyleSheetValue;
 
     fn to_tokens(ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
     where
         Self: Sized;
+}
+
+/// Parse value positions
+pub trait ParseStyleSheetValue {
+    fn parse_value(
+        name: &CssIdent,
+        input: syn::parse::ParseStream,
+    ) -> syn::Result<Self> where Self: Sized;
 }
 
 /// Display as CSS text
@@ -78,12 +87,15 @@ pub struct Property<V> {
     pub semi_token: token::Semi,
 }
 
-impl<V: Parse> Parse for Property<V> {
+impl<V: ParseStyleSheetValue> Parse for Property<V> {
     fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse()?;
+        let colon_token = input.parse()?;
+        let value = V::parse_value(&name, input)?;
         Ok(Self {
-            name: input.parse()?,
-            colon_token: input.parse()?,
-            value: input.parse()?,
+            name,
+            colon_token,
+            value,
             semi_token: input.parse()?,
         })
     }
@@ -108,7 +120,7 @@ impl<V: WriteCss> WriteCss for Property<V> {
 pub enum PropertyOrSubRule<T: StyleSheetConstructor> {
     Property(Property<T::PropertyValue>),
     SubClass {
-        and_token: token::And,
+        and_token: token::Sub,
         ident: CssIdent,
         items: CssBrace<Repeat<PropertyOrSubRule<T>>>,
     },
@@ -148,7 +160,7 @@ impl<T: StyleSheetConstructor> Parse for PropertyOrSubRule<T> {
             }
         } else if la.peek(token::At) {
             let at_keyword: CssAtKeyword = input.parse()?;
-            match at_keyword.name.as_str() {
+            match at_keyword.formal_name.as_str() {
                 "media" => Self::Media {
                     at_keyword,
                     expr: Repeat::parse_while(input, |input| {
@@ -175,15 +187,28 @@ impl<T: StyleSheetConstructor> Parse for PropertyOrSubRule<T> {
 }
 
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
-    Macro {
-        at_keyword: CssAtKeyword,
-        export: bool,
-        name: CssIdent,
-        mac: MacroDefinition,
-    },
     Import {
         at_keyword: CssAtKeyword,
         src: CssString,
+        semi_token: token::Semi,
+    },
+    Config {
+        at_keyword: CssAtKeyword,
+        name: CssIdent,
+        colon_token: CssColon,
+        value: T::ConfigValue,
+        semi_token: token::Semi,
+    },
+    Macro {
+        at_keyword: CssAtKeyword,
+        name: CssIdent,
+        mac: MacroDefinition,
+    },
+    Const {
+        at_keyword: CssAtKeyword,
+        name: CssIdent,
+        colon_token: CssColon,
+        content: Repeat<CssToken>,
         semi_token: token::Semi,
     },
     KeyFrames {
@@ -208,25 +233,37 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
         let la = input.lookahead1();
         let item = if la.peek(token::At) {
             let at_keyword: CssAtKeyword = input.parse()?;
-            match at_keyword.name.as_str() {
-                "macro" => StyleSheetItem::Macro {
-                    at_keyword,
-                    export: false,
-                    name: input.parse()?,
-                    mac: input.parse()?,
-                },
-                "macro-export" => StyleSheetItem::Macro {
-                    at_keyword,
-                    export: true,
-                    name: input.parse()?,
-                    mac: input.parse()?,
-                },
+            match at_keyword.formal_name.as_str() {
                 "import" => StyleSheetItem::Import {
                     at_keyword,
                     src: input.parse()?,
                     semi_token: input.parse()?,
                 },
-                "key-frames" => {
+                "config" => {
+                    let name = input.parse()?;
+                    let colon_token = input.parse()?;
+                    let value = ParseStyleSheetValue::parse_value(&name, input)?;
+                    StyleSheetItem::Config {
+                        at_keyword,
+                        name,
+                        colon_token,
+                        value,
+                        semi_token: input.parse()?,
+                    }
+                },
+                "macro" => StyleSheetItem::Macro {
+                    at_keyword,
+                    name: input.parse()?,
+                    mac: input.parse()?,
+                },
+                "const" => StyleSheetItem::Const {
+                    at_keyword,
+                    name: input.parse()?,
+                    colon_token: input.parse()?,
+                    content: input.parse()?,
+                    semi_token: input.parse()?,
+                },
+                "key_frames" => {
                     let name = input.parse()?;
                     let content;
                     let brace_token = braced!(content in input);
@@ -236,7 +273,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
                         let la = input.lookahead1();
                         let percentage = if la.peek(Ident) {
                             let s: CssIdent = input.parse()?;
-                            match s.name.as_str() {
+                            match s.formal_name.as_str() {
                                 "from" => CssPercentage {
                                     span: s.span(),
                                     num: Number::Int(0),
@@ -262,7 +299,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
                         content: content.into(),
                     }
                 }
-                "font-face" => StyleSheetItem::FontFaceRule {
+                "font_face" => StyleSheetItem::FontFaceRule {
                     at_keyword,
                     items: input.parse()?,
                 },
