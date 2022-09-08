@@ -1,5 +1,9 @@
 //! Parsing details of the stylesheets
 
+use rustc_hash::FxHashMap;
+use std::path::PathBuf;
+use std::str::FromStr;
+
 use quote::ToTokens;
 use syn::parse::*;
 use syn::spanned::Spanned;
@@ -9,6 +13,50 @@ mod css_token;
 pub use css_token::*;
 mod mac;
 use mac::MacroDefinition;
+
+thread_local! {
+    static CSS_IMPORT_DIR: Option<PathBuf> = {
+        std::env::var("MAOMI_CSS_IMPORT_DIR")
+            .map(|s| PathBuf::from(&s))
+            .or_else(|_| {
+                std::env::var("CARGO_MANIFEST_DIR")
+                    .map(|s| PathBuf::from(&s).join("src"))
+            })
+            .ok()
+    };
+}
+
+fn get_import_content(src: &CssString) -> Result<String> {
+    let p = src.value();
+    if !p.starts_with("/") {
+        return Err(Error::new(
+            src.span(),
+            "Currently only paths started with `/` are supported (which means the path relative to crate `src` or MAOMI_CSS_IMPORT_DIR)",
+        ))
+    }
+    let mut target = CSS_IMPORT_DIR.with(|import_dir| {
+        match import_dir {
+            None => Err(Error::new(
+                src.span(),
+                "No MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
+            )),
+            Some(s) => Ok(s.clone()),
+        }
+    })?;
+    for slice in p[1..].split('/') {
+        match slice {
+            "." => {}
+            ".." => { target.pop(); }
+            x => { target.push(x); }
+        }
+    }
+    std::fs::read_to_string(&target).map_err(|_| {
+        Error::new(
+            src.span(),
+            &format!("Cannot open file {:?}", target),
+        )
+    })
+}
 
 /// Handlers for CSS details (varies between backends)
 pub trait StyleSheetConstructor {
@@ -186,17 +234,10 @@ impl<T: StyleSheetConstructor> Parse for PropertyOrSubRule<T> {
     }
 }
 
-pub enum StyleSheetItem<T: StyleSheetConstructor> {
+pub enum StyleSheetProcItem<T: StyleSheetConstructor> {
     Import {
         at_keyword: CssAtKeyword,
         src: CssString,
-        semi_token: token::Semi,
-    },
-    Config {
-        at_keyword: CssAtKeyword,
-        name: CssIdent,
-        colon_token: CssColon,
-        value: T::ConfigValue,
         semi_token: token::Semi,
     },
     Macro {
@@ -209,6 +250,17 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         name: CssIdent,
         colon_token: CssColon,
         content: Repeat<CssToken>,
+        semi_token: token::Semi,
+    },
+    Content(StyleSheetItem<T>),
+}
+
+pub enum StyleSheetItem<T: StyleSheetConstructor> {
+    Config {
+        at_keyword: CssAtKeyword,
+        name: CssIdent,
+        colon_token: CssColon,
+        value: T::ConfigValue,
         semi_token: token::Semi,
     },
     KeyFrames {
@@ -228,40 +280,49 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
     },
 }
 
-impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
+impl<T: StyleSheetConstructor> Parse for StyleSheetProcItem<T> {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
         let item = if la.peek(token::At) {
             let at_keyword: CssAtKeyword = input.parse()?;
             match at_keyword.formal_name.as_str() {
-                "import" => StyleSheetItem::Import {
-                    at_keyword,
-                    src: input.parse()?,
-                    semi_token: input.parse()?,
+                "import" => {
+                    let item = Self::Import {
+                        at_keyword,
+                        src: input.parse()?,
+                        semi_token: input.parse()?,
+                    };
+                    item
+                },
+                "macro" => {
+                    let item = Self::Macro {
+                        at_keyword,
+                        name: input.parse()?,
+                        mac: input.parse()?,
+                    };
+                    item
+                },
+                "const" => {
+                    let item = Self::Const {
+                        at_keyword,
+                        name: input.parse()?,
+                        colon_token: input.parse()?,
+                        content: input.parse()?,
+                        semi_token: input.parse()?,
+                    };
+                    item
                 },
                 "config" => {
                     let name = input.parse()?;
                     let colon_token = input.parse()?;
                     let value = ParseStyleSheetValue::parse_value(&name, input)?;
-                    StyleSheetItem::Config {
+                    Self::Content(StyleSheetItem::Config {
                         at_keyword,
                         name,
                         colon_token,
                         value,
                         semi_token: input.parse()?,
-                    }
-                },
-                "macro" => StyleSheetItem::Macro {
-                    at_keyword,
-                    name: input.parse()?,
-                    mac: input.parse()?,
-                },
-                "const" => StyleSheetItem::Const {
-                    at_keyword,
-                    name: input.parse()?,
-                    colon_token: input.parse()?,
-                    content: input.parse()?,
-                    semi_token: input.parse()?,
+                    })
                 },
                 "key_frames" => {
                     let name = input.parse()?;
@@ -292,16 +353,18 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
                         let props = input.parse()?;
                         content.push((percentage, props));
                     }
-                    StyleSheetItem::KeyFrames {
+                    Self::Content(StyleSheetItem::KeyFrames {
                         at_keyword,
                         name,
                         brace_token,
                         content: content.into(),
-                    }
+                    })
                 }
-                "font_face" => StyleSheetItem::FontFaceRule {
-                    at_keyword,
-                    items: input.parse()?,
+                "font_face" => {
+                    Self::Content(StyleSheetItem::FontFaceRule {
+                        at_keyword,
+                        items: input.parse()?,
+                    })
                 },
                 _ => {
                     return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
@@ -311,11 +374,11 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
             let dot_token = input.parse()?;
             let ident = input.parse()?;
             let items = input.parse()?;
-            StyleSheetItem::Rule {
+            Self::Content(StyleSheetItem::Rule {
                 dot_token,
                 ident,
                 items,
-            }
+            })
         } else {
             return Err(la.error());
         };
@@ -324,13 +387,58 @@ impl<T: StyleSheetConstructor> Parse for StyleSheetItem<T> {
 }
 
 pub struct StyleSheet<T: StyleSheetConstructor> {
-    pub items: Repeat<StyleSheetItem<T>>,
+    pub items: Vec<StyleSheetItem<T>>,
+    macros: FxHashMap<String, MacroDefinition>,
+    consts: FxHashMap<String, Repeat<CssToken>>,
 }
 
 impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
     fn parse(input: ParseStream) -> Result<Self> {
+        let mut items = vec![];
+        let mut macros = FxHashMap::default();
+        let mut consts = FxHashMap::default();
+        let mut imports_ended = false;
+        while !input.is_empty() {
+            let proc_item: StyleSheetProcItem<T> = input.parse()?;
+            if let StyleSheetProcItem::Import { at_keyword, .. } = &proc_item {
+                if imports_ended {
+                    return Err(Error::new(at_keyword.span(), "`@import` should be in the start of the segment"));
+                }
+            } else {
+                imports_ended = true;
+            };
+            match proc_item {
+                StyleSheetProcItem::Import { at_keyword, src, .. } => {
+                    let content = get_import_content(&src)?;
+                    let token_stream = proc_macro2::TokenStream::from_str(&content)?;
+                    let mut ss = parse2::<StyleSheet<T>>(token_stream)
+                        .map_err(|err| {
+                            let original_span = err.span();
+                            let start = original_span.start();
+                            Error::new(
+                                at_keyword.span(),
+                                format_args!("When parsing {}:{}:{}: {}", src.value(), start.line, start.column, err),
+                            )
+                        })?;
+                    macros.extend(ss.macros);
+                    consts.extend(ss.consts);
+                    items.append(&mut ss.items);
+                }
+                StyleSheetProcItem::Macro { name, mac, .. } => {
+                    macros.insert(name.formal_name, mac);
+                }
+                StyleSheetProcItem::Const { name, content, .. } => {
+                    consts.insert(name.formal_name, content);
+                }
+                StyleSheetProcItem::Content(x) => {
+                    items.push(x);
+                }
+            }
+        }
         Ok(Self {
-            items: input.parse()?,
+            items,
+            macros,
+            consts,
         })
     }
 }

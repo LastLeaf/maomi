@@ -213,6 +213,12 @@ pub struct CssString {
     pub s: LitStr,
 }
 
+impl CssString {
+    pub fn value(&self) -> String {
+        self.s.value()
+    }
+}
+
 impl Spanned for CssString {
     fn span(&self) -> Span {
         self.s.span()

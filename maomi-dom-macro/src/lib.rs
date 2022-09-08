@@ -159,7 +159,6 @@ impl StyleSheetConstructor for DomStyleSheet {
         // generate css output
         for item in ss.items.iter() {
             match item {
-                StyleSheetItem::Import { .. } => unreachable!(),
                 StyleSheetItem::Config { value, .. } => {
                     match value {
                         DomStyleSheetConfig::NameMangling(enabled) => {
@@ -167,8 +166,6 @@ impl StyleSheetConstructor for DomStyleSheet {
                         }
                     }
                 },
-                StyleSheetItem::Macro { .. } => unreachable!(),
-                StyleSheetItem::Const { .. } => todo!(),
                 StyleSheetItem::KeyFrames {
                     at_keyword,
                     name,

@@ -6,12 +6,8 @@ fn main() {
         println!("cargo:rustc-env=MAOMI_CSS_OUT_MODE=debug");
         let crate_path = PathBuf::from(crate_path);
         println!(
-            "cargo:rustc-env=MAOMI_CSS_OUT_DIR={}",
-            crate_path.join("pkg").to_str().unwrap()
-        );
-        println!(
             "cargo:rustc-env=MAOMI_CSS_IMPORT_DIR={}",
-            crate_path.join("src").to_str().unwrap()
+            crate_path.to_str().unwrap()
         );
     }
 }

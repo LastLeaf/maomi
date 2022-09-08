@@ -9,6 +9,7 @@ pub mod component;
 pub mod event;
 pub mod prerendering;
 pub mod template;
+pub mod skin;
 
 static INIT: Once = Once::new();
 

@@ -10,7 +10,7 @@ repository = "https://github.com/LastLeaf/maomi"
 edition = "2021"
 
 [features]
-default = ["all"]
+default = []
 prerendering = []
 prerendering-apply = []
 all = ["prerendering", "prerendering-apply"]

@@ -1,3 +1,5 @@
+#![cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
+
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
@@ -5,7 +7,6 @@ use maomi_dom::{async_task, element::*, event::*, prelude::*};
 
 use super::*;
 
-#[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
 #[wasm_bindgen_test]
 async fn generate_prerendering_html() {
     #[component(Backend = DomBackend)]
@@ -131,7 +132,6 @@ async fn generate_prerendering_html() {
     test_component_prerendering_apply::<Parent>(&html, prerendering_data).await;
 }
 
-#[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
 #[wasm_bindgen_test]
 async fn cold_event_in_prerendered() {
     #[component(Backend = DomBackend)]
@@ -198,7 +198,6 @@ async fn cold_event_in_prerendered() {
     test_component_prerendering_apply::<MyComp>(&html, prerendering_data).await;
 }
 
-#[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
 #[wasm_bindgen_test]
 async fn hot_event_in_prerendered() {
     #[component(Backend = DomBackend)]
