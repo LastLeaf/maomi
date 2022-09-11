@@ -3,7 +3,7 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-use super::{WriteCss, WriteCssSepCond};
+use super::{WriteCss, WriteCssSepCond, ParseWithVars};
 
 pub enum Number {
     Int(i64),
@@ -850,9 +850,11 @@ pub enum CssToken {
     Brace(CssBrace<Repeat<CssToken>>),
 }
 
-impl Parse for CssToken {
+impl ParseWithVars for CssToken {
     fn parse(input: ParseStream) -> Result<Self> {
-        let item = if input.peek(token::At) {
+        let item = if input.peek(Token![$]) {
+            Self::Var(input.parse()?, input.parse()?)
+        } else if input.peek(token::At) {
             Self::AtKeyword(input.parse()?)
         } else if input.peek(LitStr) {
             Self::String(input.parse()?)
@@ -903,7 +905,9 @@ impl Parse for CssToken {
                 })
             }
         } else if let Ok(x) = input.parse::<CssIdent>() {
-            if input.peek(token::Paren) {
+            if input.peek(Token![!]) {
+                Self::MacroInvoke(x, input.parse()?, input.parse()?)
+            } else if input.peek(token::Paren) {
                 let content;
                 let paren_token = parenthesized!(content in input);
                 let block = content.parse()?;

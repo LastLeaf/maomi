@@ -10,6 +10,7 @@ async fn skin_import() {
     dom_css! {
         @import "/tests/web_tests/import.maomi.css";
         .self_class {}
+        // TODO import const and macro
     }
 
     #[component(Backend = DomBackend)]
