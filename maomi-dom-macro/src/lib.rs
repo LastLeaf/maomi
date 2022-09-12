@@ -71,7 +71,7 @@ struct DomCssProperty {
 }
 
 impl ParseStyleSheetValue for DomCssProperty {
-    fn parse_value(_: &CssIdent, input: syn::parse::ParseStream) -> syn::Result<Self> {
+    fn parse_value(_: &CssIdent, input: &[CssToken]) -> syn::Result<Self> {
         Ok(Self {
             inner: Repeat::parse_while(input, |x| !x.peek(syn::token::Semi))?,
         })
@@ -96,7 +96,7 @@ enum DomStyleSheetConfig {
 impl ParseStyleSheetValue for DomStyleSheetConfig {
     fn parse_value(
         name: &maomi_skin::parser::CssIdent,
-        input: syn::parse::ParseStream,
+        input: &[CssToken],
     ) -> syn::Result<Self> where Self: Sized {
         let ret = match name.formal_name.as_str() {
             "name_mangling" => {
@@ -122,14 +122,15 @@ struct DomStyleSheet {}
 impl StyleSheetConstructor for DomStyleSheet {
     type ConfigValue = DomStyleSheetConfig;
     type PropertyValue = DomCssProperty;
-    type FontFacePropertyValue = DomCssProperty;
+    type FontFacePropertyValue = DomFontFaceProperty;
+    type MediaCondValue = DomMediaCondValue;
 
     fn to_tokens(ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
     where
         Self: Sized,
     {
         let debug_mode = CSS_OUT_MODE.with(|x| *x == CssOutMode::Debug);
-        let mut name_mangling = true;
+        let mut name_mangling = true; 
 
         // a helper for proc macro output
         fn write_proc_macro_class(

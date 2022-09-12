@@ -5,6 +5,7 @@ use syn::*;
 
 use super::{WriteCss, WriteCssSepCond, ParseWithVars};
 
+#[derive(Debug, Clone)]
 pub enum Number {
     Int(i64),
     Float(f64),
@@ -19,6 +20,7 @@ impl std::fmt::Display for Number {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CssIdent {
     pub span: Span,
     pub formal_name: String,
@@ -164,6 +166,7 @@ impl WriteCss for CssIdent {
     }
 }
 
+#[derive(Clone)]
 pub struct CssAtKeyword {
     pub span: Span,
     pub at_token: token::At,
@@ -209,6 +212,7 @@ impl WriteCss for CssAtKeyword {
     }
 }
 
+#[derive(Clone)]
 pub struct CssString {
     pub s: LitStr,
 }
@@ -246,6 +250,7 @@ impl WriteCss for CssString {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CssColon {
     pub span: Span,
 }
@@ -275,6 +280,7 @@ impl WriteCss for CssColon {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CssSemi {
     pub span: Span,
 }
@@ -304,6 +310,7 @@ impl WriteCss for CssSemi {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CssDelim {
     pub span: Span,
     pub s: &'static str,
@@ -409,6 +416,7 @@ impl WriteCss for CssDelim {
     }
 }
 
+#[derive(Clone)]
 pub struct CssNumber {
     pub span: Span,
     pub num: Number,
@@ -472,6 +480,7 @@ impl WriteCss for CssNumber {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CssPercentage {
     pub span: Span,
     pub num: Number,
@@ -516,6 +525,7 @@ impl WriteCss for CssPercentage {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CssDimension {
     pub span: Span,
     pub num: Number,
@@ -582,6 +592,7 @@ impl WriteCss for CssDimension {
     }
 }
 
+#[derive(Clone)]
 pub struct CssFunction<T> {
     pub span: Span,
     pub formal_name: String,
@@ -647,6 +658,7 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
     }
 }
 
+#[derive(Clone)]
 pub struct CssParen<T> {
     pub paren_token: token::Paren,
     pub block: T,
@@ -663,6 +675,15 @@ impl<T: Parse> Parse for CssParen<T> {
         let content;
         let paren_token = parenthesized!(content in input);
         let block = content.parse()?;
+        Ok(Self { paren_token, block })
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssParen<T> {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let content;
+        let paren_token = parenthesized!(content in input);
+        let block = T::parse_with_vars(&content, vars)?;
         Ok(Self { paren_token, block })
     }
 }
@@ -695,6 +716,7 @@ impl<T: WriteCss> WriteCss for CssParen<T> {
     }
 }
 
+#[derive(Clone)]
 pub struct CssBracket<T> {
     pub bracket_token: token::Bracket,
     pub block: T,
@@ -715,6 +737,15 @@ impl<T: Parse> Parse for CssBracket<T> {
             bracket_token,
             block,
         })
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let content;
+        let bracket_token = bracketed!(content in input);
+        let block = T::parse_with_vars(&content, vars)?;
+        Ok(Self { bracket_token, block })
     }
 }
 
@@ -739,6 +770,7 @@ impl<T: WriteCss> WriteCss for CssBracket<T> {
     }
 }
 
+#[derive(Clone)]
 pub struct CssBrace<T> {
     pub brace_token: token::Brace,
     pub block: T,
@@ -755,6 +787,15 @@ impl<T: Parse> Parse for CssBrace<T> {
         let content;
         let brace_token = braced!(content in input);
         let block = content.parse()?;
+        Ok(Self { brace_token, block })
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssBrace<T> {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let content;
+        let brace_token = braced!(content in input);
+        let block = T::parse_with_vars(&content, vars)?;
         Ok(Self { brace_token, block })
     }
 }
@@ -780,18 +821,14 @@ impl<T: WriteCss> WriteCss for CssBrace<T> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Repeat<T> {
     inner: Vec<T>,
 }
 
-impl<T: Parse> Repeat<T> {
-    pub fn parse_while(input: ParseStream, mut f: impl FnMut(ParseStream) -> bool) -> Result<Self> {
-        let mut inner = vec![];
-        while f(input) {
-            let x = input.parse()?;
-            inner.push(x);
-        }
-        Ok(Self { inner })
+impl<T> Repeat<T> {
+    pub fn as_slice(&self) -> &[T] {
+        self.inner.as_slice()
     }
 
     pub fn iter(&self) -> std::slice::Iter<T> {
@@ -799,9 +836,24 @@ impl<T: Parse> Repeat<T> {
     }
 }
 
-impl<T: Parse> Parse for Repeat<T> {
-    fn parse(input: ParseStream) -> Result<Self> {
-        Self::parse_while(input, |input| !input.is_empty())
+impl ParseWithVars for Repeat<CssToken> {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let mut inner = vec![];
+        while !input.is_empty() {
+            parse_token(&mut inner, input, vars)?;
+        }
+        Ok(Self { inner })
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for Repeat<T> {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let mut inner = vec![];
+        while !input.is_empty() {
+            let item = T::parse_with_vars(input, vars)?;
+            inner.push(item);
+        }
+        Ok(Self { inner })
     }
 }
 
@@ -834,6 +886,7 @@ impl<'a, T> IntoIterator for &'a Repeat<T> {
     }
 }
 
+#[derive(Clone)]
 pub enum CssToken {
     Ident(CssIdent),
     AtKeyword(CssAtKeyword),
@@ -848,85 +901,6 @@ pub enum CssToken {
     Paren(CssParen<Repeat<CssToken>>),
     Bracket(CssBracket<Repeat<CssToken>>),
     Brace(CssBrace<Repeat<CssToken>>),
-}
-
-impl ParseWithVars for CssToken {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let item = if input.peek(Token![$]) {
-            Self::Var(input.parse()?, input.parse()?)
-        } else if input.peek(token::At) {
-            Self::AtKeyword(input.parse()?)
-        } else if input.peek(LitStr) {
-            Self::String(input.parse()?)
-        } else if input.peek(token::Colon) {
-            Self::Colon(input.parse()?)
-        } else if input.peek(token::Semi) {
-            Self::Semi(input.parse()?)
-        } else if input.peek(token::Paren) {
-            Self::Paren(input.parse()?)
-        } else if input.peek(token::Bracket) {
-            Self::Bracket(input.parse()?)
-        } else if input.peek(token::Brace) {
-            Self::Brace(input.parse()?)
-        } else if input.peek(LitInt) {
-            let n: LitInt = input.parse()?;
-            let span = n.span();
-            let num = Number::Int(n.base10_parse()?);
-            if n.suffix().len() == 0 {
-                if input.peek(Token![%]) {
-                    let _: Token![%] = input.parse()?;
-                    Self::Percentage(CssPercentage { span, num })
-                } else {
-                    Self::Number(CssNumber { span, num })
-                }
-            } else {
-                Self::Dimension(CssDimension {
-                    span,
-                    num,
-                    unit: n.suffix().to_string(),
-                })
-            }
-        } else if input.peek(LitFloat) {
-            let n: LitFloat = input.parse()?;
-            let span = n.span();
-            let num = Number::Float(n.base10_parse()?);
-            if n.suffix().len() == 0 {
-                if input.peek(Token![%]) {
-                    let _: Token![%] = input.parse()?;
-                    Self::Percentage(CssPercentage { span, num })
-                } else {
-                    Self::Number(CssNumber { span, num })
-                }
-            } else {
-                Self::Dimension(CssDimension {
-                    span,
-                    num,
-                    unit: n.suffix().to_string(),
-                })
-            }
-        } else if let Ok(x) = input.parse::<CssIdent>() {
-            if input.peek(Token![!]) {
-                Self::MacroInvoke(x, input.parse()?, input.parse()?)
-            } else if input.peek(token::Paren) {
-                let content;
-                let paren_token = parenthesized!(content in input);
-                let block = content.parse()?;
-                Self::Function(CssFunction {
-                    span: x.span,
-                    formal_name: x.formal_name,
-                    paren_token,
-                    block,
-                })
-            } else {
-                Self::Ident(x)
-            }
-        } else if let Ok(x) = input.parse() {
-            Self::Delim(x)
-        } else {
-            return Err(input.error("Illegal CSS token"));
-        };
-        Ok(item)
-    }
 }
 
 impl WriteCss for CssToken {
@@ -952,5 +926,142 @@ impl WriteCss for CssToken {
             Self::Brace(x) => x.write_css(sc, debug_mode, w)?,
         };
         Ok(sc)
+    }
+}
+
+fn parse_token(
+    ret: &mut Vec<CssToken>,
+    input: ParseStream,
+    vars: &super::StyleSheetVars,
+) -> Result<()> {
+    if input.peek(Token![$]) {
+        input.parse::<Token![$]>()?;
+        let name: CssIdent = input.parse()?;
+        let items = vars.consts.get(&name.formal_name).ok_or_else(|| {
+            Error::new(name.span(), format!("No const named {:?}", name.formal_name))
+        })?;
+        for item in items {
+            ret.push(item.clone());
+        }
+    } else if input.peek(token::At) {
+        ret.push(CssToken::AtKeyword(input.parse()?));
+    } else if input.peek(LitStr) {
+        ret.push(CssToken::String(input.parse()?));
+    } else if input.peek(token::Colon) {
+        ret.push(CssToken::Colon(input.parse()?));
+    } else if input.peek(token::Semi) {
+        ret.push(CssToken::Semi(input.parse()?));
+    } else if input.peek(token::Paren) {
+        ret.push(CssToken::Paren(ParseWithVars::parse_with_vars(&input, vars)?));
+    } else if input.peek(token::Bracket) {
+        ret.push(CssToken::Bracket(ParseWithVars::parse_with_vars(&input, vars)?));
+    } else if input.peek(token::Brace) {
+        ret.push(CssToken::Brace(ParseWithVars::parse_with_vars(&input, vars)?));
+    } else if input.peek(LitInt) {
+        let n: LitInt = input.parse()?;
+        let span = n.span();
+        let num = Number::Int(n.base10_parse()?);
+        if n.suffix().len() == 0 {
+            if input.peek(Token![%]) {
+                let _: Token![%] = input.parse()?;
+                ret.push(CssToken::Percentage(CssPercentage { span, num }));
+            } else {
+                ret.push(CssToken::Number(CssNumber { span, num }));
+            }
+        } else {
+            ret.push(CssToken::Dimension(CssDimension {
+                span,
+                num,
+                unit: n.suffix().to_string(),
+            }));
+        }
+    } else if input.peek(LitFloat) {
+        let n: LitFloat = input.parse()?;
+        let span = n.span();
+        let num = Number::Float(n.base10_parse()?);
+        if n.suffix().len() == 0 {
+            if input.peek(Token![%]) {
+                let _: Token![%] = input.parse()?;
+                ret.push(CssToken::Percentage(CssPercentage { span, num }));
+            } else {
+                ret.push(CssToken::Number(CssNumber { span, num }));
+            }
+        } else {
+            ret.push(CssToken::Dimension(CssDimension {
+                span,
+                num,
+                unit: n.suffix().to_string(),
+            }));
+        }
+    } else if let Ok(x) = input.parse::<CssIdent>() {
+        if input.peek(Token![!]) {
+            let mac = vars.macros.get(&x.formal_name).ok_or_else(|| {
+                Error::new(x.span(), format!("No macro named {:?}", x.formal_name))
+            })?;
+            todo!(); // TODO
+        } else if input.peek(token::Paren) {
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let block = ParseWithVars::parse_with_vars(&content, vars)?;
+            ret.push(CssToken::Function(CssFunction {
+                span: x.span,
+                formal_name: x.formal_name,
+                paren_token,
+                block,
+            }));
+        } else {
+            ret.push(CssToken::Ident(x));
+        }
+    } else if let Ok(x) = input.parse() {
+        ret.push(CssToken::Delim(x));
+    } else {
+        return Err(input.error("Illegal CSS token"));
+    };
+    Ok(())
+}
+
+pub(crate) struct ParseTokenUntilSemi {
+    inner: Vec<CssToken>,
+}
+
+impl ParseTokenUntilSemi {
+    pub(crate) fn get(self) -> Vec<CssToken> {
+        self.inner
+    }
+}
+
+impl ParseWithVars for ParseTokenUntilSemi {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let mut inner = vec![];
+        while !input.is_empty() {
+            if input.peek(token::Semi) {
+                break;
+            }
+            parse_token(&mut inner, input, vars)?;
+        }
+        Ok(Self { inner })
+    }
+}
+
+pub(crate) struct ParseTokenUntilSemiOrBrace {
+    inner: Vec<CssToken>,
+}
+
+impl ParseTokenUntilSemiOrBrace {
+    pub(crate) fn get(self) -> Vec<CssToken> {
+        self.inner
+    }
+}
+
+impl ParseWithVars for ParseTokenUntilSemiOrBrace {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+        let mut inner = vec![];
+        while !input.is_empty() {
+            if input.peek(token::Semi) || input.peek(token::Brace) {
+                break;
+            }
+            parse_token(&mut inner, input, vars)?;
+        }
+        Ok(Self { inner })
     }
 }

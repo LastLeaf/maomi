@@ -80,7 +80,7 @@ pub trait StyleSheetConstructor {
 pub trait ParseStyleSheetValue {
     fn parse_value(
         name: &CssIdent,
-        input: impl Iterator<Item = CssToken>,
+        tokens: &[CssToken],
     ) -> syn::Result<Self> where Self: Sized;
 }
 
@@ -150,7 +150,8 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         let name = input.parse()?;
         let colon_token = input.parse()?;
-        let value = V::parse_value(&name, input)?;
+        let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars)?.get();
+        let value = V::parse_value(&name, tokens.as_slice())?;
         Ok(Self {
             name,
             colon_token,
@@ -200,13 +201,13 @@ pub enum PropertyOrSubRule<T: StyleSheetConstructor> {
 }
 
 pub struct MediaQuery<V> {
-    has_only: bool,
-    cond_list: Vec<MediaCond<V>>,
+    pub has_only: bool,
+    pub cond_list: Vec<MediaCond<V>>,
 }
 
 pub struct MediaCond<V> {
-    has_not: bool,
-    cond: V,
+    pub has_not: bool,
+    pub cond: V,
     // All,
     // Screen,
     // Print,
@@ -231,14 +232,27 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Vec<MediaQuery<V>> {
             };
             let mut cond_list = vec![];
             loop {
-                let value_iter = ValueIter::new(input, vars);
                 let has_not = if input.peek(kw::not) {
                     input.parse::<kw::not>()?;
                     true
                 } else {
                     false
                 };
-                let cond = V::parse_media_value(value_iter)?;
+                let la = input.lookahead1();
+                let cond = if la.peek(Ident) {
+                    let name: CssIdent = input.parse()?;
+                    V::parse_value(&name, &[])?
+                } else if la.peek(token::Paren) {
+                    let content;
+                    let _paren = parenthesized!(content in input);
+                    let input = content;
+                    let name: CssIdent = input.parse()?;
+                    input.parse::<token::Colon>()?;
+                    let tokens = Repeat::parse_with_vars(&input, vars)?;
+                    V::parse_value(&name, tokens.as_slice())?
+                } else {
+                    return Err(la.error());
+                };
                 cond_list.push(MediaCond { has_not, cond });
                 if !input.peek(kw::and) {
                     break;
@@ -264,7 +278,7 @@ pub enum SupportsCond<V> {
 
 impl<V: ParseStyleSheetValue> ParseWithVars for SupportsCond<V> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
-        // TODO
+        todo!() // TODO
     }
 }
 
@@ -289,16 +303,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for PropertyOrSubRule<T> {
             match at_keyword.formal_name.as_str() {
                 "media" => Self::Media {
                     at_keyword,
-                    expr: Repeat::parse_while(input, |input| {
-                        !input.peek(token::Brace) && !input.peek(token::Semi)
-                    })?,
+                    expr: ParseWithVars::parse_with_vars(input, vars)?,
                     items: ParseWithVars::parse_with_vars(input, vars)?,
                 },
                 "supports" => Self::Supports {
                     at_keyword,
-                    expr: Repeat::parse_while(input, |input| {
-                        !input.peek(token::Brace) && !input.peek(token::Semi)
-                    })?,
+                    expr: ParseWithVars::parse_with_vars(input, vars)?,
                     items: ParseWithVars::parse_with_vars(input, vars)?,
                 },
                 _ => {
@@ -314,6 +324,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for PropertyOrSubRule<T> {
 
 struct StyleSheetImportItem {
     src: CssString,
+    #[allow(dead_code)]
     semi_token: token::Semi,
 }
 
@@ -341,15 +352,20 @@ impl Parse for StyleSheetMacroItem {
 }
 
 struct StyleSheetConstItem {
+    #[allow(dead_code)]
+    dollar_token: Token![$],
     name: CssIdent,
+    #[allow(dead_code)]
     colon_token: CssColon,
     content: Repeat<CssToken>,
+    #[allow(dead_code)]
     semi_token: token::Semi,
 }
 
 impl ParseWithVars for StyleSheetConstItem {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         Ok(Self {
+            dollar_token: input.parse()?,
             name: input.parse()?,
             colon_token: input.parse()?,
             content: ParseWithVars::parse_with_vars(input, vars)?,
@@ -397,16 +413,15 @@ struct StyleSheetVars {
 impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut items = vec![];
-        let vars = StyleSheetVars {
+        let mut vars = StyleSheetVars {
             macros: FxHashMap::default(),
             consts: FxHashMap::default(),
         };
 
         // parse items
-        let mut imports_ended = false;
         while !input.is_empty() {
             let la = input.lookahead1();
-            let item = if la.peek(token::At) {
+            if la.peek(token::At) {
                 let at_keyword: CssAtKeyword = input.parse()?;
                 match at_keyword.formal_name.as_str() {
                     "import" => {
@@ -438,7 +453,8 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                     "config" => {
                         let name = input.parse()?;
                         let colon_token = input.parse()?;
-                        let value = ParseStyleSheetValue::parse_value(&name, input)?;
+                        let tokens = ParseTokenUntilSemi::parse_with_vars(input, &vars)?.get();
+                        let value = ParseStyleSheetValue::parse_value(&name, tokens.as_slice())?;
                         items.push(StyleSheetItem::Config {
                             at_keyword,
                             name,
@@ -496,11 +512,10 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
             } else if la.peek(token::Dot) {
                 let dot_token = input.parse()?;
                 let ident = input.parse()?;
-                let items = ParseWithVars::parse_with_vars(&input, &vars)?;
                 items.push(StyleSheetItem::Rule {
                     dot_token,
                     ident,
-                    items,
+                    items: ParseWithVars::parse_with_vars(&input, &vars)?,
                 })
             } else {
                 return Err(la.error());
