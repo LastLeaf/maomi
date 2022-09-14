@@ -6,18 +6,22 @@ use maomi_dom::{async_task, element::*, prelude::*};
 use super::*;
 
 #[wasm_bindgen_test]
-async fn skin_import() {
+async fn skin_const() {
     dom_css! {
-        @import "/tests/web_tests/import.maomi.css";
-        .self_class {}
-        // TODO import const and macro
+        @config name_mangling: off;
+
+        @const $a: 1px;
+
+        .a_class {
+            padding: $a 2px;
+        }
     }
 
     #[component(Backend = DomBackend)]
     struct MyComp {
         callback: Option<ComponentTestCb>,
         template: template! {
-            <div class:imported_class class:self_class></div>
+            <div class:a_class></div>
         },
     }
 
@@ -40,7 +44,7 @@ async fn skin_import() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div class="imported-class self-class"></div>"#,
+                        r#"<div class="a-class"></div>"#,
                     );
                     (this.callback.take().unwrap())();
                 })

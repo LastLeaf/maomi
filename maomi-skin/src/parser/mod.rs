@@ -80,7 +80,7 @@ pub trait StyleSheetConstructor {
 pub trait ParseStyleSheetValue {
     fn parse_value(
         name: &CssIdent,
-        tokens: &[CssToken],
+        tokens: &mut CssTokenStream,
     ) -> syn::Result<Self> where Self: Sized;
 }
 
@@ -134,8 +134,9 @@ pub enum WriteCssSepCond {
     Other,
 }
 
-trait ParseWithVars: Sized {
+pub trait ParseWithVars: Sized {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self>;
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent));
 }
 
 /// A CSS property (name-value pair)
@@ -144,20 +145,31 @@ pub struct Property<V> {
     pub colon_token: token::Colon,
     pub value: V,
     pub semi_token: token::Semi,
+    pub refs: Vec<CssIdent>,
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         let name = input.parse()?;
         let colon_token = input.parse()?;
-        let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars)?.get();
-        let value = V::parse_value(&name, tokens.as_slice())?;
+        let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars)?;
+        let (tokens, refs) = tokens.get();
+        let mut stream = CssTokenStream::new(input.span(), tokens);
+        let value = V::parse_value(&name, &mut stream)?;
+        stream.expect_ended()?;
         Ok(Self {
             name,
             colon_token,
             value,
             semi_token: input.parse()?,
+            refs,
         })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for r in &self.refs {
+            f(r);
+        }
     }
 }
 
@@ -202,35 +214,50 @@ pub enum PropertyOrSubRule<T: StyleSheetConstructor> {
 
 pub struct MediaQuery<V> {
     pub has_only: bool,
+    pub media_type: MediaType,
     pub cond_list: Vec<MediaCond<V>>,
+}
+
+pub enum MediaType {
+    All,
+    Screen,
+    Print,
 }
 
 pub struct MediaCond<V> {
     pub has_not: bool,
     pub cond: V,
-    // All,
-    // Screen,
-    // Print,
-    // Width(CssDimension),
-    // Height(CssDimension),
-    // MinWidth(CssDimension),
-    // MinHeight(CssDimension),
-    // MaxWidth(CssDimension),
-    // MaxHeight(CssDimension),
-    // TODO add features in https://developer.mozilla.org/en-US/docs/Web/CSS/@media
+    pub refs: Vec<CssIdent>,
 }
 
-impl<V: ParseStyleSheetValue> ParseWithVars for Vec<MediaQuery<V>> {
+impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
-        let mut ret = vec![];
-        loop {
-            let has_only = if input.peek(kw::only) {
-                input.parse::<kw::only>()?;
-                true
-            } else {
-                false
+        let has_only = if input.peek(kw::only) {
+            input.parse::<kw::only>()?;
+            true
+        } else {
+            false
+        };
+        let (media_type, has_media_feature) = if has_only || input.peek(Ident) {
+            let ident: CssIdent = input.parse()?;
+            let media_type = match ident.formal_name.as_str() {
+                "all" => MediaType::All,
+                "screen" => MediaType::Screen,
+                "print" => MediaType::Print,
+                _ => {
+                    return Err(Error::new(ident.span(), "Unknown media type"));
+                }
             };
-            let mut cond_list = vec![];
+            let has_media_feature = input.peek(kw::and);
+            if has_media_feature {
+                input.parse::<CssIdent>()?;
+            }
+            (media_type, has_media_feature)
+        } else {
+            (MediaType::All, true)
+        };
+        let mut cond_list = vec![];
+        if has_media_feature {
             loop {
                 let has_not = if input.peek(kw::not) {
                     input.parse::<kw::not>()?;
@@ -239,33 +266,36 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Vec<MediaQuery<V>> {
                     false
                 };
                 let la = input.lookahead1();
-                let cond = if la.peek(Ident) {
-                    let name: CssIdent = input.parse()?;
-                    V::parse_value(&name, &[])?
-                } else if la.peek(token::Paren) {
+                let (cond, refs) = if la.peek(token::Paren) {
                     let content;
                     let _paren = parenthesized!(content in input);
                     let input = content;
                     let name: CssIdent = input.parse()?;
                     input.parse::<token::Colon>()?;
-                    let tokens = Repeat::parse_with_vars(&input, vars)?;
-                    V::parse_value(&name, tokens.as_slice())?
+                    let (tokens, refs) = Repeat::parse_with_vars(&input, vars)?.get();
+                    let mut stream = CssTokenStream::new(input.span(), tokens);
+                    let ret = V::parse_value(&name, &mut stream)?;
+                    stream.expect_ended()?;
+                    (ret, refs)
                 } else {
                     return Err(la.error());
                 };
-                cond_list.push(MediaCond { has_not, cond });
+                cond_list.push(MediaCond { has_not, cond, refs });
                 if !input.peek(kw::and) {
                     break;
                 }
                 input.parse::<kw::and>()?;
             }
-            ret.push(MediaQuery { has_only, cond_list });
-            if !input.peek(Token![,]) {
-                break;
-            }
-            input.parse::<Token![,]>()?;
         }
-        Ok(ret)
+        Ok(MediaQuery { has_only, media_type, cond_list })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for cond in &self.cond_list {
+            for r in &cond.refs {
+                f(r);
+            }
+        }
     }
 }
 
@@ -278,6 +308,10 @@ pub enum SupportsCond<V> {
 
 impl<V: ParseStyleSheetValue> ParseWithVars for SupportsCond<V> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+        todo!() // TODO
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
         todo!() // TODO
     }
 }
@@ -301,10 +335,20 @@ impl<T: StyleSheetConstructor> ParseWithVars for PropertyOrSubRule<T> {
         } else if la.peek(token::At) {
             let at_keyword: CssAtKeyword = input.parse()?;
             match at_keyword.formal_name.as_str() {
-                "media" => Self::Media {
-                    at_keyword,
-                    expr: ParseWithVars::parse_with_vars(input, vars)?,
-                    items: ParseWithVars::parse_with_vars(input, vars)?,
+                "media" => {
+                    let mut expr = vec![];
+                    loop {
+                        expr.push(ParseWithVars::parse_with_vars(input, vars)?);
+                        if !input.peek(Token![,]) {
+                            break;
+                        }
+                        input.parse::<Token![,]>()?;
+                    }
+                    Self::Media {
+                        at_keyword,
+                        expr,
+                        items: ParseWithVars::parse_with_vars(input, vars)?,
+                    }
                 },
                 "supports" => Self::Supports {
                     at_keyword,
@@ -319,6 +363,24 @@ impl<T: StyleSheetConstructor> ParseWithVars for PropertyOrSubRule<T> {
             return Err(la.error());
         };
         Ok(item)
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        match self {
+            Self::Property(x) => x.for_each_ref(f),
+            Self::SubClass { items, .. } => items.for_each_ref(f),
+            Self::PseudoClass { items, .. } => items.for_each_ref(f),
+            Self::Media { expr, items, .. } => {
+                for e in expr {
+                    e.for_each_ref(f);
+                }
+                items.for_each_ref(f);
+            }
+            Self::Supports { expr, items, .. } => {
+                expr.for_each_ref(f);
+                items.for_each_ref(f);
+            }
+        }
     }
 }
 
@@ -357,7 +419,7 @@ struct StyleSheetConstItem {
     name: CssIdent,
     #[allow(dead_code)]
     colon_token: CssColon,
-    content: Repeat<CssToken>,
+    content: ParseTokenUntilSemi,
     #[allow(dead_code)]
     semi_token: token::Semi,
 }
@@ -368,9 +430,13 @@ impl ParseWithVars for StyleSheetConstItem {
             dollar_token: input.parse()?,
             name: input.parse()?,
             colon_token: input.parse()?,
-            content: ParseWithVars::parse_with_vars(input, vars)?,
+            content: ParseTokenUntilSemi::parse_with_vars(input, vars)?,
             semi_token: input.parse()?,
         })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.content.for_each_ref(f)
     }
 }
 
@@ -381,13 +447,23 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         colon_token: CssColon,
         value: T::ConfigValue,
         semi_token: token::Semi,
+        refs: Vec<CssIdent>,
+    },
+    MacroDefinition {
+        at_keyword: CssAtKeyword,
+        name: CssIdent,
+    },
+    ConstDefinition {
+        at_keyword: CssAtKeyword,
+        name: CssIdent,
+        refs: Vec<CssIdent>,
     },
     KeyFrames {
         at_keyword: CssAtKeyword,
         name: CssIdent,
         brace_token: token::Brace,
         // IDEA support use with @media and @supports
-        content: Repeat<(CssPercentage, CssBrace<Repeat<Property<T::PropertyValue>>>)>,
+        content: Vec<(CssPercentage, CssBrace<Repeat<Property<T::PropertyValue>>>)>,
     },
     FontFaceRule {
         at_keyword: CssAtKeyword,
@@ -405,9 +481,9 @@ pub struct StyleSheet<T: StyleSheetConstructor> {
     vars: StyleSheetVars,
 }
 
-struct StyleSheetVars {
+pub struct StyleSheetVars {
     macros: FxHashMap<String, MacroDefinition>,
-    consts: FxHashMap<String, Repeat<CssToken>>,
+    consts: FxHashMap<String, Vec<CssToken>>,
 }
 
 impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
@@ -444,23 +520,30 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                     },
                     "macro" => {
                         let item: StyleSheetMacroItem = input.parse()?;
-                        vars.macros.insert(item.name.formal_name, item.mac);
+                        // TODO add proper refs
+                        vars.macros.insert(item.name.formal_name.clone(), item.mac);
+                        items.push(StyleSheetItem::MacroDefinition { at_keyword, name: item.name })
                     },
                     "const" => {
                         let item = StyleSheetConstItem::parse_with_vars(&input, &vars)?;
-                        vars.consts.insert(item.name.formal_name, item.content);
+                        let (tokens, refs) = item.content.get();
+                        vars.consts.insert(item.name.formal_name.clone(), tokens);
+                        items.push(StyleSheetItem::ConstDefinition { at_keyword, name: item.name, refs })
                     },
                     "config" => {
                         let name = input.parse()?;
                         let colon_token = input.parse()?;
-                        let tokens = ParseTokenUntilSemi::parse_with_vars(input, &vars)?.get();
-                        let value = ParseStyleSheetValue::parse_value(&name, tokens.as_slice())?;
+                        let (tokens, refs) = ParseTokenUntilSemi::parse_with_vars(input, &vars)?.get();
+                        let mut stream = CssTokenStream::new(input.span(), tokens);
+                        let value = ParseStyleSheetValue::parse_value(&name, &mut stream)?;
+                        stream.expect_ended()?;
                         items.push(StyleSheetItem::Config {
                             at_keyword,
                             name,
                             colon_token,
                             value,
                             semi_token: input.parse()?,
+                            refs,
                         })
                     },
                     "key_frames" => {
@@ -496,7 +579,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                             at_keyword,
                             name,
                             brace_token,
-                            content: content.into(),
+                            content,
                         })
                     }
                     "font_face" => {

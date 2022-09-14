@@ -1,3 +1,4 @@
+use std::iter::Peekable;
 use proc_macro2::Span;
 use syn::parse::*;
 use syn::spanned::Spanned;
@@ -422,6 +423,15 @@ pub struct CssNumber {
     pub num: Number,
 }
 
+impl CssNumber {
+    pub fn integer(&self) -> Option<i64> {
+        match self.num {
+            Number::Int(x) => Some(x),
+            Number::Float(_) => None,
+        }
+    }
+}
+
 impl Spanned for CssNumber {
     fn span(&self) -> Span {
         self.span
@@ -612,18 +622,22 @@ impl<T> Spanned for CssFunction<T> {
     }
 }
 
-impl<T: Parse> Parse for CssFunction<T> {
-    fn parse(input: ParseStream) -> Result<Self> {
+impl<T: ParseWithVars> ParseWithVars for CssFunction<T> {
+    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
         let CssIdent { span, formal_name } = CssIdent::parse(input)?;
         let content;
         let paren_token = parenthesized!(content in input);
-        let block = content.parse()?;
+        let block = T::parse_with_vars(&content, vars)?;
         Ok(Self {
             span,
             formal_name,
             paren_token,
             block,
         })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
     }
 }
 
@@ -686,6 +700,10 @@ impl<T: ParseWithVars> ParseWithVars for CssParen<T> {
         let block = T::parse_with_vars(&content, vars)?;
         Ok(Self { paren_token, block })
     }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
 }
 
 impl<T: WriteCss> WriteCss for CssParen<T> {
@@ -747,6 +765,10 @@ impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
         let block = T::parse_with_vars(&content, vars)?;
         Ok(Self { bracket_token, block })
     }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
 }
 
 impl<T: WriteCss> WriteCss for CssBracket<T> {
@@ -798,6 +820,10 @@ impl<T: ParseWithVars> ParseWithVars for CssBrace<T> {
         let block = T::parse_with_vars(&content, vars)?;
         Ok(Self { brace_token, block })
     }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
 }
 
 impl<T: WriteCss> WriteCss for CssBrace<T> {
@@ -824,11 +850,23 @@ impl<T: WriteCss> WriteCss for CssBrace<T> {
 #[derive(Debug, Clone)]
 pub struct Repeat<T> {
     inner: Vec<T>,
+    refs: Vec<CssIdent>,
 }
 
 impl<T> Repeat<T> {
-    pub fn as_slice(&self) -> &[T] {
-        self.inner.as_slice()
+    pub fn get(self) -> (Vec<T>, Vec<CssIdent>) {
+        (self.inner, self.refs)
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.inner
+    }
+
+    pub fn from_vec(v: Vec<T>) -> Self {
+        Self {
+            inner: v,
+            refs: Vec::with_capacity(0),
+        }
     }
 
     pub fn iter(&self) -> std::slice::Iter<T> {
@@ -839,21 +877,35 @@ impl<T> Repeat<T> {
 impl ParseWithVars for Repeat<CssToken> {
     fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
         let mut inner = vec![];
+        let mut refs = Vec::with_capacity(0);
         while !input.is_empty() {
-            parse_token(&mut inner, input, vars)?;
+            parse_token(&mut inner, &mut refs, input, vars)?;
         }
-        Ok(Self { inner })
+        Ok(Self { inner, refs })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for r in &self.refs {
+            f(r)
+        }
     }
 }
 
 impl<T: ParseWithVars> ParseWithVars for Repeat<T> {
     fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
         let mut inner = vec![];
+        let refs = Vec::with_capacity(0);
         while !input.is_empty() {
             let item = T::parse_with_vars(input, vars)?;
             inner.push(item);
         }
-        Ok(Self { inner })
+        Ok(Self { inner, refs })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for r in &self.inner {
+            r.for_each_ref(f);
+        }
     }
 }
 
@@ -868,12 +920,6 @@ impl<T: WriteCss> WriteCss for Repeat<T> {
             sc = item.write_css(sc, debug_mode, w)?;
         }
         Ok(sc)
-    }
-}
-
-impl<T> From<Vec<T>> for Repeat<T> {
-    fn from(inner: Vec<T>) -> Self {
-        Self { inner }
     }
 }
 
@@ -901,6 +947,26 @@ pub enum CssToken {
     Paren(CssParen<Repeat<CssToken>>),
     Bracket(CssBracket<Repeat<CssToken>>),
     Brace(CssBrace<Repeat<CssToken>>),
+}
+
+impl Spanned for CssToken {
+    fn span(&self) -> Span {
+        match self {
+            Self::Ident(x) => x.span(),
+            Self::AtKeyword(x) => x.span(),
+            Self::String(x) => x.span(),
+            Self::Colon(x) => x.span(),
+            Self::Semi(x) => x.span(),
+            Self::Delim(x) => x.span(),
+            Self::Number(x) => x.span(),
+            Self::Percentage(x) => x.span(),
+            Self::Dimension(x) => x.span(),
+            Self::Function(x) => x.span(),
+            Self::Paren(x) => x.span(),
+            Self::Bracket(x) => x.span(),
+            Self::Brace(x) => x.span(),
+        }
+    }
 }
 
 impl WriteCss for CssToken {
@@ -931,6 +997,7 @@ impl WriteCss for CssToken {
 
 fn parse_token(
     ret: &mut Vec<CssToken>,
+    refs: &mut Vec<CssIdent>,
     input: ParseStream,
     vars: &super::StyleSheetVars,
 ) -> Result<()> {
@@ -943,6 +1010,7 @@ fn parse_token(
         for item in items {
             ret.push(item.clone());
         }
+        refs.push(name);
     } else if input.peek(token::At) {
         ret.push(CssToken::AtKeyword(input.parse()?));
     } else if input.peek(LitStr) {
@@ -999,6 +1067,7 @@ fn parse_token(
                 Error::new(x.span(), format!("No macro named {:?}", x.formal_name))
             })?;
             todo!(); // TODO
+            refs.push(x);
         } else if input.peek(token::Paren) {
             let content;
             let paren_token = parenthesized!(content in input);
@@ -1022,46 +1091,268 @@ fn parse_token(
 
 pub(crate) struct ParseTokenUntilSemi {
     inner: Vec<CssToken>,
+    refs: Vec<CssIdent>,
 }
 
 impl ParseTokenUntilSemi {
-    pub(crate) fn get(self) -> Vec<CssToken> {
-        self.inner
+    pub(crate) fn get(self) -> (Vec<CssToken>, Vec<CssIdent>) {
+        (self.inner, self.refs)
     }
 }
 
 impl ParseWithVars for ParseTokenUntilSemi {
     fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
         let mut inner = vec![];
+        let mut refs = Vec::with_capacity(0);
         while !input.is_empty() {
             if input.peek(token::Semi) {
                 break;
             }
-            parse_token(&mut inner, input, vars)?;
+            parse_token(&mut inner, &mut refs, input, vars)?;
         }
-        Ok(Self { inner })
+        Ok(Self { inner, refs })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for r in &self.refs {
+            f(r);
+        }
     }
 }
 
 pub(crate) struct ParseTokenUntilSemiOrBrace {
     inner: Vec<CssToken>,
+    refs: Vec<CssIdent>,
 }
 
 impl ParseTokenUntilSemiOrBrace {
-    pub(crate) fn get(self) -> Vec<CssToken> {
-        self.inner
+    pub(crate) fn get(self) -> (Vec<CssToken>, Vec<CssIdent>) {
+        (self.inner, self.refs)
     }
 }
 
 impl ParseWithVars for ParseTokenUntilSemiOrBrace {
     fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
         let mut inner = vec![];
+        let mut refs = Vec::with_capacity(0);
         while !input.is_empty() {
             if input.peek(token::Semi) || input.peek(token::Brace) {
                 break;
             }
-            parse_token(&mut inner, input, vars)?;
+            parse_token(&mut inner, &mut refs, input, vars)?;
         }
-        Ok(Self { inner })
+        Ok(Self { inner, refs })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for r in &self.refs {
+            f(r);
+        }
+    }
+}
+
+pub struct CssTokenStream {
+    span: Span,
+    inner: Peekable<std::vec::IntoIter<CssToken>>,
+}
+
+impl CssTokenStream {
+    #[inline]
+    pub fn new(span: Span, v: Vec<CssToken>) -> Self {
+        Self { span, inner: v.into_iter().peekable() }
+    }
+
+    #[inline]
+    pub fn expect_ended(&mut self) -> Result<()> {
+        let peek = self.inner.peek();
+        if let Some(x) = peek {
+            Err(Error::new(x.span(), "Unexpected token"))
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn span(&mut self) -> Span {
+        self.inner.peek().map(|x| x.span()).unwrap_or(self.span)
+    }
+
+    #[inline]
+    pub fn next(&mut self) -> Result<CssToken> {
+        self.inner.next().ok_or_else(|| {
+            Error::new(self.span, "Unexpected end of the value")
+        })
+    }
+
+    #[inline]
+    pub fn peek(&mut self) -> Result<&CssToken> {
+        self.inner.peek().ok_or_else(|| {
+            Error::new(self.span, "Unexpected end of the value")
+        })
+    }
+
+    #[inline]
+    pub fn expect_ident(&mut self) -> Result<CssIdent> {
+        let x = self.next()?;
+        if let CssToken::Ident(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected identifier"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_at_keyword(&mut self) -> Result<CssAtKeyword> {
+        let x = self.next()?;
+        if let CssToken::AtKeyword(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected at-keyword"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_string(&mut self) -> Result<CssString> {
+        let x = self.next()?;
+        if let CssToken::String(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected quoted string"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_colon(&mut self) -> Result<CssColon> {
+        let x = self.next()?;
+        if let CssToken::Colon(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected `:`"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_semi(&mut self) -> Result<CssSemi> {
+        let x = self.next()?;
+        if let CssToken::Semi(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected `;`"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_delim(&mut self, delim: &'static str) -> Result<CssDelim> {
+        let x = self.next()?;
+        let span = x.span();
+        if let CssToken::Delim(x) = x {
+            if x.s == delim {
+                return Ok(x);
+            }
+        }
+        Err(Error::new(span, format_args!("Expected `{}`", delim)))
+    }
+
+    #[inline]
+    pub fn expect_number(&mut self) -> Result<CssNumber> {
+        let x = self.next()?;
+        if let CssToken::Number(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected number"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_integer(&mut self) -> Result<i64> {
+        let x = self.next()?;
+        let span = x.span();
+        if let CssToken::Number(x) = x {
+            if let Some(x) = x.integer() {
+                return Ok(x);
+            }
+        }
+        Err(Error::new(span, "Expected integer"))
+    }
+
+    #[inline]
+    pub fn expect_percentage(&mut self) -> Result<CssPercentage> {
+        let x = self.next()?;
+        if let CssToken::Percentage(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected percentage"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_dimension(&mut self) -> Result<CssDimension> {
+        let x = self.next()?;
+        if let CssToken::Dimension(x) = x {
+            Ok(x)
+        } else {
+            Err(Error::new(x.span(), "Expected dimension"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_function<R>(
+        &mut self,
+        f: impl FnOnce(&str, Self) -> Result<R>,
+    ) -> Result<R> {
+        let x = self.next()?;
+        if let CssToken::Function(x) = x {
+            Ok(f(
+                x.formal_name.as_str(),
+                Self::new(x.span(), x.block.into_vec()),
+            )?)
+        } else {
+            Err(Error::new(x.span(), "Expected function"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_paren<R>(
+        &mut self,
+        f: impl FnOnce(Self) -> Result<R>,
+    ) -> Result<R> {
+        let x = self.next()?;
+        if let CssToken::Paren(x) = x {
+            Ok(f(
+                Self::new(x.span(), x.block.into_vec()),
+            )?)
+        } else {
+            Err(Error::new(x.span(), "Expected `(...)`"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_bracket<R>(
+        &mut self,
+        f: impl FnOnce(Self) -> Result<R>,
+    ) -> Result<R> {
+        let x = self.next()?;
+        if let CssToken::Bracket(x) = x {
+            Ok(f(
+                Self::new(x.span(), x.block.into_vec()),
+            )?)
+        } else {
+            Err(Error::new(x.span(), "Expected `[...]`"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_brace<R>(
+        &mut self,
+        f: impl FnOnce(Self) -> Result<R>,
+    ) -> Result<R> {
+        let x = self.next()?;
+        if let CssToken::Brace(x) = x {
+            Ok(f(
+                Self::new(x.span(), x.block.into_vec()),
+            )?)
+        } else {
+            Err(Error::new(x.span(), "Expected `{...}`"))
+        }
     }
 }

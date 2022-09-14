@@ -4,12 +4,14 @@ use nanoid::nanoid;
 use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, TokenStreamExt};
+use syn::spanned::Spanned;
 use std::fs::File;
 use std::io::Write;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use syn::Error;
 
-use maomi_skin::parser::{CssToken, Repeat, StyleSheetConstructor, ParseStyleSheetValue, CssIdent};
+use maomi_skin::parser::{CssToken, Repeat, StyleSheetConstructor, ParseStyleSheetValue, CssIdent, CssDimension, CssTokenStream, ParseWithVars};
 use maomi_skin::parser::{
     PropertyOrSubRule, StyleSheet, StyleSheetItem, WriteCss, WriteCssSepCond,
 };
@@ -67,13 +69,18 @@ enum CssOutMode {
 }
 
 struct DomCssProperty {
+    // TODO really parse the value
     inner: Repeat<CssToken>,
 }
 
 impl ParseStyleSheetValue for DomCssProperty {
-    fn parse_value(_: &CssIdent, input: &[CssToken]) -> syn::Result<Self> {
+    fn parse_value(_: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<Self> {
+        let mut v = vec![];
+        while tokens.peek().is_ok() {
+            v.push(tokens.next().unwrap())
+        }
         Ok(Self {
-            inner: Repeat::parse_while(input, |x| !x.peek(syn::token::Semi))?,
+            inner: Repeat::from_vec(v),
         })
     }
 }
@@ -96,11 +103,11 @@ enum DomStyleSheetConfig {
 impl ParseStyleSheetValue for DomStyleSheetConfig {
     fn parse_value(
         name: &maomi_skin::parser::CssIdent,
-        input: &[CssToken],
+        tokens: &mut CssTokenStream,
     ) -> syn::Result<Self> where Self: Sized {
         let ret = match name.formal_name.as_str() {
             "name_mangling" => {
-                let v: CssIdent = input.parse()?;
+                let v = tokens.expect_ident()?;
                 match v.formal_name.as_str() {
                     "off" => Self::NameMangling(false),
                     "on" => Self::NameMangling(true),
@@ -111,6 +118,73 @@ impl ParseStyleSheetValue for DomStyleSheetConfig {
             }
             _ => {
                 return Err(Error::new(name.span, "Unknown config item"));
+            }
+        };
+        Ok(ret)
+    }
+}
+
+// TODO really parse the value
+type DomFontFaceProperty = DomCssProperty;
+
+enum DomMediaCondValue {
+    AspectRatio(NonZeroU32, NonZeroU32),
+    MinAspectRatio(NonZeroU32, NonZeroU32),
+    MaxAspectRatio(NonZeroU32, NonZeroU32),
+    Orientation(DomMediaOrientation),
+    PrefersColorScheme(DomMediaColorScheme),
+    Resolution(CssDimension),
+    MinResolution(CssDimension),
+    MaxResolution(CssDimension),
+    Width(CssDimension),
+    MinWidth(CssDimension),
+    MaxWidth(CssDimension),
+    Height(CssDimension),
+    MinHeight(CssDimension),
+    MaxHeight(CssDimension),
+}
+
+enum DomMediaOrientation {
+    Landscape,
+    Portrait,
+}
+
+enum DomMediaColorScheme {
+    Light,
+    Dark,
+}
+
+impl ParseStyleSheetValue for DomMediaCondValue {
+    fn parse_value(
+        name: &CssIdent,
+        tokens: &mut CssTokenStream,
+    ) -> syn::Result<Self> where Self: Sized {
+        fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(NonZeroU32, NonZeroU32)> {
+            let span = tokens.span();
+            let a = tokens.expect_integer()?;
+            if a < 0 || a > u32::MAX as i64 {
+                return Err(Error::new(span, "Expected positive integer"));
+            }
+            let _ = tokens.expect_delim("/")?;
+            let span = tokens.span();
+            let b = tokens.expect_integer()?;
+            if b < 0 || b > u32::MAX as i64 {
+                return Err(Error::new(span, "Expected positive integer"));
+            }
+            Ok((NonZeroU32::new(a as u32).unwrap(), NonZeroU32::new(b as u32).unwrap()))
+        }
+        let ret = match name.formal_name.as_str() {
+            "aspect-ratio" => {
+                let (a, b) = parse_aspect_ratio(tokens)?;
+                Self::AspectRatio(a, b)
+            }
+            "min-aspect-ratio" => {
+                let (a, b) = parse_aspect_ratio(tokens)?;
+                Self::MinAspectRatio(a, b)
+            }
+            // TODO
+            _ => {
+                return Err(Error::new(name.span(), "Unknown media feature"));
             }
         };
         Ok(ret)
@@ -130,9 +204,10 @@ impl StyleSheetConstructor for DomStyleSheet {
         Self: Sized,
     {
         let debug_mode = CSS_OUT_MODE.with(|x| *x == CssOutMode::Debug);
-        let mut name_mangling = true; 
+        let mut name_mangling = true;
+        let mut inner_tokens = proc_macro2::TokenStream::new();
 
-        // a helper for proc macro output
+        // generate proc macro output for a class
         fn write_proc_macro_class(
             tokens: &mut proc_macro2::TokenStream,
             span: proc_macro2::Span,
@@ -157,9 +232,54 @@ impl StyleSheetConstructor for DomStyleSheet {
             });
         }
 
+        // generate proc macro output for a definition
+        fn write_proc_macro_def(
+            tokens: &mut proc_macro2::TokenStream,
+            span: proc_macro2::Span,
+            name: &syn::Ident,
+        ) {
+            tokens.append_all(quote_spanned! {span=>
+                #[allow(dead_code, non_camel_case_types)]
+                struct #name();
+            });
+        }
+
+        // generate proc macro output for a reference
+        fn write_proc_macro_ref(
+            tokens: &mut proc_macro2::TokenStream,
+            span: proc_macro2::Span,
+            name: &syn::Ident,
+        ) {
+            tokens.append_all(quote_spanned! {span=>
+                #[allow(dead_code)]
+                #name();
+            });
+        }
+
         // generate css output
         for item in ss.items.iter() {
             match item {
+                StyleSheetItem::MacroDefinition { name, .. } => {
+                    write_proc_macro_def(
+                        tokens,
+                        name.span,
+                        &syn::Ident::new(&name.formal_name, name.span),
+                    );
+                }
+                StyleSheetItem::ConstDefinition { name, refs, .. } => {
+                    write_proc_macro_def(
+                        tokens,
+                        name.span,
+                        &syn::Ident::new(&name.formal_name, name.span),
+                    );
+                    for r in refs {
+                        write_proc_macro_ref(
+                            &mut inner_tokens,
+                            r.span,
+                            &syn::Ident::new(&r.formal_name, r.span),
+                        );
+                    }
+                }
                 StyleSheetItem::Config { value, .. } => {
                     match value {
                         DomStyleSheetConfig::NameMangling(enabled) => {
@@ -198,6 +318,13 @@ impl StyleSheetConstructor for DomStyleSheet {
                         &syn::Ident::new(&ident.formal_name, ident.span),
                         &class_name,
                     );
+                    items.for_each_ref(&mut |r| {
+                        write_proc_macro_ref(
+                            &mut inner_tokens,
+                            r.span,
+                            &syn::Ident::new(&r.formal_name, r.span),
+                        );
+                    });
                     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
                         let s = if debug_mode {
                             let mut s = format!("\n.{} {{\n", class_name);
@@ -234,6 +361,14 @@ impl StyleSheetConstructor for DomStyleSheet {
                 }
             }
         }
+
+        // write extra tokens
+        let fn_name = syn::Ident::new(&nanoid!(16, &CLASS_START_CHARS), proc_macro2::Span::call_site());
+        tokens.append_all(quote! {
+            fn #fn_name() {
+                #inner_tokens
+            }
+        });
     }
 }
 
@@ -244,4 +379,77 @@ pub fn dom_css(item: TokenStream) -> TokenStream {
         #ss
     }
     .into()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    struct Env {
+        out_dir: PathBuf,
+        import_dir: PathBuf,
+    }
+
+    impl Env {
+        fn write_import_file(&self, name: &str, content: &str) {
+            std::fs::write(&self.import_dir.join(name), content).unwrap();
+        }
+
+        fn read_output(&self) -> String {
+            std::fs::read_to_string(&self.out_dir.join("maomi_dom_macro.css")).unwrap()
+        }
+    }
+
+    fn setup_env(debug_mode: bool, f: impl FnOnce(Env)) {
+        if debug_mode {
+            std::env::set_var("MAOMI_CSS_OUT_MODE", "debug");
+        }
+        let tmp_path = std::env::temp_dir();
+        let out_dir = tmp_path.join("maomi-dom-macro").join("test-out");
+        std::fs::create_dir_all(&out_dir).unwrap();
+        std::env::set_var(
+            "MAOMI_CSS_OUT_DIR",
+            out_dir.to_str().unwrap(),
+        );
+        let import_dir = tmp_path.join("maomi-dom-macro").join("test-import");
+        std::fs::create_dir_all(&import_dir).unwrap();
+        std::env::set_var(
+            "MAOMI_CSS_IMPORT_DIR",
+            import_dir.to_str().unwrap(),
+        );
+        f(Env {
+            out_dir,
+            import_dir,
+        });
+    }
+
+    fn parse_str(s: &str) -> String {
+        let ss: StyleSheet<DomStyleSheet> = syn::parse_str(s).unwrap();
+        quote!(#ss).to_string()
+    }
+
+    #[test]
+    fn import() {
+        setup_env(false, |env| {
+            env.write_import_file("a.css", r#"
+                @const $a: 1px;                
+                .imported {
+                    padding: $a;
+                }
+            "#);
+            parse_str(r#"
+                @config name_mangling: off;
+                @import "/a.css";
+                @const $b: $a 2px;
+                .self {
+                    padding: $b $a;
+                    margin: $b;
+                }
+            "#);
+            assert_eq!(
+                env.read_output(),
+                r#".imported{padding:1px}.self{padding:1px 2px 1px;margin:1px 2px}"#,
+            );
+        });
+    }
 }
