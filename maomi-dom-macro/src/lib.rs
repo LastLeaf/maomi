@@ -4,17 +4,20 @@ use nanoid::nanoid;
 use once_cell::sync::Lazy;
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, TokenStreamExt};
-use syn::spanned::Spanned;
 use std::fs::File;
 use std::io::Write;
-use std::num::NonZeroU32;
 use std::path::PathBuf;
 use syn::Error;
 
-use maomi_skin::parser::{CssToken, Repeat, StyleSheetConstructor, ParseStyleSheetValue, CssIdent, CssDimension, CssTokenStream, ParseWithVars};
+use maomi_skin::parser::{StyleSheetConstructor, ParseStyleSheetValue, CssTokenStream, ParseWithVars, CssIdent, CssBrace, Repeat};
 use maomi_skin::parser::{
     PropertyOrSubRule, StyleSheet, StyleSheetItem, WriteCss, WriteCssSepCond,
 };
+
+mod media_cond;
+use media_cond::*;
+mod property;
+use property::*;
 
 const CLASS_CHARS: [char; 64] = [
     '_', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
@@ -68,34 +71,6 @@ enum CssOutMode {
     Release,
 }
 
-struct DomCssProperty {
-    // TODO really parse the value
-    inner: Repeat<CssToken>,
-}
-
-impl ParseStyleSheetValue for DomCssProperty {
-    fn parse_value(_: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<Self> {
-        let mut v = vec![];
-        while tokens.peek().is_ok() {
-            v.push(tokens.next().unwrap())
-        }
-        Ok(Self {
-            inner: Repeat::from_vec(v),
-        })
-    }
-}
-
-impl WriteCss for DomCssProperty {
-    fn write_css(
-        &self,
-        sc: WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
-        self.inner.write_css(sc, debug_mode, w)
-    }
-}
-
 enum DomStyleSheetConfig {
     NameMangling(bool),
 }
@@ -126,70 +101,6 @@ impl ParseStyleSheetValue for DomStyleSheetConfig {
 
 // TODO really parse the value
 type DomFontFaceProperty = DomCssProperty;
-
-enum DomMediaCondValue {
-    AspectRatio(NonZeroU32, NonZeroU32),
-    MinAspectRatio(NonZeroU32, NonZeroU32),
-    MaxAspectRatio(NonZeroU32, NonZeroU32),
-    Orientation(DomMediaOrientation),
-    PrefersColorScheme(DomMediaColorScheme),
-    Resolution(CssDimension),
-    MinResolution(CssDimension),
-    MaxResolution(CssDimension),
-    Width(CssDimension),
-    MinWidth(CssDimension),
-    MaxWidth(CssDimension),
-    Height(CssDimension),
-    MinHeight(CssDimension),
-    MaxHeight(CssDimension),
-}
-
-enum DomMediaOrientation {
-    Landscape,
-    Portrait,
-}
-
-enum DomMediaColorScheme {
-    Light,
-    Dark,
-}
-
-impl ParseStyleSheetValue for DomMediaCondValue {
-    fn parse_value(
-        name: &CssIdent,
-        tokens: &mut CssTokenStream,
-    ) -> syn::Result<Self> where Self: Sized {
-        fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(NonZeroU32, NonZeroU32)> {
-            let span = tokens.span();
-            let a = tokens.expect_integer()?;
-            if a < 0 || a > u32::MAX as i64 {
-                return Err(Error::new(span, "Expected positive integer"));
-            }
-            let _ = tokens.expect_delim("/")?;
-            let span = tokens.span();
-            let b = tokens.expect_integer()?;
-            if b < 0 || b > u32::MAX as i64 {
-                return Err(Error::new(span, "Expected positive integer"));
-            }
-            Ok((NonZeroU32::new(a as u32).unwrap(), NonZeroU32::new(b as u32).unwrap()))
-        }
-        let ret = match name.formal_name.as_str() {
-            "aspect-ratio" => {
-                let (a, b) = parse_aspect_ratio(tokens)?;
-                Self::AspectRatio(a, b)
-            }
-            "min-aspect-ratio" => {
-                let (a, b) = parse_aspect_ratio(tokens)?;
-                Self::MinAspectRatio(a, b)
-            }
-            // TODO
-            _ => {
-                return Err(Error::new(name.span(), "Unknown media feature"));
-            }
-        };
-        Ok(ret)
-    }
-}
 
 struct DomStyleSheet {}
 
@@ -259,6 +170,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         // generate css output
         for item in ss.items.iter() {
             match item {
+                // generate macro def
                 StyleSheetItem::MacroDefinition { name, .. } => {
                     write_proc_macro_def(
                         tokens,
@@ -266,6 +178,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                         &syn::Ident::new(&name.formal_name, name.span),
                     );
                 }
+
+                // generate const def and ref
                 StyleSheetItem::ConstDefinition { name, refs, .. } => {
                     write_proc_macro_def(
                         tokens,
@@ -280,13 +194,17 @@ impl StyleSheetConstructor for DomStyleSheet {
                         );
                     }
                 }
+
+                // handling config
                 StyleSheetItem::Config { value, .. } => {
                     match value {
                         DomStyleSheetConfig::NameMangling(enabled) => {
                             name_mangling = *enabled;
                         }
                     }
-                },
+                }
+
+                // generate @key-frames block
                 StyleSheetItem::KeyFrames {
                     at_keyword,
                     name,
@@ -297,65 +215,120 @@ impl StyleSheetConstructor for DomStyleSheet {
                         // TODO
                     }
                 }
+
+                // generate @font-face block
                 StyleSheetItem::FontFaceRule { at_keyword, items } => {
                     if let Some(css_out_dir) = CSS_OUT_FILE.as_ref() {
                         // TODO
                     }
                 }
+
+                // generate common rule
                 StyleSheetItem::Rule { ident, items, .. } => {
-                    let class_id_start = nanoid!(1, &CLASS_START_CHARS);
-                    let class_id = nanoid!(10, &CLASS_CHARS);
-                    let class_name = if !name_mangling {
-                        ident.css_name()
-                    } else if debug_mode {
-                        ident.css_name() + "_" + &class_id_start + &class_id
-                    } else {
-                        class_id_start + &class_id
-                    };
-                    write_proc_macro_class(
-                        tokens,
-                        ident.span,
-                        &syn::Ident::new(&ident.formal_name, ident.span),
-                        &class_name,
-                    );
-                    items.for_each_ref(&mut |r| {
-                        write_proc_macro_ref(
-                            &mut inner_tokens,
-                            r.span,
-                            &syn::Ident::new(&r.formal_name, r.span),
+                    fn handle_rule(
+                        tokens: &mut proc_macro2::TokenStream,
+                        inner_tokens: &mut proc_macro2::TokenStream,
+                        name_mangling: bool,
+                        debug_mode: bool,
+                        ident: &CssIdent,
+                        items: &CssBrace<Repeat<PropertyOrSubRule<DomStyleSheet>>>,
+                    ) -> String {
+                        let mut s = String::new();
+                        let class_id_start = nanoid!(1, &CLASS_START_CHARS);
+                        let class_id = nanoid!(10, &CLASS_CHARS);
+                        let class_name = if !name_mangling {
+                            ident.css_name()
+                        } else if debug_mode {
+                            ident.css_name() + "_" + &class_id_start + &class_id
+                        } else {
+                            class_id_start + &class_id
+                        };
+                        write_proc_macro_class(
+                            tokens,
+                            ident.span,
+                            &syn::Ident::new(&ident.formal_name, ident.span),
+                            &class_name,
                         );
-                    });
-                    if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
-                        let s = if debug_mode {
-                            let mut s = format!("\n.{} {{\n", class_name);
+                        items.for_each_ref(&mut |r| {
+                            write_proc_macro_ref(
+                                inner_tokens,
+                                r.span,
+                                &syn::Ident::new(&r.formal_name, r.span),
+                            );
+                        });
+                        let mut in_rule = false;
+                        if debug_mode {
                             for item in items.block.iter() {
                                 match item {
                                     PropertyOrSubRule::Property(prop) => {
+                                        if !in_rule {
+                                            in_rule = true;
+                                            s += &format!("\n.{} {{\n", class_name);
+                                        }
                                         s += "\t";
                                         prop.write_css(WriteCssSepCond::Other, true, &mut s)
                                             .unwrap();
                                         s += ";\n";
                                     }
-                                    _ => todo!("PropertyOrSubRule"),
-                                }
-                            }
-                            s + "}\n"
-                        } else {
-                            let mut s = format!(".{}{{", class_name);
-                            for (index, item) in items.block.iter().enumerate() {
-                                if index > 0 {
-                                    s += ";";
-                                }
-                                match item {
-                                    PropertyOrSubRule::Property(prop) => {
-                                        prop.write_css(WriteCssSepCond::Other, false, &mut s)
+                                    PropertyOrSubRule::Media { expr, items, .. } => {
+                                        if in_rule {
+                                            in_rule = false;
+                                            s + "}\n";
+                                        }
+                                        s += "\n@media";
+                                        expr.write_css(WriteCssSepCond::NonIdentAlpha, true, &mut s)
                                             .unwrap();
+                                        s += &format!("{{ .{} {{\n", class_name);
+                                        for prop in items.block.iter() {
+                                            s += "\t";
+                                            prop.write_css(WriteCssSepCond::Other, true, &mut s)
+                                                .unwrap();
+                                            s += ";\n";
+                                        }
+                                        s += "} }\n";
                                     }
                                     _ => todo!("PropertyOrSubRule"),
                                 }
                             }
-                            s + "}"
+                            if in_rule { s + "}\n"; }
+                        } else {
+                            for item in items.block.iter() {
+                                match item {
+                                    PropertyOrSubRule::Property(prop) => {
+                                        if !in_rule {
+                                            in_rule = true;
+                                            s += &format!(".{}{{", class_name);
+                                        } else {
+                                            s += ";";
+                                        }
+                                        prop.write_css(WriteCssSepCond::Other, false, &mut s)
+                                            .unwrap();
+                                    }
+                                    PropertyOrSubRule::Media { expr, items, .. } => {
+                                        if in_rule {
+                                            in_rule = false;
+                                            s += "}";
+                                        }
+                                        s += "@media";
+                                        expr.write_css(WriteCssSepCond::NonIdentAlpha, true, &mut s)
+                                            .unwrap();
+                                        s += &format!("{{.{}{{", class_name);
+                                        for (index, prop) in items.block.iter().enumerate() {
+                                            if index > 0 { s += ";"; }
+                                            prop.write_css(WriteCssSepCond::Other, true, &mut s)
+                                                .unwrap();
+                                        }
+                                        s += "}}";
+                                    }
+                                    _ => todo!("PropertyOrSubRule"),
+                                }
+                            }
+                            if in_rule { s + "}"; }
                         };
+                        s
+                    }
+                    let s = handle_rule(tokens, &mut inner_tokens, name_mangling, debug_mode, ident, items);
+                    if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
                         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
                     }
                 }
@@ -383,6 +356,8 @@ pub fn dom_css(item: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 mod test {
+    use serial_test::serial;
+
     use super::*;
 
     struct Env {
@@ -428,7 +403,31 @@ mod test {
         quote!(#ss).to_string()
     }
 
+    fn parse_and_compare(s: &str, expect: &str) {
+        setup_env(false, |env| {
+            parse_str(s);
+            assert_eq!(
+                env.read_output(),
+                expect,
+            );
+        });
+        setup_env(true, |env| {
+            parse_str(s);
+            let output = env.read_output();
+            let first_line = output.lines().next().unwrap();
+            let output_nw = output[first_line.len()..].chars()
+                .filter(|c| *c != ' ' && *c != '\t' && *c != '\n');
+            assert_eq!(
+                output_nw.eq(
+                    expect.chars().filter(|c| *c != ' ' && *c != '\t' && *c != '\n'),
+                ),
+                true,
+            );
+        });
+    }
+
     #[test]
+    #[serial]
     fn import() {
         setup_env(false, |env| {
             env.write_import_file("a.css", r#"
@@ -451,5 +450,22 @@ mod test {
                 r#".imported{padding:1px}.self{padding:1px 2px 1px;margin:1px 2px}"#,
             );
         });
+    }
+
+    #[test]
+    #[serial]
+    fn media() {
+        parse_and_compare(
+            r#"
+                @config name_mangling: off;
+                .c {
+                    padding: 1px;
+                    @media (aspect-ratio: 16/9) {
+                        margin: 2px;
+                    }
+                }
+            "#,
+            r#".c{padding:1px}@media (aspect-ratio:16/9){margin:2px}"#,
+        );
     }
 }
