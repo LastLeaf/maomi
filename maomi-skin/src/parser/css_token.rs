@@ -4,7 +4,7 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-use super::{WriteCss, WriteCssSepCond, ParseWithVars};
+use super::{WriteCss, WriteCssSepCond, ParseWithVars, write_css::CssWriter};
 
 #[derive(Debug, Clone)]
 pub enum Number {
@@ -143,27 +143,11 @@ impl Parse for CssIdent {
 }
 
 impl WriteCss for CssIdent {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        } else {
-            match sc {
-                WriteCssSepCond::Ident
-                | WriteCssSepCond::NonIdentAlpha
-                | WriteCssSepCond::Digit
-                | WriteCssSepCond::At => {
-                    write!(w, " ")?;
-                }
-                _ => {}
-            }
-        }
-        write!(w, "{}", self.css_name())?;
-        Ok(WriteCssSepCond::Ident)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_ident(&self.css_name())
     }
 }
 
@@ -199,17 +183,22 @@ impl Parse for CssAtKeyword {
 }
 
 impl WriteCss for CssAtKeyword {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        _sc: WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, "@{}", self.css_name())?;
-        Ok(WriteCssSepCond::NonIdentAlpha)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            }
+            write!(w, "@{}", self.css_name())?;
+            Ok(WriteCssSepCond::NonIdentAlpha)
+        })
     }
 }
 
@@ -237,17 +226,22 @@ impl Parse for CssString {
 }
 
 impl WriteCss for CssString {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        _sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, "{:?}", self.s.value())?;
-        Ok(WriteCssSepCond::Other)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            }
+            write!(w, "{:?}", self.s.value())?;
+            Ok(WriteCssSepCond::Other)
+        })
     }
 }
 
@@ -270,14 +264,14 @@ impl Parse for CssColon {
 }
 
 impl WriteCss for CssColon {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        _sc: super::WriteCssSepCond,
-        _debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let CssWriter { ref mut w, ref mut sc, .. } = cssw;
         write!(w, ":")?;
-        Ok(WriteCssSepCond::Other)
+        *sc = WriteCssSepCond::Other;
+        Ok(())
     }
 }
 
@@ -300,14 +294,44 @@ impl Parse for CssSemi {
 }
 
 impl WriteCss for CssSemi {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        _sc: super::WriteCssSepCond,
-        _debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let CssWriter { ref mut w, ref mut sc, .. } = cssw;
         write!(w, ";")?;
-        Ok(WriteCssSepCond::Other)
+        *sc = WriteCssSepCond::Other;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssComma {
+    pub span: Span,
+}
+
+impl Spanned for CssComma {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl Parse for CssComma {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let x: token::Comma = input.parse()?;
+        Ok(Self { span: x.span() })
+    }
+}
+
+impl WriteCss for CssComma {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let CssWriter { ref mut w, ref mut sc, .. } = cssw;
+        write!(w, ",")?;
+        *sc = WriteCssSepCond::Other;
+        Ok(())
     }
 }
 
@@ -385,34 +409,41 @@ impl Parse for CssDelim {
 }
 
 impl WriteCss for CssDelim {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        let need_sep = debug_mode
-            || match sc {
-                WriteCssSepCond::Ident => self.s == "-",
-                WriteCssSepCond::NonIdentAlpha => self.s == "-",
-                WriteCssSepCond::Digit => self.s == "." || self.s == "-" || self.s == "%",
-                WriteCssSepCond::At => self.s == "-",
-                WriteCssSepCond::Equalable => self.s == "=",
-                WriteCssSepCond::Bar => self.s == "=" || self.s == "|" || self.s == "|=",
-                WriteCssSepCond::Slash => self.s == "*" || self.s == "*=",
-                _ => false,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            let need_sep = if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart => false,
+                    _ => true
+                }
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident => self.s == "-",
+                    WriteCssSepCond::NonIdentAlpha => self.s == "-",
+                    WriteCssSepCond::Digit => self.s == "." || self.s == "-" || self.s == "%",
+                    WriteCssSepCond::At => self.s == "-",
+                    WriteCssSepCond::Equalable => self.s == "=",
+                    WriteCssSepCond::Bar => self.s == "=" || self.s == "|" || self.s == "|=",
+                    WriteCssSepCond::Slash => self.s == "*" || self.s == "*=",
+                    _ => false,
+                }
             };
-        if need_sep {
-            write!(w, " ")?;
-        }
-        write!(w, "{}", self.s)?;
-        Ok(match self.s {
-            "@" => WriteCssSepCond::At,
-            "." | "+" => WriteCssSepCond::DotOrPlus,
-            "$" | "^" | "~" | "*" => WriteCssSepCond::Equalable,
-            "|" => WriteCssSepCond::Bar,
-            "/" => WriteCssSepCond::Slash,
-            _ => WriteCssSepCond::Other,
+            if need_sep {
+                write!(w, " ")?;
+            }
+            write!(w, "{}", self.s)?;
+            let sc = match self.s {
+                "@" => WriteCssSepCond::At,
+                "." | "+" => WriteCssSepCond::DotOrPlus,
+                "$" | "^" | "~" | "*" => WriteCssSepCond::Equalable,
+                "|" => WriteCssSepCond::Bar,
+                "/" => WriteCssSepCond::Slash,
+                _ => WriteCssSepCond::Other,
+            };
+            Ok(sc)
         })
     }
 }
@@ -466,27 +497,32 @@ impl Parse for CssNumber {
 }
 
 impl WriteCss for CssNumber {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        } else {
-            match sc {
-                WriteCssSepCond::Ident
-                | WriteCssSepCond::NonIdentAlpha
-                | WriteCssSepCond::Digit
-                | WriteCssSepCond::DotOrPlus => {
-                    write!(w, " ")?;
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
                 }
-                _ => {}
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident
+                    | WriteCssSepCond::NonIdentAlpha
+                    | WriteCssSepCond::Digit
+                    | WriteCssSepCond::DotOrPlus => {
+                        write!(w, " ")?;
+                    }
+                    _ => {}
+                }
             }
-        }
-        write!(w, "{}", self.num)?;
-        Ok(WriteCssSepCond::Digit)
+            write!(w, "{}", self.num)?;
+            Ok(WriteCssSepCond::Digit)
+        })
     }
 }
 
@@ -511,27 +547,32 @@ impl Parse for CssPercentage {
 }
 
 impl WriteCss for CssPercentage {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        } else {
-            match sc {
-                WriteCssSepCond::Ident
-                | WriteCssSepCond::NonIdentAlpha
-                | WriteCssSepCond::Digit
-                | WriteCssSepCond::DotOrPlus => {
-                    write!(w, " ")?;
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
                 }
-                _ => {}
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident
+                    | WriteCssSepCond::NonIdentAlpha
+                    | WriteCssSepCond::Digit
+                    | WriteCssSepCond::DotOrPlus => {
+                        write!(w, " ")?;
+                    }
+                    _ => {}
+                }
             }
-        }
-        write!(w, "{}%", self.num)?;
-        Ok(WriteCssSepCond::Other)
+            write!(w, "{}%", self.num)?;
+            Ok(WriteCssSepCond::Other)
+        })
     }
 }
 
@@ -578,27 +619,32 @@ impl Parse for CssDimension {
 }
 
 impl WriteCss for CssDimension {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        } else {
-            match sc {
-                WriteCssSepCond::Ident
-                | WriteCssSepCond::NonIdentAlpha
-                | WriteCssSepCond::Digit
-                | WriteCssSepCond::DotOrPlus => {
-                    write!(w, " ")?;
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
                 }
-                _ => {}
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident
+                    | WriteCssSepCond::NonIdentAlpha
+                    | WriteCssSepCond::Digit
+                    | WriteCssSepCond::DotOrPlus => {
+                        write!(w, " ")?;
+                    }
+                    _ => {}
+                }
             }
-        }
-        write!(w, "{}{}", self.num, self.unit)?;
-        Ok(WriteCssSepCond::NonIdentAlpha)
+            write!(w, "{}{}", self.num, self.unit)?;
+            Ok(WriteCssSepCond::NonIdentAlpha)
+        })
     }
 }
 
@@ -642,33 +688,13 @@ impl<T: ParseWithVars> ParseWithVars for CssFunction<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssFunction<T> {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        } else {
-            match sc {
-                WriteCssSepCond::Ident
-                | WriteCssSepCond::NonIdentAlpha
-                | WriteCssSepCond::Digit
-                | WriteCssSepCond::At => {
-                    write!(w, " ")?;
-                }
-                _ => {}
-            }
-        }
-        write!(w, "{}(", self.css_name())?;
-        self.block
-            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, ")")?;
-        Ok(WriteCssSepCond::Other)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_function_block(&self.css_name(), |cssw| {
+            self.block.write_css(cssw)
+        })
     }
 }
 
@@ -707,30 +733,13 @@ impl<T: ParseWithVars> ParseWithVars for CssParen<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssParen<T> {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        } else {
-            match sc {
-                WriteCssSepCond::Ident => {
-                    write!(w, " ")?;
-                }
-                _ => {}
-            }
-        }
-        write!(w, "(")?;
-        self.block
-            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, ")")?;
-        Ok(WriteCssSepCond::Other)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_paren_block(|cssw| {
+            self.block.write_css(cssw)
+        })
     }
 }
 
@@ -772,23 +781,13 @@ impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssBracket<T> {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        _sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, "[")?;
-        self.block
-            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, "]")?;
-        Ok(WriteCssSepCond::Other)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_bracket_block(|cssw| {
+            self.block.write_css(cssw)
+        })
     }
 }
 
@@ -827,23 +826,13 @@ impl<T: ParseWithVars> ParseWithVars for CssBrace<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssBrace<T> {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        _sc: super::WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<super::WriteCssSepCond, std::fmt::Error> {
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, "{{")?;
-        self.block
-            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
-        if debug_mode {
-            write!(w, " ")?;
-        }
-        write!(w, "}}")?;
-        Ok(WriteCssSepCond::Other)
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_brace_block(|cssw| {
+            self.block.write_css(cssw)
+        })
     }
 }
 
@@ -867,6 +856,10 @@ impl<T> Repeat<T> {
             inner: v,
             refs: Vec::with_capacity(0),
         }
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.inner
     }
 
     pub fn iter(&self) -> std::slice::Iter<T> {
@@ -910,16 +903,14 @@ impl<T: ParseWithVars> ParseWithVars for Repeat<T> {
 }
 
 impl<T: WriteCss> WriteCss for Repeat<T> {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        mut sc: WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
         for item in self.inner.iter() {
-            sc = item.write_css(sc, debug_mode, w)?;
+            item.write_css(cssw)?;
         }
-        Ok(sc)
+        Ok(())
     }
 }
 
@@ -939,6 +930,7 @@ pub enum CssToken {
     String(CssString),
     Colon(CssColon),
     Semi(CssSemi),
+    Comma(CssComma),
     Delim(CssDelim),
     Number(CssNumber),
     Percentage(CssPercentage),
@@ -957,6 +949,7 @@ impl Spanned for CssToken {
             Self::String(x) => x.span(),
             Self::Colon(x) => x.span(),
             Self::Semi(x) => x.span(),
+            Self::Comma(x) => x.span(),
             Self::Delim(x) => x.span(),
             Self::Number(x) => x.span(),
             Self::Percentage(x) => x.span(),
@@ -970,26 +963,25 @@ impl Spanned for CssToken {
 }
 
 impl WriteCss for CssToken {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
         let sc = match self {
-            Self::Ident(x) => x.write_css(sc, debug_mode, w)?,
-            Self::AtKeyword(x) => x.write_css(sc, debug_mode, w)?,
-            Self::String(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Colon(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Semi(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Delim(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Number(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Percentage(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Dimension(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Function(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Paren(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Bracket(x) => x.write_css(sc, debug_mode, w)?,
-            Self::Brace(x) => x.write_css(sc, debug_mode, w)?,
+            Self::Ident(x) => x.write_css(cssw)?,
+            Self::AtKeyword(x) => x.write_css(cssw)?,
+            Self::String(x) => x.write_css(cssw)?,
+            Self::Colon(x) => x.write_css(cssw)?,
+            Self::Semi(x) => x.write_css(cssw)?,
+            Self::Comma(x) => x.write_css(cssw)?,
+            Self::Delim(x) => x.write_css(cssw)?,
+            Self::Number(x) => x.write_css(cssw)?,
+            Self::Percentage(x) => x.write_css(cssw)?,
+            Self::Dimension(x) => x.write_css(cssw)?,
+            Self::Function(x) => x.write_css(cssw)?,
+            Self::Paren(x) => x.write_css(cssw)?,
+            Self::Bracket(x) => x.write_css(cssw)?,
+            Self::Brace(x) => x.write_css(cssw)?,
         };
         Ok(sc)
     }
@@ -1019,6 +1011,8 @@ fn parse_token(
         ret.push(CssToken::Colon(input.parse()?));
     } else if input.peek(token::Semi) {
         ret.push(CssToken::Semi(input.parse()?));
+    } else if input.peek(token::Comma) {
+        ret.push(CssToken::Comma(input.parse()?));
     } else if input.peek(token::Paren) {
         ret.push(CssToken::Paren(ParseWithVars::parse_with_vars(&input, vars)?));
     } else if input.peek(token::Bracket) {
@@ -1120,36 +1114,36 @@ impl ParseWithVars for ParseTokenUntilSemi {
     }
 }
 
-pub(crate) struct ParseTokenUntilSemiOrBrace {
-    inner: Vec<CssToken>,
-    refs: Vec<CssIdent>,
-}
+// pub(crate) struct ParseTokenUntilSemiOrBrace {
+//     inner: Vec<CssToken>,
+//     refs: Vec<CssIdent>,
+// }
 
-impl ParseTokenUntilSemiOrBrace {
-    pub(crate) fn get(self) -> (Vec<CssToken>, Vec<CssIdent>) {
-        (self.inner, self.refs)
-    }
-}
+// impl ParseTokenUntilSemiOrBrace {
+//     pub(crate) fn get(self) -> (Vec<CssToken>, Vec<CssIdent>) {
+//         (self.inner, self.refs)
+//     }
+// }
 
-impl ParseWithVars for ParseTokenUntilSemiOrBrace {
-    fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
-        let mut inner = vec![];
-        let mut refs = Vec::with_capacity(0);
-        while !input.is_empty() {
-            if input.peek(token::Semi) || input.peek(token::Brace) {
-                break;
-            }
-            parse_token(&mut inner, &mut refs, input, vars)?;
-        }
-        Ok(Self { inner, refs })
-    }
+// impl ParseWithVars for ParseTokenUntilSemiOrBrace {
+//     fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
+//         let mut inner = vec![];
+//         let mut refs = Vec::with_capacity(0);
+//         while !input.is_empty() {
+//             if input.peek(token::Semi) || input.peek(token::Brace) {
+//                 break;
+//             }
+//             parse_token(&mut inner, &mut refs, input, vars)?;
+//         }
+//         Ok(Self { inner, refs })
+//     }
 
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
-        for r in &self.refs {
-            f(r);
-        }
-    }
-}
+//     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+//         for r in &self.refs {
+//             f(r);
+//         }
+//     }
+// }
 
 pub struct CssTokenStream {
     span: Span,

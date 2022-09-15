@@ -9,10 +9,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use syn::Error;
 
-use maomi_skin::parser::{StyleSheetConstructor, ParseStyleSheetValue, CssTokenStream, ParseWithVars, CssIdent, CssBrace, Repeat};
-use maomi_skin::parser::{
-    PropertyOrSubRule, StyleSheet, StyleSheetItem, WriteCss, WriteCssSepCond,
-};
+use maomi_skin::parser::*;
+use maomi_skin::parser::write_css::CssWriter;
 
 mod media_cond;
 use media_cond::*;
@@ -256,75 +254,20 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 &syn::Ident::new(&r.formal_name, r.span),
                             );
                         });
-                        let mut in_rule = false;
-                        if debug_mode {
-                            for item in items.block.iter() {
-                                match item {
-                                    PropertyOrSubRule::Property(prop) => {
-                                        if !in_rule {
-                                            in_rule = true;
-                                            s += &format!("\n.{} {{\n", class_name);
-                                        }
-                                        s += "\t";
-                                        prop.write_css(WriteCssSepCond::Other, true, &mut s)
-                                            .unwrap();
-                                        s += ";\n";
-                                    }
-                                    PropertyOrSubRule::Media { expr, items, .. } => {
-                                        if in_rule {
-                                            in_rule = false;
-                                            s + "}\n";
-                                        }
-                                        s += "\n@media";
-                                        expr.write_css(WriteCssSepCond::NonIdentAlpha, true, &mut s)
-                                            .unwrap();
-                                        s += &format!("{{ .{} {{\n", class_name);
-                                        for prop in items.block.iter() {
-                                            s += "\t";
-                                            prop.write_css(WriteCssSepCond::Other, true, &mut s)
-                                                .unwrap();
-                                            s += ";\n";
-                                        }
-                                        s += "} }\n";
-                                    }
-                                    _ => todo!("PropertyOrSubRule"),
+                        let mut s = String::new();
+                        let mut cssw = CssWriter::new(&mut s, debug_mode);
+                        let mut pending_props = Vec::with_capacity(items.block.as_slice().len());
+                        for item in items.block.iter() {
+                            match item {
+                                PropertyOrSubRule::Property(prop) => {
+                                    pending_props.push(prop);
                                 }
-                            }
-                            if in_rule { s + "}\n"; }
-                        } else {
-                            for item in items.block.iter() {
-                                match item {
-                                    PropertyOrSubRule::Property(prop) => {
-                                        if !in_rule {
-                                            in_rule = true;
-                                            s += &format!(".{}{{", class_name);
-                                        } else {
-                                            s += ";";
-                                        }
-                                        prop.write_css(WriteCssSepCond::Other, false, &mut s)
-                                            .unwrap();
-                                    }
-                                    PropertyOrSubRule::Media { expr, items, .. } => {
-                                        if in_rule {
-                                            in_rule = false;
-                                            s += "}";
-                                        }
-                                        s += "@media";
-                                        expr.write_css(WriteCssSepCond::NonIdentAlpha, true, &mut s)
-                                            .unwrap();
-                                        s += &format!("{{.{}{{", class_name);
-                                        for (index, prop) in items.block.iter().enumerate() {
-                                            if index > 0 { s += ";"; }
-                                            prop.write_css(WriteCssSepCond::Other, true, &mut s)
-                                                .unwrap();
-                                        }
-                                        s += "}}";
-                                    }
-                                    _ => todo!("PropertyOrSubRule"),
+                                PropertyOrSubRule::Media { expr, items, .. } => {
+                                    // TODO
                                 }
+                                _ => todo!("PropertyOrSubRule"),
                             }
-                            if in_rule { s + "}"; }
-                        };
+                        }
                         s
                     }
                     let s = handle_rule(tokens, &mut inner_tokens, name_mangling, debug_mode, ident, items);

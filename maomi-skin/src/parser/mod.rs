@@ -13,6 +13,8 @@ mod css_token;
 pub use css_token::*;
 mod mac;
 use mac::MacroDefinition;
+pub mod write_css;
+use write_css::*;
 
 mod kw {
     syn::custom_keyword!(only);
@@ -84,56 +86,6 @@ pub trait ParseStyleSheetValue {
     ) -> syn::Result<Self> where Self: Sized;
 }
 
-/// Display as CSS text
-pub trait WriteCss {
-    /// Write CSS text
-    fn write_css(
-        &self,
-        sc: WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error>;
-}
-
-/// Separator indicator for `WriteCss`
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum WriteCssSepCond {
-    /// The CSS string ends with `CssIdent`
-    ///
-    /// It should not be followed by alphabets, digits, `-`, and `(`
-    Ident,
-    /// The CSS string ends with alphabets or digits (but not an ident nor number), `-` or `#`
-    ///
-    /// It should not be followed by alphabets, digits, and `-`
-    NonIdentAlpha,
-    /// The CSS string ends with `CssNumber`
-    ///
-    /// It should not be followed by alphabets, digits, `.`, `-`, and `%`
-    Digit,
-    /// The CSS string ends with `@`
-    ///
-    /// It should not be followed by alphabets and `-`
-    At,
-    /// The CSS string ends with `.` `+`
-    ///
-    /// It should not be followed by digits
-    DotOrPlus,
-    /// The CSS string ends with `$` `^` `~` `*`
-    ///
-    /// It should not be followed by `=`
-    Equalable,
-    /// The CSS string ends with `|`
-    ///
-    /// It should not be followed by `=` `|` `|=`
-    Bar,
-    /// The CSS string ends with `/`
-    ///
-    /// It should not be followed by `*` `*=`
-    Slash,
-    /// Always no separators needed
-    Other,
-}
-
 pub trait ParseWithVars: Sized {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self>;
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent));
@@ -142,9 +94,9 @@ pub trait ParseWithVars: Sized {
 /// A CSS property (name-value pair)
 pub struct Property<V> {
     pub name: CssIdent,
-    pub colon_token: token::Colon,
+    pub colon_token: CssColon,
     pub value: V,
-    pub semi_token: token::Semi,
+    pub semi_token: CssSemi,
     pub refs: Vec<CssIdent>,
 }
 
@@ -174,26 +126,24 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
 }
 
 impl<V: WriteCss> WriteCss for Property<V> {
-    fn write_css(
+    fn write_css<W: std::fmt::Write>(
         &self,
-        sc: WriteCssSepCond,
-        debug_mode: bool,
-        w: &mut impl std::fmt::Write,
-    ) -> std::result::Result<WriteCssSepCond, std::fmt::Error> {
-        self.name.write_css(sc, false, w)?;
-        write!(w, ":")?;
-        let sc = self
-            .value
-            .write_css(WriteCssSepCond::Other, debug_mode, w)?;
-        Ok(sc)
+        cssw: &mut CssWriter<W>,
+    ) -> std::fmt::Result {
+        self.name.write_css(cssw)?;
+        self.colon_token.write_css(cssw)?;
+        self.value.write_css(cssw)?;
+        self.semi_token.write_css(cssw)?;
+        Ok(())
     }
 }
 
-pub enum PropertyOrSubRule<T: StyleSheetConstructor> {
-    Property(Property<T::PropertyValue>),
+pub enum SubRule<T: StyleSheetConstructor> {
     SubClass {
+        and_token: token::And,
         ident: CssIdent,
-        items: CssBrace<Repeat<PropertyOrSubRule<T>>>,
+        props: Repeat<Property<T>>,
+        sub: Repeat<SubRule<T>>,
     },
     PseudoClass {
         colon_token: token::Colon,
@@ -212,33 +162,35 @@ pub enum PropertyOrSubRule<T: StyleSheetConstructor> {
     },
 }
 
+#[derive(Debug, Clone)]
 pub struct MediaQuery<V> {
-    pub has_only: bool,
+    pub only: Option<CssIdent>,
     pub media_type: MediaType,
     pub cond_list: Vec<MediaCond<V>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MediaType {
     All,
     Screen,
     Print,
 }
 
+#[derive(Debug, Clone)]
 pub struct MediaCond<V> {
-    pub has_not: bool,
+    pub not: Option<CssIdent>,
     pub cond: V,
     pub refs: Vec<CssIdent>,
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
-        let has_only = if input.peek(kw::only) {
-            input.parse::<kw::only>()?;
-            true
+        let only = if input.peek(kw::only) {
+            Some(input.parse()?)
         } else {
-            false
+            None
         };
-        let (media_type, has_media_feature) = if has_only || input.peek(Ident) {
+        let (media_type, has_media_feature) = if only.is_some() || input.peek(Ident) {
             let ident: CssIdent = input.parse()?;
             let media_type = match ident.formal_name.as_str() {
                 "all" => MediaType::All,
@@ -259,11 +211,10 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
         let mut cond_list = vec![];
         if has_media_feature {
             loop {
-                let has_not = if input.peek(kw::not) {
-                    input.parse::<kw::not>()?;
-                    true
+                let not = if input.peek(kw::not) {
+                    Some(input.parse()?)
                 } else {
-                    false
+                    None
                 };
                 let la = input.lookahead1();
                 let (cond, refs) = if la.peek(token::Paren) {
@@ -280,14 +231,14 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                 } else {
                     return Err(la.error());
                 };
-                cond_list.push(MediaCond { has_not, cond, refs });
+                cond_list.push(MediaCond { not, cond, refs });
                 if !input.peek(kw::and) {
                     break;
                 }
                 input.parse::<kw::and>()?;
             }
         }
-        Ok(MediaQuery { has_only, media_type, cond_list })
+        Ok(MediaQuery { only, media_type, cond_list })
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
@@ -296,6 +247,45 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                 f(r);
             }
         }
+    }
+}
+
+impl<V: WriteCss> WriteCss for MediaQuery<V> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::fmt::Result {
+        self.only.write_css(cssw)?;
+        let mut need_and = match self.media_type {
+            MediaType::All => {
+                if self.only.is_some() {
+                    cssw.write_ident("all")?;
+                    true
+                } else {
+                    false
+                }
+            }
+            MediaType::Print => {
+                cssw.write_ident("print")?;
+                true
+            }
+            MediaType::Screen => {
+                cssw.write_ident("screen")?;
+                true
+            }
+        };
+        for item in self.cond_list.iter() {
+            if need_and {
+                cssw.write_ident("and")?;
+            } else {
+                need_and = true;
+            }
+            item.not.write_css(cssw)?;
+            cssw.write_paren_block(|cssw| {
+                item.cond.write_css(cssw)
+            })?;
+        }
+        Ok(())
     }
 }
 
@@ -316,15 +306,19 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsCond<V> {
     }
 }
 
-impl<T: StyleSheetConstructor> ParseWithVars for PropertyOrSubRule<T> {
+impl<T: StyleSheetConstructor> ParseWithVars for SubRule<T> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         let la = input.lookahead1();
-        let item = if la.peek(Ident) || la.peek(token::Sub) {
-            Self::Property(ParseWithVars::parse_with_vars(&input, vars)?)
-        } else if la.peek(token::Sub) {
+        let item = if la.peek(token::And) {
+            let and_token = input.parse()?;
+            let ident = input.parse()?;
+            let content;
+            let brace = braced!(content in input);
             Self::SubClass {
-                ident: input.parse()?,
-                items: ParseWithVars::parse_with_vars(input, vars)?,
+                and_token,
+                ident,
+                props: ParseWithVars::parse_with_vars(&content, &vars)?,
+                sub: ParseWithVars::parse_with_vars(&content, &vars)?,
             }
         } else if la.peek(token::Colon) {
             Self::PseudoClass {
@@ -367,8 +361,10 @@ impl<T: StyleSheetConstructor> ParseWithVars for PropertyOrSubRule<T> {
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
         match self {
-            Self::Property(x) => x.for_each_ref(f),
-            Self::SubClass { items, .. } => items.for_each_ref(f),
+            Self::SubClass { props, sub, .. } => {
+                props.for_each_ref(f);
+                sub.for_each_ref(f);
+            },
             Self::PseudoClass { items, .. } => items.for_each_ref(f),
             Self::Media { expr, items, .. } => {
                 for e in expr {
@@ -472,7 +468,8 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
     Rule {
         dot_token: token::Dot,
         ident: CssIdent,
-        items: CssBrace<Repeat<PropertyOrSubRule<T>>>,
+        props: Repeat<Property<T>>,
+        sub: Repeat<SubRule<T>>,
     },
 }
 
@@ -595,10 +592,13 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
             } else if la.peek(token::Dot) {
                 let dot_token = input.parse()?;
                 let ident = input.parse()?;
+                let content;
+                let brace = braced!(content in input);
                 items.push(StyleSheetItem::Rule {
                     dot_token,
                     ident,
-                    items: ParseWithVars::parse_with_vars(&input, &vars)?,
+                    props: ParseWithVars::parse_with_vars(&content, &vars)?,
+                    sub: ParseWithVars::parse_with_vars(&content, &vars)?,
                 })
             } else {
                 return Err(la.error());
