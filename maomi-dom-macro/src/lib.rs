@@ -222,55 +222,68 @@ impl StyleSheetConstructor for DomStyleSheet {
                 }
 
                 // generate common rule
-                StyleSheetItem::Rule { ident, items, .. } => {
-                    fn handle_rule(
-                        tokens: &mut proc_macro2::TokenStream,
-                        inner_tokens: &mut proc_macro2::TokenStream,
-                        name_mangling: bool,
-                        debug_mode: bool,
-                        ident: &CssIdent,
-                        items: &CssBrace<Repeat<PropertyOrSubRule<DomStyleSheet>>>,
-                    ) -> String {
-                        let mut s = String::new();
+                StyleSheetItem::Rule { ident, content, .. } => {
+                    let generate_css_name = |full_ident: &CssIdent| {
                         let class_id_start = nanoid!(1, &CLASS_START_CHARS);
                         let class_id = nanoid!(10, &CLASS_CHARS);
-                        let class_name = if !name_mangling {
-                            ident.css_name()
+                        if !name_mangling {
+                            full_ident.css_name()
                         } else if debug_mode {
-                            ident.css_name() + "_" + &class_id_start + &class_id
+                            full_ident.css_name() + "_" + &class_id_start + &class_id
                         } else {
                             class_id_start + &class_id
-                        };
+                        }
+                    };
+                    // TODO find a proper way to store generated names
+                    let mut s = String::new();
+                    let mut cssw = CssWriter::new(&mut s, debug_mode);
+                    fn handle_rule_content(
+                        tokens: &mut proc_macro2::TokenStream,
+                        inner_tokens: &mut proc_macro2::TokenStream,
+                        generate_css_name: &impl Fn(&CssIdent) -> String,
+                        full_ident: &CssIdent,
+
+                        content: &RuleContent<DomStyleSheet>,
+                        cssw: &mut CssWriter<String>,
+                    ) -> Result<(), std::fmt::Error> {
+                        let class_name = generate_css_name(full_ident);
                         write_proc_macro_class(
                             tokens,
-                            ident.span,
-                            &syn::Ident::new(&ident.formal_name, ident.span),
+                            full_ident.span,
+                            &syn::Ident::new(&full_ident.formal_name, full_ident.span),
                             &class_name,
                         );
-                        items.for_each_ref(&mut |r| {
+                        content.for_each_ref(&mut |r| {
                             write_proc_macro_ref(
                                 inner_tokens,
                                 r.span,
                                 &syn::Ident::new(&r.formal_name, r.span),
                             );
                         });
-                        let mut s = String::new();
-                        let mut cssw = CssWriter::new(&mut s, debug_mode);
-                        let mut pending_props = Vec::with_capacity(items.block.as_slice().len());
-                        for item in items.block.iter() {
-                            match item {
-                                PropertyOrSubRule::Property(prop) => {
-                                    pending_props.push(prop);
-                                }
-                                PropertyOrSubRule::Media { expr, items, .. } => {
-                                    // TODO
-                                }
-                                _ => todo!("PropertyOrSubRule"),
-                            }
+                        cssw.write_delim(".", true)?;
+                        cssw.write_ident(&class_name, false)?;
+                        let sub_classes_with_full_ident: Vec<_> = content.sub_classes.iter().map(|x| {
+                            let sub_full_ident = CssIdent {
+                                formal_name: format!("{}{}", full_ident.formal_name, x.partial_ident.formal_name),
+                                span: x.partial_ident.span,
+                            };
+                            (sub_full_ident, x)
+                        }).collect();
+                        for (sub_full_ident, _) in &sub_classes_with_full_ident {
+                            cssw.write_delim(",", false)?;
+                            cssw.write_delim(".", true)?;
+                            cssw.write_ident(&class_name, false)?;
                         }
-                        s
+                        Ok(())
                     }
-                    let s = handle_rule(tokens, &mut inner_tokens, name_mangling, debug_mode, ident, items);
+                    handle_rule_content(
+                        tokens,
+                        &mut inner_tokens,
+                        &generate_css_name,
+                        ident,
+                        &content.block,
+                        &mut cssw,
+                    ).unwrap();
                     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
                         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
                     }

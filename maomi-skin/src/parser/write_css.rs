@@ -64,10 +64,10 @@ impl<'a, W: Write> CssWriter<'a, W> {
         Ok(())
     }
 
-    pub fn write_ident(&mut self, ident: &str) -> Result {
+    pub fn write_ident(&mut self, ident: &str, prefer_sep_before: bool) -> Result {
         self.prepare_write()?;
         let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
-        if *debug_mode {
+        if *debug_mode && prefer_sep_before {
             match sc {
                 WriteCssSepCond::BlockStart => {}
                 _ => {
@@ -87,6 +87,41 @@ impl<'a, W: Write> CssWriter<'a, W> {
         }
         write!(w, "{}", ident)?;
         *sc = WriteCssSepCond::Ident;
+        Ok(())
+    }
+
+    pub fn write_delim(&mut self, s: &str, prefer_sep_before: bool) -> Result {
+        self.prepare_write()?;
+        let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+        let need_sep = if *debug_mode && prefer_sep_before {
+            match sc {
+                WriteCssSepCond::BlockStart => false,
+                _ => true
+            }
+        } else {
+            match sc {
+                WriteCssSepCond::Ident => s == "-",
+                WriteCssSepCond::NonIdentAlpha => s == "-",
+                WriteCssSepCond::Digit => s == "." || s == "-" || s == "%",
+                WriteCssSepCond::At => s == "-",
+                WriteCssSepCond::Equalable => s == "=",
+                WriteCssSepCond::Bar => s == "=" || s == "|" || s == "|=",
+                WriteCssSepCond::Slash => s == "*" || s == "*=",
+                _ => false,
+            }
+        };
+        if need_sep {
+            write!(w, " ")?;
+        }
+        write!(w, "{}", s)?;
+        *sc = match s {
+            "@" => WriteCssSepCond::At,
+            "." | "+" => WriteCssSepCond::DotOrPlus,
+            "$" | "^" | "~" | "*" => WriteCssSepCond::Equalable,
+            "|" => WriteCssSepCond::Bar,
+            "/" => WriteCssSepCond::Slash,
+            _ => WriteCssSepCond::Other,
+        };
         Ok(())
     }
 

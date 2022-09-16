@@ -1,6 +1,6 @@
 use std::iter::Peekable;
 use proc_macro2::Span;
-use syn::parse::*;
+use syn::{parse::*, ext::IdentExt};
 use syn::spanned::Spanned;
 use syn::*;
 
@@ -52,82 +52,16 @@ impl Parse for CssIdent {
                 }
                 formal_name.push('_');
                 true
-            } else if la.peek(Ident) {
-                let t: Ident = input.parse()?;
+            } else if la.peek(Ident::peek_any) {
+                let t: Ident = Ident::parse_any(input)?;
                 if span.is_none() {
                     span = Some(t.span())
                 }
                 let s: &str = &t.to_string();
-                formal_name += s.strip_prefix("r#").unwrap_or(s);
+                formal_name += s.strip_prefix("r#").and_then(|x| x.strip_suffix("#")).unwrap_or(s);
                 false
             } else {
-                loop {
-                    macro_rules! parse_keyword {
-                        ($x:tt) => {
-                            if la.peek(Token![$x]) {
-                                let t: Token![$x] = input.parse()?;
-                                if span.is_none() {
-                                    span = Some(t.span())
-                                }
-                                formal_name += stringify!($x);
-                                break false;
-                            }
-                        };
-                    }
-                    parse_keyword!(abstract);
-                    parse_keyword!(as);
-                    parse_keyword!(async);
-                    parse_keyword!(auto);
-                    parse_keyword!(await);
-                    parse_keyword!(become);
-                    parse_keyword!(box);
-                    parse_keyword!(break);
-                    parse_keyword!(const);
-                    parse_keyword!(continue);
-                    parse_keyword!(crate);
-                    parse_keyword!(default);
-                    parse_keyword!(do);
-                    parse_keyword!(dyn);
-                    parse_keyword!(else);
-                    parse_keyword!(enum);
-                    parse_keyword!(extern);
-                    parse_keyword!(final);
-                    parse_keyword!(fn);
-                    parse_keyword!(for);
-                    parse_keyword!(if);
-                    parse_keyword!(impl);
-                    parse_keyword!(in);
-                    parse_keyword!(let);
-                    parse_keyword!(loop);
-                    parse_keyword!(macro);
-                    parse_keyword!(match);
-                    parse_keyword!(mod);
-                    parse_keyword!(move);
-                    parse_keyword!(mut);
-                    parse_keyword!(override);
-                    parse_keyword!(priv);
-                    parse_keyword!(pub);
-                    parse_keyword!(ref);
-                    parse_keyword!(return);
-                    parse_keyword!(Self);
-                    parse_keyword!(self);
-                    parse_keyword!(static);
-                    parse_keyword!(struct);
-                    parse_keyword!(super);
-                    parse_keyword!(trait);
-                    parse_keyword!(try);
-                    parse_keyword!(type);
-                    parse_keyword!(typeof);
-                    parse_keyword!(union);
-                    parse_keyword!(unsafe);
-                    parse_keyword!(unsized);
-                    parse_keyword!(use);
-                    parse_keyword!(virtual);
-                    parse_keyword!(where);
-                    parse_keyword!(while);
-                    parse_keyword!(yield);
-                    return Err(la.error());
-                }
+                return Err(la.error());
             };
             if is_sub || input.peek(token::Sub) {
                 // empty
@@ -147,7 +81,7 @@ impl WriteCss for CssIdent {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_ident(&self.css_name())
+        cssw.write_ident(&self.css_name(), true)
     }
 }
 
@@ -413,38 +347,7 @@ impl WriteCss for CssDelim {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
-            let need_sep = if debug_mode {
-                match sc {
-                    WriteCssSepCond::BlockStart => false,
-                    _ => true
-                }
-            } else {
-                match sc {
-                    WriteCssSepCond::Ident => self.s == "-",
-                    WriteCssSepCond::NonIdentAlpha => self.s == "-",
-                    WriteCssSepCond::Digit => self.s == "." || self.s == "-" || self.s == "%",
-                    WriteCssSepCond::At => self.s == "-",
-                    WriteCssSepCond::Equalable => self.s == "=",
-                    WriteCssSepCond::Bar => self.s == "=" || self.s == "|" || self.s == "|=",
-                    WriteCssSepCond::Slash => self.s == "*" || self.s == "*=",
-                    _ => false,
-                }
-            };
-            if need_sep {
-                write!(w, " ")?;
-            }
-            write!(w, "{}", self.s)?;
-            let sc = match self.s {
-                "@" => WriteCssSepCond::At,
-                "." | "+" => WriteCssSepCond::DotOrPlus,
-                "$" | "^" | "~" | "*" => WriteCssSepCond::Equalable,
-                "|" => WriteCssSepCond::Bar,
-                "/" => WriteCssSepCond::Slash,
-                _ => WriteCssSepCond::Other,
-            };
-            Ok(sc)
-        })
+        cssw.write_delim(self.s, true)
     }
 }
 

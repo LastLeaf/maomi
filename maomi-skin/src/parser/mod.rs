@@ -22,6 +22,8 @@ mod kw {
     syn::custom_keyword!(and);
 }
 
+// TODO consider a proper way to handle global styling (font, css-reset, etc.)
+
 thread_local! {
     static CSS_IMPORT_DIR: Option<PathBuf> = {
         std::env::var("MAOMI_CSS_IMPORT_DIR")
@@ -100,9 +102,8 @@ pub struct Property<V> {
     pub refs: Vec<CssIdent>,
 }
 
-impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
-        let name = input.parse()?;
+impl<V: ParseStyleSheetValue> Property<V> {
+    fn parse_property_with_name(name: CssIdent, input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         let colon_token = input.parse()?;
         let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars)?;
         let (tokens, refs) = tokens.get();
@@ -116,6 +117,13 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
             semi_token: input.parse()?,
             refs,
         })
+    }
+}
+
+impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
+    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+        let name = input.parse()?;
+        Self::parse_property_with_name(name, input, vars)
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
@@ -136,30 +144,6 @@ impl<V: WriteCss> WriteCss for Property<V> {
         self.semi_token.write_css(cssw)?;
         Ok(())
     }
-}
-
-pub enum SubRule<T: StyleSheetConstructor> {
-    SubClass {
-        and_token: token::And,
-        ident: CssIdent,
-        props: Repeat<Property<T>>,
-        sub: Repeat<SubRule<T>>,
-    },
-    PseudoClass {
-        colon_token: token::Colon,
-        ident: CssIdent,
-        items: CssBrace<Repeat<Property<T::PropertyValue>>>,
-    },
-    Media {
-        at_keyword: CssAtKeyword,
-        expr: Vec<MediaQuery<T::MediaCondValue>>,
-        items: CssBrace<Repeat<Property<T::PropertyValue>>>,
-    },
-    Supports {
-        at_keyword: CssAtKeyword,
-        expr: SupportsCond<T::PropertyValue>,
-        items: CssBrace<Repeat<Property<T::PropertyValue>>>,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -259,24 +243,24 @@ impl<V: WriteCss> WriteCss for MediaQuery<V> {
         let mut need_and = match self.media_type {
             MediaType::All => {
                 if self.only.is_some() {
-                    cssw.write_ident("all")?;
+                    cssw.write_ident("all", true)?;
                     true
                 } else {
                     false
                 }
             }
             MediaType::Print => {
-                cssw.write_ident("print")?;
+                cssw.write_ident("print", true)?;
                 true
             }
             MediaType::Screen => {
-                cssw.write_ident("screen")?;
+                cssw.write_ident("screen", true)?;
                 true
             }
         };
         for item in self.cond_list.iter() {
             if need_and {
-                cssw.write_ident("and")?;
+                cssw.write_ident("and", true)?;
             } else {
                 need_and = true;
             }
@@ -303,80 +287,6 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsCond<V> {
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
         todo!() // TODO
-    }
-}
-
-impl<T: StyleSheetConstructor> ParseWithVars for SubRule<T> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
-        let la = input.lookahead1();
-        let item = if la.peek(token::And) {
-            let and_token = input.parse()?;
-            let ident = input.parse()?;
-            let content;
-            let brace = braced!(content in input);
-            Self::SubClass {
-                and_token,
-                ident,
-                props: ParseWithVars::parse_with_vars(&content, &vars)?,
-                sub: ParseWithVars::parse_with_vars(&content, &vars)?,
-            }
-        } else if la.peek(token::Colon) {
-            Self::PseudoClass {
-                colon_token: input.parse()?,
-                ident: input.parse()?,
-                items: ParseWithVars::parse_with_vars(input, vars)?,
-            }
-        } else if la.peek(token::At) {
-            let at_keyword: CssAtKeyword = input.parse()?;
-            match at_keyword.formal_name.as_str() {
-                "media" => {
-                    let mut expr = vec![];
-                    loop {
-                        expr.push(ParseWithVars::parse_with_vars(input, vars)?);
-                        if !input.peek(Token![,]) {
-                            break;
-                        }
-                        input.parse::<Token![,]>()?;
-                    }
-                    Self::Media {
-                        at_keyword,
-                        expr,
-                        items: ParseWithVars::parse_with_vars(input, vars)?,
-                    }
-                },
-                "supports" => Self::Supports {
-                    at_keyword,
-                    expr: ParseWithVars::parse_with_vars(input, vars)?,
-                    items: ParseWithVars::parse_with_vars(input, vars)?,
-                },
-                _ => {
-                    return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
-                }
-            }
-        } else {
-            return Err(la.error());
-        };
-        Ok(item)
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
-        match self {
-            Self::SubClass { props, sub, .. } => {
-                props.for_each_ref(f);
-                sub.for_each_ref(f);
-            },
-            Self::PseudoClass { items, .. } => items.for_each_ref(f),
-            Self::Media { expr, items, .. } => {
-                for e in expr {
-                    e.for_each_ref(f);
-                }
-                items.for_each_ref(f);
-            }
-            Self::Supports { expr, items, .. } => {
-                expr.for_each_ref(f);
-                items.for_each_ref(f);
-            }
-        }
     }
 }
 
@@ -436,6 +346,178 @@ impl ParseWithVars for StyleSheetConstItem {
     }
 }
 
+pub struct RuleContent<T: StyleSheetConstructor> {
+    pub props: Vec<Property<T::PropertyValue>>,
+    pub at_blocks: Vec<AtBlock<T>>,
+    pub pseudo_classes: Vec<PseudoClass<T>>,
+    pub sub_classes: Vec<SubClass<T>>,
+}
+
+pub struct PseudoClassContent<T: StyleSheetConstructor> {
+    pub props: Vec<Property<T::PropertyValue>>,
+    pub at_blocks: Vec<AtBlock<T>>,
+}
+
+pub enum AtBlock<T: StyleSheetConstructor> {
+    Media {
+        at_keyword: CssAtKeyword,
+        expr: Vec<MediaQuery<T::MediaCondValue>>,
+        items: CssBrace<Repeat<Property<T::PropertyValue>>>,
+    },
+    Supports {
+        at_keyword: CssAtKeyword,
+        expr: SupportsCond<T::PropertyValue>,
+        items: CssBrace<Repeat<Property<T::PropertyValue>>>,
+    },
+}
+
+pub struct PseudoClass<T: StyleSheetConstructor> {
+    pub colon_token: token::Colon,
+    pub ident: CssIdent,
+    pub content: PseudoClassContent<T>,
+}
+
+pub struct SubClass<T: StyleSheetConstructor> {
+    pub partial_ident: CssIdent,
+    pub content: RuleContent<T>,
+}
+
+impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
+    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+        let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars)?;
+        let RuleContent { props, at_blocks, pseudo_classes, sub_classes } = content;
+        if let Some(x) = pseudo_classes.get(0) {
+            return Err(Error::new(x.ident.span, "Pseudo classes are not allowed inside pseudo classes"));
+        }
+        if let Some(x) = sub_classes.get(0) {
+            return Err(Error::new(x.partial_ident.span, "Sub classes are not allowed inside pseudo classes"));
+        }
+        Ok(Self { props, at_blocks })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for item in &self.props {
+            item.for_each_ref(f);
+        }
+        for item in &self.at_blocks {
+            match item {
+                AtBlock::Media { expr, items, .. } => {
+                    for item in expr {
+                        item.for_each_ref(f);
+                    }
+                    items.for_each_ref(f);
+                }
+                AtBlock::Supports { expr, items, .. } => {
+                    expr.for_each_ref(f);
+                    items.for_each_ref(f);
+                }
+            }
+        }
+    }
+}
+
+impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
+    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+        let mut props = vec![];
+        let mut at_blocks = vec![];
+        let mut pseudo_classes = vec![];
+        let mut sub_classes = vec![];
+        while !input.is_empty() {
+            let la = input.lookahead1();
+            if la.peek(Ident) || la.peek(token::Sub) {
+                let ident: CssIdent = input.parse()?;
+                let la = input.lookahead1();
+                if la.peek(Token![!]) {
+                    todo!() // TODO apply macro
+                } else if la.peek(token::Colon) {
+                    props.push(Property::parse_property_with_name(ident, input, vars)?);
+                } else if la.peek(token::Brace) {
+                    if ident.formal_name.chars().nth(0) != Some('_') {
+                        return Err(Error::new(ident.span, "Sub class names must be started with `_` or `-`"));
+                    }
+                    sub_classes.push(SubClass {
+                        partial_ident: ident,
+                        content: ParseWithVars::parse_with_vars(input, vars)?,
+                    });
+                } else {
+                    return Err(la.error());
+                }
+            } else if la.peek(token::At) {
+                let at_keyword: CssAtKeyword = input.parse()?;
+                match at_keyword.formal_name.as_str() {
+                    "media" => {
+                        let mut expr = vec![];
+                        loop {
+                            expr.push(ParseWithVars::parse_with_vars(input, vars)?);
+                            if !input.peek(Token![,]) {
+                                break;
+                            }
+                            input.parse::<Token![,]>()?;
+                        }
+                        at_blocks.push(AtBlock::Media {
+                            at_keyword,
+                            expr,
+                            items: ParseWithVars::parse_with_vars(input, vars)?,
+                        });
+                    },
+                    "supports" => {
+                        at_blocks.push(AtBlock::Supports {
+                            at_keyword,
+                            expr: ParseWithVars::parse_with_vars(input, vars)?,
+                            items: ParseWithVars::parse_with_vars(input, vars)?,
+                        })
+                    },
+                    _ => {
+                        return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
+                    }
+                }
+            } else if la.peek(token::Colon) {
+                let colon_token = input.parse()?;
+                let ident = input.parse()?;
+                pseudo_classes.push(PseudoClass {
+                    colon_token,
+                    ident,
+                    content: ParseWithVars::parse_with_vars(input, vars)?,
+                });
+            } else {
+                return Err(la.error());
+            };
+        }
+        Ok(Self {
+            props,
+            at_blocks,
+            pseudo_classes,
+            sub_classes,
+        })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for item in &self.props {
+            item.for_each_ref(f);
+        }
+        for item in &self.at_blocks {
+            match item {
+                AtBlock::Media { expr, items, .. } => {
+                    for item in expr {
+                        item.for_each_ref(f);
+                    }
+                    items.for_each_ref(f);
+                }
+                AtBlock::Supports { expr, items, .. } => {
+                    expr.for_each_ref(f);
+                    items.for_each_ref(f);
+                }
+            }
+        }
+        for item in &self.pseudo_classes {
+            item.content.for_each_ref(f);
+        }
+        for item in &self.sub_classes {
+            item.content.for_each_ref(f);
+        }
+    }
+}
+
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
     Config {
         at_keyword: CssAtKeyword,
@@ -458,7 +540,6 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         at_keyword: CssAtKeyword,
         name: CssIdent,
         brace_token: token::Brace,
-        // IDEA support use with @media and @supports
         content: Vec<(CssPercentage, CssBrace<Repeat<Property<T::PropertyValue>>>)>,
     },
     FontFaceRule {
@@ -468,8 +549,7 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
     Rule {
         dot_token: token::Dot,
         ident: CssIdent,
-        props: Repeat<Property<T>>,
-        sub: Repeat<SubRule<T>>,
+        content: CssBrace<RuleContent<T>>,
     },
 }
 
@@ -592,13 +672,10 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
             } else if la.peek(token::Dot) {
                 let dot_token = input.parse()?;
                 let ident = input.parse()?;
-                let content;
-                let brace = braced!(content in input);
                 items.push(StyleSheetItem::Rule {
                     dot_token,
                     ident,
-                    props: ParseWithVars::parse_with_vars(&content, &vars)?,
-                    sub: ParseWithVars::parse_with_vars(&content, &vars)?,
+                    content: ParseWithVars::parse_with_vars(input, &vars)?,
                 })
             } else {
                 return Err(la.error());
