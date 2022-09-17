@@ -1,5 +1,5 @@
-use maomi_skin::parser::{Repeat, CssToken, ParseStyleSheetValue, CssIdent, CssTokenStream};
 use maomi_skin::parser::write_css::WriteCss;
+use maomi_skin::parser::{CssIdent, CssToken, CssTokenStream, ParseStyleSheetValue, Repeat};
 
 pub(crate) struct DomCssProperty {
     // TODO really parse the value

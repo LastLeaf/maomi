@@ -42,30 +42,28 @@ fn get_import_content(src: &CssString) -> Result<String> {
         return Err(Error::new(
             src.span(),
             "Currently only paths started with `/` are supported (which means the path relative to crate `src` or MAOMI_CSS_IMPORT_DIR)",
-        ))
+        ));
     }
-    let mut target = CSS_IMPORT_DIR.with(|import_dir| {
-        match import_dir {
-            None => Err(Error::new(
-                src.span(),
-                "No MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
-            )),
-            Some(s) => Ok(s.clone()),
-        }
+    let mut target = CSS_IMPORT_DIR.with(|import_dir| match import_dir {
+        None => Err(Error::new(
+            src.span(),
+            "No MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
+        )),
+        Some(s) => Ok(s.clone()),
     })?;
     for slice in p[1..].split('/') {
         match slice {
             "." => {}
-            ".." => { target.pop(); }
-            x => { target.push(x); }
+            ".." => {
+                target.pop();
+            }
+            x => {
+                target.push(x);
+            }
         }
     }
-    std::fs::read_to_string(&target).map_err(|_| {
-        Error::new(
-            src.span(),
-            &format!("Cannot open file {:?}", target),
-        )
-    })
+    std::fs::read_to_string(&target)
+        .map_err(|_| Error::new(src.span(), &format!("Cannot open file {:?}", target)))
 }
 
 /// Handlers for CSS details (varies between backends)
@@ -82,10 +80,9 @@ pub trait StyleSheetConstructor {
 
 /// Parse value positions
 pub trait ParseStyleSheetValue {
-    fn parse_value(
-        name: &CssIdent,
-        tokens: &mut CssTokenStream,
-    ) -> syn::Result<Self> where Self: Sized;
+    fn parse_value(name: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<Self>
+    where
+        Self: Sized;
 }
 
 pub trait ParseWithVars: Sized {
@@ -103,7 +100,11 @@ pub struct Property<V> {
 }
 
 impl<V: ParseStyleSheetValue> Property<V> {
-    fn parse_property_with_name(name: CssIdent, input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_property_with_name(
+        name: CssIdent,
+        input: ParseStream,
+        vars: &StyleSheetVars,
+    ) -> Result<Self> {
         let colon_token = input.parse()?;
         let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars)?;
         let (tokens, refs) = tokens.get();
@@ -134,10 +135,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
 }
 
 impl<V: WriteCss> WriteCss for Property<V> {
-    fn write_css<W: std::fmt::Write>(
-        &self,
-        cssw: &mut CssWriter<W>,
-    ) -> std::fmt::Result {
+    fn write_css<W: std::fmt::Write>(&self, cssw: &mut CssWriter<W>) -> std::fmt::Result {
         self.name.write_css(cssw)?;
         self.colon_token.write_css(cssw)?;
         self.value.write_css(cssw)?;
@@ -211,14 +209,24 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                 let mut stream = CssTokenStream::new(input.span(), tokens);
                 let cond = V::parse_value(&name, &mut stream)?;
                 stream.expect_ended()?;
-                cond_list.push(MediaCond { not, name, colon_token, cond, refs });
+                cond_list.push(MediaCond {
+                    not,
+                    name,
+                    colon_token,
+                    cond,
+                    refs,
+                });
                 if !input.peek(kw::and) {
                     break;
                 }
                 input.parse::<kw::and>()?;
             }
         }
-        Ok(MediaQuery { only, media_type, cond_list })
+        Ok(MediaQuery {
+            only,
+            media_type,
+            cond_list,
+        })
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
@@ -231,10 +239,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
 }
 
 impl<V: WriteCss> WriteCss for MediaQuery<V> {
-    fn write_css<W: std::fmt::Write>(
-        &self,
-        cssw: &mut CssWriter<W>,
-    ) -> std::fmt::Result {
+    fn write_css<W: std::fmt::Write>(&self, cssw: &mut CssWriter<W>) -> std::fmt::Result {
         self.only.write_css(cssw)?;
         let mut need_and = match self.media_type {
             MediaType::All => {
@@ -290,10 +295,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsCond<V> {
 }
 
 impl<V: WriteCss> WriteCss for SupportsCond<V> {
-    fn write_css<W: std::fmt::Write>(
-        &self,
-        cssw: &mut CssWriter<W>,
-    ) -> std::fmt::Result {
+    fn write_css<W: std::fmt::Write>(&self, cssw: &mut CssWriter<W>) -> std::fmt::Result {
         todo!() // TODO
     }
 }
@@ -393,12 +395,23 @@ pub struct SubClass<T: StyleSheetConstructor> {
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
     fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars)?;
-        let RuleContent { props, at_blocks, pseudo_classes, sub_classes } = content;
+        let RuleContent {
+            props,
+            at_blocks,
+            pseudo_classes,
+            sub_classes,
+        } = content;
         if let Some(x) = pseudo_classes.get(0) {
-            return Err(Error::new(x.ident.span, "Pseudo classes are not allowed inside pseudo classes"));
+            return Err(Error::new(
+                x.ident.span,
+                "Pseudo classes are not allowed inside pseudo classes",
+            ));
         }
         if let Some(x) = sub_classes.get(0) {
-            return Err(Error::new(x.partial_ident.span, "Sub classes are not allowed inside pseudo classes"));
+            return Err(Error::new(
+                x.partial_ident.span,
+                "Sub classes are not allowed inside pseudo classes",
+            ));
         }
         Ok(Self { props, at_blocks })
     }
@@ -441,7 +454,10 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                     props.push(Property::parse_property_with_name(ident, input, vars)?);
                 } else if la.peek(token::Brace) {
                     if ident.formal_name.chars().nth(0) != Some('_') {
-                        return Err(Error::new(ident.span, "Sub class names must be started with `_` or `-`"));
+                        return Err(Error::new(
+                            ident.span,
+                            "Sub class names must be started with `_` or `-`",
+                        ));
                     }
                     sub_classes.push(SubClass {
                         partial_ident: ident,
@@ -467,14 +483,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                             expr,
                             items: ParseWithVars::parse_with_vars(input, vars)?,
                         });
-                    },
-                    "supports" => {
-                        at_blocks.push(AtBlock::Supports {
-                            at_keyword,
-                            expr: ParseWithVars::parse_with_vars(input, vars)?,
-                            items: ParseWithVars::parse_with_vars(input, vars)?,
-                        })
-                    },
+                    }
+                    "supports" => at_blocks.push(AtBlock::Supports {
+                        at_keyword,
+                        expr: ParseWithVars::parse_with_vars(input, vars)?,
+                        items: ParseWithVars::parse_with_vars(input, vars)?,
+                    }),
                     _ => {
                         return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
                     }
@@ -590,35 +604,48 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         let item: StyleSheetImportItem = input.parse()?;
                         let content = get_import_content(&item.src)?;
                         let token_stream = proc_macro2::TokenStream::from_str(&content)?;
-                        let mut ss = parse2::<StyleSheet<T>>(token_stream)
-                            .map_err(|err| {
-                                let original_span = err.span();
-                                let start = original_span.start();
-                                Error::new(
-                                    at_keyword.span(),
-                                    format_args!("When parsing {}:{}:{}: {}", item.src.value(), start.line, start.column, err),
-                                )
-                            })?;
+                        let mut ss = parse2::<StyleSheet<T>>(token_stream).map_err(|err| {
+                            let original_span = err.span();
+                            let start = original_span.start();
+                            Error::new(
+                                at_keyword.span(),
+                                format_args!(
+                                    "When parsing {}:{}:{}: {}",
+                                    item.src.value(),
+                                    start.line,
+                                    start.column,
+                                    err
+                                ),
+                            )
+                        })?;
                         vars.macros.extend(ss.vars.macros);
                         vars.consts.extend(ss.vars.consts);
                         items.append(&mut ss.items);
-                    },
+                    }
                     "macro" => {
                         let item: StyleSheetMacroItem = input.parse()?;
                         // TODO add proper refs
                         vars.macros.insert(item.name.formal_name.clone(), item.mac);
-                        items.push(StyleSheetItem::MacroDefinition { at_keyword, name: item.name })
-                    },
+                        items.push(StyleSheetItem::MacroDefinition {
+                            at_keyword,
+                            name: item.name,
+                        })
+                    }
                     "const" => {
                         let item = StyleSheetConstItem::parse_with_vars(&input, &vars)?;
                         let (tokens, refs) = item.content.get();
                         vars.consts.insert(item.name.formal_name.clone(), tokens);
-                        items.push(StyleSheetItem::ConstDefinition { at_keyword, name: item.name, refs })
-                    },
+                        items.push(StyleSheetItem::ConstDefinition {
+                            at_keyword,
+                            name: item.name,
+                            refs,
+                        })
+                    }
                     "config" => {
                         let name = input.parse()?;
                         let colon_token = input.parse()?;
-                        let (tokens, refs) = ParseTokenUntilSemi::parse_with_vars(input, &vars)?.get();
+                        let (tokens, refs) =
+                            ParseTokenUntilSemi::parse_with_vars(input, &vars)?.get();
                         let mut stream = CssTokenStream::new(input.span(), tokens);
                         let value = ParseStyleSheetValue::parse_value(&name, &mut stream)?;
                         stream.expect_ended()?;
@@ -630,7 +657,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                             semi_token: input.parse()?,
                             refs,
                         })
-                    },
+                    }
                     "key_frames" => {
                         let name = input.parse()?;
                         let content;
@@ -667,12 +694,10 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                             content,
                         })
                     }
-                    "font_face" => {
-                        items.push(StyleSheetItem::FontFaceRule {
-                            at_keyword,
-                            items: ParseWithVars::parse_with_vars(&input, &vars)?,
-                        })
-                    },
+                    "font_face" => items.push(StyleSheetItem::FontFaceRule {
+                        at_keyword,
+                        items: ParseWithVars::parse_with_vars(&input, &vars)?,
+                    }),
                     _ => {
                         return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
                     }
@@ -690,10 +715,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
             };
         }
 
-        Ok(Self {
-            items,
-            vars,
-        })
+        Ok(Self { items, vars })
     }
 }
 

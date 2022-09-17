@@ -8,8 +8,8 @@ use maomi_dom::{async_task, prelude::*};
 pub mod component;
 pub mod event;
 pub mod prerendering;
-pub mod template;
 pub mod skin;
+pub mod template;
 
 static INIT: Once = Once::new();
 

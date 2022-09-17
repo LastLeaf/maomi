@@ -10,8 +10,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use syn::Error;
 
-use maomi_skin::parser::*;
 use maomi_skin::parser::write_css::{CssWriter, WriteCss};
+use maomi_skin::parser::*;
 
 mod media_cond;
 use media_cond::*;
@@ -78,7 +78,10 @@ impl ParseStyleSheetValue for DomStyleSheetConfig {
     fn parse_value(
         name: &maomi_skin::parser::CssIdent,
         tokens: &mut CssTokenStream,
-    ) -> syn::Result<Self> where Self: Sized {
+    ) -> syn::Result<Self>
+    where
+        Self: Sized,
+    {
         let ret = match name.formal_name.as_str() {
             "name_mangling" => {
                 let v = tokens.expect_ident()?;
@@ -195,13 +198,11 @@ impl StyleSheetConstructor for DomStyleSheet {
                 }
 
                 // handling config
-                StyleSheetItem::Config { value, .. } => {
-                    match value {
-                        DomStyleSheetConfig::NameMangling(enabled) => {
-                            name_mangling = *enabled;
-                        }
+                StyleSheetItem::Config { value, .. } => match value {
+                    DomStyleSheetConfig::NameMangling(enabled) => {
+                        name_mangling = *enabled;
                     }
-                }
+                },
 
                 // generate @key-frames block
                 StyleSheetItem::KeyFrames {
@@ -225,7 +226,11 @@ impl StyleSheetConstructor for DomStyleSheet {
                 // generate common rule
                 StyleSheetItem::Rule { ident, content, .. } => {
                     // a helper for CSS class name generation
-                    fn generate_css_name(full_ident: &CssIdent, name_mangling: bool, debug_mode: bool) -> String {
+                    fn generate_css_name(
+                        full_ident: &CssIdent,
+                        name_mangling: bool,
+                        debug_mode: bool,
+                    ) -> String {
                         let class_id_start = nanoid!(1, &CLASS_START_CHARS);
                         let class_id = nanoid!(10, &CLASS_CHARS);
                         if !name_mangling {
@@ -272,81 +277,94 @@ impl StyleSheetConstructor for DomStyleSheet {
                         };
 
                         // a helper for write prop list
-                        let write_prop_list = |cssw: &mut CssWriter<String>, props: &[Property<DomCssProperty>]| {
-                            for (index, prop) in props.iter().enumerate() {
-                                prop.name.write_css(cssw)?;
-                                prop.colon_token.write_css(cssw)?;
-                                prop.value.write_css(cssw)?;
-                                if debug_mode || index + 1 < content.props.len() {
-                                    prop.semi_token.write_css(cssw)?;
-                                    if debug_mode {
-                                        cssw.line_wrap()?;
+                        let write_prop_list =
+                            |cssw: &mut CssWriter<String>, props: &[Property<DomCssProperty>]| {
+                                for (index, prop) in props.iter().enumerate() {
+                                    prop.name.write_css(cssw)?;
+                                    prop.colon_token.write_css(cssw)?;
+                                    prop.value.write_css(cssw)?;
+                                    if debug_mode || index + 1 < content.props.len() {
+                                        prop.semi_token.write_css(cssw)?;
+                                        if debug_mode {
+                                            cssw.line_wrap()?;
+                                        }
                                     }
                                 }
-                            }
-                            Ok(())
-                        };
+                                Ok(())
+                            };
 
                         // a helper for write at-blocks
-                        let write_main_rule_and_at_blocks = |
-                            cssw: &mut CssWriter<String>,
-                            pseudo_class: Option<&CssIdent>,
-                            props: &[Property<DomCssProperty>],
-                            at_blocks: &[AtBlock<DomStyleSheet>],
-                        | {
-                            if props.len() > 0 {
-                                write_selector(cssw)?;
-                                if let Some(ident) = pseudo_class {
-                                    cssw.write_delim(":", false)?;
-                                    cssw.write_ident(&ident.css_name(), false)?;
+                        let write_main_rule_and_at_blocks =
+                            |cssw: &mut CssWriter<String>,
+                             pseudo_class: Option<&CssIdent>,
+                             props: &[Property<DomCssProperty>],
+                             at_blocks: &[AtBlock<DomStyleSheet>]| {
+                                if props.len() > 0 {
+                                    write_selector(cssw)?;
+                                    if let Some(ident) = pseudo_class {
+                                        cssw.write_delim(":", false)?;
+                                        cssw.write_ident(&ident.css_name(), false)?;
+                                    }
+                                    cssw.write_brace_block(|cssw| write_prop_list(cssw, &props))?;
                                 }
-                                cssw.write_brace_block(|cssw| {
-                                    write_prop_list(cssw, &props)
-                                })?;
-                            }
-                            for block in at_blocks {
-                                let items = match block {
-                                    AtBlock::Media { at_keyword, expr, items } => {
-                                        if items.block.as_slice().len() > 0 {
-                                            at_keyword.write_css(cssw)?;
-                                            for (index, q) in expr.iter().enumerate() {
-                                                if index > 0 { cssw.write_delim(",", false)?; }
-                                                q.write_css(cssw)?;
+                                for block in at_blocks {
+                                    let items = match block {
+                                        AtBlock::Media {
+                                            at_keyword,
+                                            expr,
+                                            items,
+                                        } => {
+                                            if items.block.as_slice().len() > 0 {
+                                                at_keyword.write_css(cssw)?;
+                                                for (index, q) in expr.iter().enumerate() {
+                                                    if index > 0 {
+                                                        cssw.write_delim(",", false)?;
+                                                    }
+                                                    q.write_css(cssw)?;
+                                                }
+                                                Some(items)
+                                            } else {
+                                                None
                                             }
-                                            Some(items)
-                                        } else {
-                                            None
                                         }
-                                    }
-                                    AtBlock::Supports { at_keyword, expr, items } => {
-                                        if items.block.as_slice().len() > 0 {
-                                            at_keyword.write_css(cssw)?;
-                                            expr.write_css(cssw)?;
-                                            Some(items)
-                                        } else {
-                                            None
+                                        AtBlock::Supports {
+                                            at_keyword,
+                                            expr,
+                                            items,
+                                        } => {
+                                            if items.block.as_slice().len() > 0 {
+                                                at_keyword.write_css(cssw)?;
+                                                expr.write_css(cssw)?;
+                                                Some(items)
+                                            } else {
+                                                None
+                                            }
                                         }
-                                    }
-                                };
-                                if let Some(items) = items {
-                                    cssw.write_brace_block(|cssw| {
-                                        write_selector(cssw)?;
-                                        if let Some(ident) = pseudo_class {
-                                            cssw.write_delim(":", false)?;
-                                            cssw.write_ident(&ident.css_name(), false)?;
-                                        }
+                                    };
+                                    if let Some(items) = items {
                                         cssw.write_brace_block(|cssw| {
-                                            write_prop_list(cssw, items.block.as_slice())
+                                            write_selector(cssw)?;
+                                            if let Some(ident) = pseudo_class {
+                                                cssw.write_delim(":", false)?;
+                                                cssw.write_ident(&ident.css_name(), false)?;
+                                            }
+                                            cssw.write_brace_block(|cssw| {
+                                                write_prop_list(cssw, items.block.as_slice())
+                                            })?;
+                                            Ok(())
                                         })?;
-                                        Ok(())
-                                    })?;
+                                    }
                                 }
-                            }
-                            Ok(())
-                        };
+                                Ok(())
+                            };
 
                         // write CSS for the class itself
-                        write_main_rule_and_at_blocks(cssw, None, &content.props, &content.at_blocks)?;
+                        write_main_rule_and_at_blocks(
+                            cssw,
+                            None,
+                            &content.props,
+                            &content.at_blocks,
+                        )?;
                         for c in content.pseudo_classes.iter() {
                             write_main_rule_and_at_blocks(
                                 cssw,
@@ -359,7 +377,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                         // write CSS for sub classes
                         for c in content.sub_classes.iter() {
                             let full_ident = CssIdent {
-                                formal_name: format!("{}{}", full_ident.formal_name, c.partial_ident.formal_name),
+                                formal_name: format!(
+                                    "{}{}",
+                                    full_ident.formal_name, c.partial_ident.formal_name
+                                ),
                                 span: c.partial_ident.span,
                             };
                             handle_rule_content(
@@ -385,7 +406,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                         ident,
                         &content.block,
                         &mut cssw,
-                    ).unwrap();
+                    )
+                    .unwrap();
 
                     // write generated string to file
                     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
@@ -396,7 +418,10 @@ impl StyleSheetConstructor for DomStyleSheet {
         }
 
         // write extra tokens
-        let fn_name = syn::Ident::new(&nanoid!(16, &CLASS_START_CHARS), proc_macro2::Span::call_site());
+        let fn_name = syn::Ident::new(
+            &nanoid!(16, &CLASS_START_CHARS),
+            proc_macro2::Span::call_site(),
+        );
         tokens.append_all(quote! {
             fn #fn_name() {
                 #inner_tokens
@@ -442,19 +467,13 @@ mod test {
         let tmp_path = std::env::temp_dir();
         let out_dir = tmp_path.join("maomi-dom-macro").join("test-out");
         std::fs::create_dir_all(&out_dir).unwrap();
-        std::env::set_var(
-            "MAOMI_CSS_OUT_DIR",
-            out_dir.to_str().unwrap(),
-        );
+        std::env::set_var("MAOMI_CSS_OUT_DIR", out_dir.to_str().unwrap());
         let import_dir = tmp_path.join("maomi-dom-macro").join("test-import");
         std::fs::create_dir_all(&import_dir).unwrap();
-        std::env::set_var(
-            "MAOMI_CSS_IMPORT_DIR",
-            import_dir.to_str().unwrap(),
-        );
+        std::env::set_var("MAOMI_CSS_IMPORT_DIR", import_dir.to_str().unwrap());
         (out_dir, import_dir)
     });
-    
+
     pub(crate) fn setup_env(debug_mode: bool, f: impl FnOnce(Env)) {
         CSS_OUT_MODE.with(|css_out_mode| {
             css_out_mode.set(match debug_mode {
@@ -483,13 +502,17 @@ mod test {
     #[serial]
     fn import() {
         setup_env(false, |env| {
-            env.write_import_file("a.css", r#"
+            env.write_import_file(
+                "a.css",
+                r#"
                 @const $a: 1px;                
                 .imported {
                     padding: $a;
                 }
-            "#);
-            parse_str(r#"
+            "#,
+            );
+            parse_str(
+                r#"
                 @config name_mangling: off;
                 @import "/a.css";
                 @const $b: $a 2px;
@@ -497,7 +520,8 @@ mod test {
                     padding: $b $a;
                     margin: $b;
                 }
-            "#);
+            "#,
+            );
             assert_eq!(
                 env.read_output(),
                 r#".imported{padding:1px}.self{padding:1px 2px 1px;margin:1px 2px}"#,
@@ -509,7 +533,8 @@ mod test {
     #[serial]
     fn media() {
         setup_env(false, |env| {
-            parse_str(r#"
+            parse_str(
+                r#"
                 @config name_mangling: off;
                 .c {
                     padding: 1px;
@@ -517,14 +542,16 @@ mod test {
                         margin: 2px;
                     }
                 }
-            "#);
+            "#,
+            );
             assert_eq!(
                 env.read_output(),
                 r#".c{padding:1px}@media(aspect-ratio:16/9){.c{margin:2px}}"#,
             );
         });
         setup_env(true, |env| {
-            parse_str(r#"
+            parse_str(
+                r#"
                 @config name_mangling: off;
                 .c {
                     padding: 1px;
@@ -532,7 +559,8 @@ mod test {
                         margin: 2px;
                     }
                 }
-            "#);
+            "#,
+            );
             assert_eq!(
                 env.read_output(),
                 r#"

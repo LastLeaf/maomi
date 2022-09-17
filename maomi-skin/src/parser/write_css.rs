@@ -1,4 +1,4 @@
-use std::fmt::{Write, Result};
+use std::fmt::{Result, Write};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum LineStatus {
@@ -58,21 +58,34 @@ impl<'a, W: Write> CssWriter<'a, W> {
 
     pub(crate) fn custom_write(
         &mut self,
-        f: impl FnOnce(&mut W, WriteCssSepCond, bool) -> std::result::Result<WriteCssSepCond, std::fmt::Error>,
+        f: impl FnOnce(
+            &mut W,
+            WriteCssSepCond,
+            bool,
+        ) -> std::result::Result<WriteCssSepCond, std::fmt::Error>,
     ) -> Result {
         self.prepare_write()?;
-        let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            debug_mode,
+            ..
+        } = self;
         *sc = f(w, *sc, *debug_mode)?;
         Ok(())
     }
 
     pub fn write_ident(&mut self, ident: &str, prefer_sep_before: bool) -> Result {
         self.prepare_write()?;
-        let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            debug_mode,
+            ..
+        } = self;
         if *debug_mode && prefer_sep_before {
             match sc {
-                WriteCssSepCond::BlockStart
-                | WriteCssSepCond::Whitespace => {}
+                WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
                 _ => {
                     write!(w, " ")?;
                 }
@@ -95,12 +108,16 @@ impl<'a, W: Write> CssWriter<'a, W> {
 
     pub fn write_delim(&mut self, s: &str, prefer_sep_before: bool) -> Result {
         self.prepare_write()?;
-        let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            debug_mode,
+            ..
+        } = self;
         let need_sep = if *debug_mode && prefer_sep_before {
             match sc {
-                WriteCssSepCond::BlockStart
-                | WriteCssSepCond::Whitespace => false,
-                _ => true
+                WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => false,
+                _ => true,
             }
         } else {
             match sc {
@@ -129,10 +146,19 @@ impl<'a, W: Write> CssWriter<'a, W> {
         Ok(())
     }
 
-    pub fn write_function_block(&mut self, name: &str, f: impl FnOnce(&mut Self) -> Result) -> Result {
+    pub fn write_function_block(
+        &mut self,
+        name: &str,
+        f: impl FnOnce(&mut Self) -> Result,
+    ) -> Result {
         self.prepare_write()?;
         {
-            let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                debug_mode,
+                ..
+            } = self;
             if *debug_mode {
                 match sc {
                     WriteCssSepCond::Whitespace => {}
@@ -156,7 +182,11 @@ impl<'a, W: Write> CssWriter<'a, W> {
         }
         f(self)?;
         {
-            let CssWriter { ref mut w, ref mut sc, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                ..
+            } = self;
             write!(w, ")")?;
             *sc = WriteCssSepCond::Other;
         }
@@ -166,7 +196,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
     pub fn write_paren_block(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
         self.prepare_write()?;
         {
-            let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                debug_mode,
+                ..
+            } = self;
             if *debug_mode {
                 match sc {
                     WriteCssSepCond::Whitespace => {}
@@ -187,7 +222,11 @@ impl<'a, W: Write> CssWriter<'a, W> {
         }
         f(self)?;
         {
-            let CssWriter { ref mut w, ref mut sc, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                ..
+            } = self;
             write!(w, ")")?;
             *sc = WriteCssSepCond::Other;
         }
@@ -197,7 +236,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
     pub fn write_bracket_block(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
         self.prepare_write()?;
         {
-            let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                debug_mode,
+                ..
+            } = self;
             if *debug_mode {
                 match sc {
                     WriteCssSepCond::Whitespace => {}
@@ -211,7 +255,11 @@ impl<'a, W: Write> CssWriter<'a, W> {
         }
         f(self)?;
         {
-            let CssWriter { ref mut w, ref mut sc, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                ..
+            } = self;
             write!(w, "]")?;
             *sc = WriteCssSepCond::Other;
         }
@@ -221,7 +269,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
     pub fn write_brace_block(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
         self.prepare_write()?;
         {
-            let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                debug_mode,
+                ..
+            } = self;
             if *debug_mode {
                 match sc {
                     WriteCssSepCond::Whitespace => {}
@@ -243,7 +296,11 @@ impl<'a, W: Write> CssWriter<'a, W> {
         self.line_wrap()?;
         self.prepare_write()?;
         {
-            let CssWriter { ref mut w, ref mut sc, .. } = self;
+            let CssWriter {
+                ref mut w,
+                ref mut sc,
+                ..
+            } = self;
             write!(w, "}}")?;
             *sc = WriteCssSepCond::Other;
         }
@@ -256,10 +313,7 @@ impl<'a, W: Write> CssWriter<'a, W> {
 /// Display as CSS text
 pub trait WriteCss {
     /// Write CSS text
-    fn write_css<W: Write>(
-        &self,
-        cssw: &mut CssWriter<W>,
-    ) -> Result;
+    fn write_css<W: Write>(&self, cssw: &mut CssWriter<W>) -> Result;
 }
 
 /// Separator indicator for `WriteCss`

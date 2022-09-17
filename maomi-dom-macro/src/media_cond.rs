@@ -1,6 +1,6 @@
-use syn::{Error, spanned::Spanned};
+use syn::{spanned::Spanned, Error};
 
-use maomi_skin::parser::{*, write_css::WriteCss};
+use maomi_skin::parser::{write_css::WriteCss, *};
 
 pub(crate) enum DomMediaCondValue {
     AspectRatio(CssNumber, CssNumber),
@@ -43,10 +43,10 @@ fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(CssNumber, Cs
 }
 
 impl ParseStyleSheetValue for DomMediaCondValue {
-    fn parse_value(
-        name: &CssIdent,
-        tokens: &mut CssTokenStream,
-    ) -> syn::Result<Self> where Self: Sized {
+    fn parse_value(name: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<Self>
+    where
+        Self: Sized,
+    {
         let ret = match name.formal_name.as_str() {
             "aspect_ratio" | "min_aspect_ratio" | "max_aspect_ratio" => {
                 let (a, b) = parse_aspect_ratio(tokens)?;
@@ -82,7 +82,7 @@ impl WriteCss for DomMediaCondValue {
 
 #[cfg(test)]
 mod test {
-    use crate::test::{setup_env, parse_str};
+    use crate::test::{parse_str, setup_env};
     use crate::*;
     use serial_test::serial;
 
@@ -90,19 +90,24 @@ mod test {
     #[serial]
     fn aspect_ratio() {
         setup_env(false, |env| {
-            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(r#"
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
                 .c {
                     @media (aspect-ratio: 16/0) {}
                 }
-            "#).is_err());
-            parse_str(r#"
+            "#
+            )
+            .is_err());
+            parse_str(
+                r#"
                 @config name_mangling: off;
                 .c {
                     @media (aspect-ratio: 16/9), (min-aspect-ratio: 4/3), (max-aspect-ratio: 2/1) {
                         padding: 1px;
                     }
                 }
-            "#);
+            "#,
+            );
             assert_eq!(
                 env.read_output(),
                 r#"@media(aspect-ratio:16/9),(min-aspect-ratio:4/3),(max-aspect-ratio:2/1){.c{padding:1px}}"#,

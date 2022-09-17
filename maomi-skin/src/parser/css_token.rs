@@ -1,11 +1,11 @@
+use proc_macro2::Span;
 use std::iter::Peekable;
 use std::num::NonZeroU64;
-use proc_macro2::Span;
-use syn::{parse::*, ext::IdentExt};
 use syn::spanned::Spanned;
 use syn::*;
+use syn::{ext::IdentExt, parse::*};
 
-use super::{WriteCss, WriteCssSepCond, ParseWithVars, write_css::CssWriter};
+use super::{write_css::CssWriter, ParseWithVars, WriteCss, WriteCssSepCond};
 
 #[derive(Debug, Clone)]
 pub enum Number {
@@ -59,7 +59,10 @@ impl Parse for CssIdent {
                     span = Some(t.span())
                 }
                 let s: &str = &t.to_string();
-                formal_name += s.strip_prefix("r#").and_then(|x| x.strip_suffix("#")).unwrap_or(s);
+                formal_name += s
+                    .strip_prefix("r#")
+                    .and_then(|x| x.strip_suffix("#"))
+                    .unwrap_or(s);
                 false
             } else {
                 return Err(la.error());
@@ -125,8 +128,7 @@ impl WriteCss for CssAtKeyword {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart
-                    | WriteCssSepCond::Whitespace => {}
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -169,8 +171,7 @@ impl WriteCss for CssString {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart
-                    | WriteCssSepCond::Whitespace => {}
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -205,7 +206,11 @@ impl WriteCss for CssColon {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        let CssWriter { ref mut w, ref mut sc, .. } = cssw;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = cssw;
         write!(w, ":")?;
         *sc = WriteCssSepCond::Other;
         Ok(())
@@ -235,7 +240,11 @@ impl WriteCss for CssSemi {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        let CssWriter { ref mut w, ref mut sc, .. } = cssw;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = cssw;
         write!(w, ";")?;
         *sc = WriteCssSepCond::Other;
         Ok(())
@@ -265,7 +274,11 @@ impl WriteCss for CssComma {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        let CssWriter { ref mut w, ref mut sc, .. } = cssw;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = cssw;
         write!(w, ",")?;
         *sc = WriteCssSepCond::Other;
         Ok(())
@@ -420,8 +433,7 @@ impl WriteCss for CssNumber {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart
-                    | WriteCssSepCond::Whitespace => {}
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -471,8 +483,7 @@ impl WriteCss for CssPercentage {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart
-                    | WriteCssSepCond::Whitespace => {}
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -544,8 +555,7 @@ impl WriteCss for CssDimension {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart
-                    | WriteCssSepCond::Whitespace => {}
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -611,9 +621,7 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_function_block(&self.css_name(), |cssw| {
-            self.block.write_css(cssw)
-        })
+        cssw.write_function_block(&self.css_name(), |cssw| self.block.write_css(cssw))
     }
 }
 
@@ -656,9 +664,7 @@ impl<T: WriteCss> WriteCss for CssParen<T> {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_paren_block(|cssw| {
-            self.block.write_css(cssw)
-        })
+        cssw.write_paren_block(|cssw| self.block.write_css(cssw))
     }
 }
 
@@ -691,7 +697,10 @@ impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
         let content;
         let bracket_token = bracketed!(content in input);
         let block = T::parse_with_vars(&content, vars)?;
-        Ok(Self { bracket_token, block })
+        Ok(Self {
+            bracket_token,
+            block,
+        })
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
@@ -704,9 +713,7 @@ impl<T: WriteCss> WriteCss for CssBracket<T> {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_bracket_block(|cssw| {
-            self.block.write_css(cssw)
-        })
+        cssw.write_bracket_block(|cssw| self.block.write_css(cssw))
     }
 }
 
@@ -749,9 +756,7 @@ impl<T: WriteCss> WriteCss for CssBrace<T> {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_brace_block(|cssw| {
-            self.block.write_css(cssw)
-        })
+        cssw.write_brace_block(|cssw| self.block.write_css(cssw))
     }
 }
 
@@ -916,7 +921,10 @@ fn parse_token(
         input.parse::<Token![$]>()?;
         let name: CssIdent = input.parse()?;
         let items = vars.consts.get(&name.formal_name).ok_or_else(|| {
-            Error::new(name.span(), format!("No const named {:?}", name.formal_name))
+            Error::new(
+                name.span(),
+                format!("No const named {:?}", name.formal_name),
+            )
         })?;
         for item in items {
             ret.push(item.clone());
@@ -933,11 +941,17 @@ fn parse_token(
     } else if input.peek(token::Comma) {
         ret.push(CssToken::Comma(input.parse()?));
     } else if input.peek(token::Paren) {
-        ret.push(CssToken::Paren(ParseWithVars::parse_with_vars(&input, vars)?));
+        ret.push(CssToken::Paren(ParseWithVars::parse_with_vars(
+            &input, vars,
+        )?));
     } else if input.peek(token::Bracket) {
-        ret.push(CssToken::Bracket(ParseWithVars::parse_with_vars(&input, vars)?));
+        ret.push(CssToken::Bracket(ParseWithVars::parse_with_vars(
+            &input, vars,
+        )?));
     } else if input.peek(token::Brace) {
-        ret.push(CssToken::Brace(ParseWithVars::parse_with_vars(&input, vars)?));
+        ret.push(CssToken::Brace(ParseWithVars::parse_with_vars(
+            &input, vars,
+        )?));
     } else if input.peek(LitInt) {
         let n: LitInt = input.parse()?;
         let span = n.span();
@@ -1072,7 +1086,10 @@ pub struct CssTokenStream {
 impl CssTokenStream {
     #[inline]
     pub fn new(span: Span, v: Vec<CssToken>) -> Self {
-        Self { span, inner: v.into_iter().peekable() }
+        Self {
+            span,
+            inner: v.into_iter().peekable(),
+        }
     }
 
     #[inline]
@@ -1092,16 +1109,16 @@ impl CssTokenStream {
 
     #[inline]
     pub fn next(&mut self) -> Result<CssToken> {
-        self.inner.next().ok_or_else(|| {
-            Error::new(self.span, "Unexpected end of the value")
-        })
+        self.inner
+            .next()
+            .ok_or_else(|| Error::new(self.span, "Unexpected end of the value"))
     }
 
     #[inline]
     pub fn peek(&mut self) -> Result<&CssToken> {
-        self.inner.peek().ok_or_else(|| {
-            Error::new(self.span, "Unexpected end of the value")
-        })
+        self.inner
+            .peek()
+            .ok_or_else(|| Error::new(self.span, "Unexpected end of the value"))
     }
 
     #[inline]
@@ -1197,10 +1214,7 @@ impl CssTokenStream {
     }
 
     #[inline]
-    pub fn parse_function<R>(
-        &mut self,
-        f: impl FnOnce(&str, Self) -> Result<R>,
-    ) -> Result<R> {
+    pub fn parse_function<R>(&mut self, f: impl FnOnce(&str, Self) -> Result<R>) -> Result<R> {
         let x = self.next()?;
         if let CssToken::Function(x) = x {
             Ok(f(
@@ -1213,45 +1227,30 @@ impl CssTokenStream {
     }
 
     #[inline]
-    pub fn parse_paren<R>(
-        &mut self,
-        f: impl FnOnce(Self) -> Result<R>,
-    ) -> Result<R> {
+    pub fn parse_paren<R>(&mut self, f: impl FnOnce(Self) -> Result<R>) -> Result<R> {
         let x = self.next()?;
         if let CssToken::Paren(x) = x {
-            Ok(f(
-                Self::new(x.span(), x.block.into_vec()),
-            )?)
+            Ok(f(Self::new(x.span(), x.block.into_vec()))?)
         } else {
             Err(Error::new(x.span(), "Expected `(...)`"))
         }
     }
 
     #[inline]
-    pub fn parse_bracket<R>(
-        &mut self,
-        f: impl FnOnce(Self) -> Result<R>,
-    ) -> Result<R> {
+    pub fn parse_bracket<R>(&mut self, f: impl FnOnce(Self) -> Result<R>) -> Result<R> {
         let x = self.next()?;
         if let CssToken::Bracket(x) = x {
-            Ok(f(
-                Self::new(x.span(), x.block.into_vec()),
-            )?)
+            Ok(f(Self::new(x.span(), x.block.into_vec()))?)
         } else {
             Err(Error::new(x.span(), "Expected `[...]`"))
         }
     }
 
     #[inline]
-    pub fn parse_brace<R>(
-        &mut self,
-        f: impl FnOnce(Self) -> Result<R>,
-    ) -> Result<R> {
+    pub fn parse_brace<R>(&mut self, f: impl FnOnce(Self) -> Result<R>) -> Result<R> {
         let x = self.next()?;
         if let CssToken::Brace(x) = x {
-            Ok(f(
-                Self::new(x.span(), x.block.into_vec()),
-            )?)
+            Ok(f(Self::new(x.span(), x.block.into_vec()))?)
         } else {
             Err(Error::new(x.span(), "Expected `{...}`"))
         }
