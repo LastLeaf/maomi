@@ -12,8 +12,11 @@ async fn skin_const() {
 
         @const $a: 1px;
 
+        @keyframes $kw {}
+
         .a_class {
             padding: $a 2px;
+            animation-name: $kw;
         }
     }
 
@@ -21,6 +24,7 @@ async fn skin_const() {
     struct MyComp {
         callback: Option<ComponentTestCb>,
         template: template! {
+            // TODO fix over-spanned (influences finding ref)
             <div class:a_class></div>
         },
     }

@@ -7,14 +7,8 @@ pub(crate) enum DomMediaCondValue {
     Orientation(DomMediaOrientation),
     PrefersColorScheme(DomMediaColorScheme),
     Resolution(CssDimension),
-    MinResolution(CssDimension),
-    MaxResolution(CssDimension),
     Width(CssDimension),
-    MinWidth(CssDimension),
-    MaxWidth(CssDimension),
     Height(CssDimension),
-    MinHeight(CssDimension),
-    MaxHeight(CssDimension),
 }
 
 pub(crate) enum DomMediaOrientation {
@@ -52,7 +46,41 @@ impl ParseStyleSheetValue for DomMediaCondValue {
                 let (a, b) = parse_aspect_ratio(tokens)?;
                 Self::AspectRatio(a, b)
             }
-            // TODO
+            "orientation" => {
+                Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
+                    "landscape" => DomMediaOrientation::Landscape,
+                    "portrait" => DomMediaOrientation::Portrait,
+                    _ => Err(Error::new(name.span(), "Expected `landscape` or `portrait`"))?,
+                })
+            }
+            "prefers_color_scheme" => {
+                Self::PrefersColorScheme(match tokens.expect_ident()?.formal_name.as_str() {
+                    "light" => DomMediaColorScheme::Light,
+                    "dark" => DomMediaColorScheme::Dark,
+                    _ => Err(Error::new(name.span(), "Expected `light` or `dark`"))?,
+                })
+            }
+            "resolution" | "min_resolution" | "max_resolution" => {
+                let x = tokens.expect_dimension()?;
+                if x.unit.as_str() != "dpi" {
+                    return Err(Error::new(name.span(), "Expected `dpi` unit"));
+                }
+                Self::Resolution(x)
+            }
+            "width" | "min_width" | "max_width" => {
+                let x = tokens.expect_dimension()?;
+                if x.unit.as_str() != "px" {
+                    return Err(Error::new(name.span(), "Expected `px` unit"));
+                }
+                Self::Width(x)
+            }
+            "height" | "min_height" | "max_height" => {
+                let x = tokens.expect_dimension()?;
+                if x.unit.as_str() != "px" {
+                    return Err(Error::new(name.span(), "Expected `px` unit"));
+                }
+                Self::Height(x)
+            }
             _ => {
                 return Err(Error::new(name.span(), "Unknown media feature"));
             }
@@ -72,9 +100,23 @@ impl WriteCss for DomMediaCondValue {
                 cssw.write_delim("/", true)?;
                 b.write_css(cssw)?;
             }
-            _ => {
-                todo!() // TODO
+            Self::Orientation(x) => {
+                let s = match x {
+                    DomMediaOrientation::Landscape => "landscape",
+                    DomMediaOrientation::Portrait => "portrait",
+                };
+                cssw.write_ident(s, true)?;
             }
+            Self::PrefersColorScheme(x) => {
+                let s = match x {
+                    DomMediaColorScheme::Light => "light",
+                    DomMediaColorScheme::Dark => "dark",
+                };
+                cssw.write_ident(s, true)?;
+            }
+            Self::Resolution(x) => x.write_css(cssw)?,
+            Self::Width(x) => x.write_css(cssw)?,
+            Self::Height(x) => x.write_css(cssw)?,
         }
         Ok(())
     }
@@ -88,29 +130,241 @@ mod test {
 
     #[test]
     #[serial]
-    fn aspect_ratio() {
+    fn only() {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                .c {
-                    @media (aspect-ratio: 16/0) {}
-                }
-            "#
+                    .c {
+                        @media only (resolution: 1dpi) {}
+                    }
+                "#
             )
             .is_err());
             parse_str(
                 r#"
-                @config name_mangling: off;
-                .c {
-                    @media (aspect-ratio: 16/9), (min-aspect-ratio: 4/3), (max-aspect-ratio: 2/1) {
-                        padding: 1px;
+                    @config name_mangling: off;
+                    .c {
+                        @media only all and (resolution: 1dpi) {
+                            padding: 1px;
+                        }
                     }
-                }
-            "#,
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media only all and (resolution:1dpi){.c{padding:1px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn media_type() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media xxx {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media screen {
+                            padding: 1px;
+                        }
+                        @media all {
+                            padding: 2px;
+                        }
+                        @media print and not (resolution:1dpi) {
+                            padding: 3px;
+                        }
+                        @media all and (resolution:2dpi) {
+                            padding: 4px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media screen{.c{padding:1px}}@media all{.c{padding:2px}}@media print and not (resolution:1dpi){.c{padding:3px}}@media(resolution:2dpi){.c{padding:4px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn aspect_ratio() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media (aspect-ratio: 16/0) {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media (aspect-ratio: 16/9), (min-aspect-ratio: 4/3), (max-aspect-ratio: 2/1) {
+                            padding: 1px;
+                        }
+                    }
+                "#,
             );
             assert_eq!(
                 env.read_output(),
                 r#"@media(aspect-ratio:16/9),(min-aspect-ratio:4/3),(max-aspect-ratio:2/1){.c{padding:1px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn orientation() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media (orientation: xxx) {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media not (orientation: landscape) and (orientation: portrait) {
+                            padding: 1px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media not (orientation:landscape)and (orientation:portrait){.c{padding:1px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn prefers_color_scheme() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media (prefers-color-scheme: xxx) {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media (prefers-color-scheme: light), not (prefers-color-scheme: dark) {
+                            padding: 1px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media(prefers-color-scheme:light),not (prefers-color-scheme:dark){.c{padding:1px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn resolution() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media (resolution: 1px) {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media (resolution: 1dpi), (min-resolution: 1.1dpi), (max-resolution: 2dpi) {
+                            padding: 1px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media(resolution:1dpi),(min-resolution:1.1dpi),(max-resolution:2dpi){.c{padding:1px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn width() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media (width: 1dpi) {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media (width: 1px), (min-width: 2px), (max-width: 3px) {
+                            padding: 1px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media(width:1px),(min-width:2px),(max-width:3px){.c{padding:1px}}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn height() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @media (height: 1dpi) {}
+                    }
+                "#
+            )
+            .is_err());
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @media (height: 1px), (min-height: 2px), (max-height: 3px) {
+                            padding: 1px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@media(height:1px),(min-height:2px),(max-height:3px){.c{padding:1px}}"#,
             );
         });
     }

@@ -70,24 +70,51 @@ enum CssOutMode {
     Release,
 }
 
-enum DomStyleSheetConfig {
-    NameMangling(bool),
+fn generate_css_name(
+    full_ident: &CssIdent,
+    name_mangling: bool,
+    debug_mode: bool,
+) -> String {
+    let class_id_start = nanoid!(1, &CLASS_START_CHARS);
+    let class_id = nanoid!(10, &CLASS_CHARS);
+    if !name_mangling {
+        full_ident.css_name()
+    } else if debug_mode {
+        full_ident.css_name() + "_" + &class_id_start + &class_id
+    } else {
+        class_id_start + &class_id
+    }
 }
 
-impl ParseStyleSheetValue for DomStyleSheetConfig {
-    fn parse_value(
-        name: &maomi_skin::parser::CssIdent,
-        tokens: &mut CssTokenStream,
-    ) -> syn::Result<Self>
-    where
-        Self: Sized,
-    {
-        let ret = match name.formal_name.as_str() {
+// IDEA really parse the value
+type DomFontFaceProperty = DomCssProperty;
+
+struct DomStyleSheet {
+    name_mangling: bool,
+}
+
+impl StyleSheetConstructor for DomStyleSheet {
+    type PropertyValue = DomCssProperty;
+    type FontFacePropertyValue = DomFontFaceProperty;
+    type MediaCondValue = DomMediaCondValue;
+
+    fn new() -> Self where Self: Sized {
+        Self {
+            name_mangling: false,
+        }
+    }
+
+    fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<()> {
+        match name.formal_name.as_str() {
             "name_mangling" => {
                 let v = tokens.expect_ident()?;
                 match v.formal_name.as_str() {
-                    "off" => Self::NameMangling(false),
-                    "on" => Self::NameMangling(true),
+                    "off" => {
+                        self.name_mangling = false;
+                    }
+                    "on" => {
+                        self.name_mangling = true;
+                    }
                     _ => {
                         return Err(Error::new(name.span, "Unsupported config value"));
                     }
@@ -96,38 +123,35 @@ impl ParseStyleSheetValue for DomStyleSheetConfig {
             _ => {
                 return Err(Error::new(name.span, "Unknown config item"));
             }
-        };
-        Ok(ret)
+        }
+        Ok(())
     }
-}
 
-// TODO really parse the value
-type DomFontFaceProperty = DomCssProperty;
+    fn define_key_frames(
+        &mut self,
+        name: &CssIdent,
+        _: &Vec<(CssPercentage, CssBrace<Repeat<Property<Self::PropertyValue>>>)>,
+    ) -> CssIdent {
+        let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
+        let formal_name = generate_css_name(name, self.name_mangling, debug_mode);
+        CssIdent { span: name.span, formal_name }
+    }
 
-struct DomStyleSheet {}
-
-impl StyleSheetConstructor for DomStyleSheet {
-    type ConfigValue = DomStyleSheetConfig;
-    type PropertyValue = DomCssProperty;
-    type FontFacePropertyValue = DomFontFaceProperty;
-    type MediaCondValue = DomMediaCondValue;
-
-    fn to_tokens(ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
+    fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
     where
         Self: Sized,
     {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
-        let mut name_mangling = true;
-        let mut inner_tokens = proc_macro2::TokenStream::new();
+        let inner_tokens = &mut proc_macro2::TokenStream::new();
 
         // generate proc macro output for a class
         fn write_proc_macro_class(
             tokens: &mut proc_macro2::TokenStream,
-            span: proc_macro2::Span,
+            _span: proc_macro2::Span,
             struct_name: &syn::Ident,
             class_name: &str,
         ) {
-            tokens.append_all(quote_spanned! {span=>
+            tokens.append_all(quote! {
                 #[allow(non_camel_case_types)]
                 struct #struct_name {}
                 impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomClassList, bool> for #struct_name {
@@ -175,7 +199,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                 // generate macro def
                 StyleSheetItem::MacroDefinition { name, .. } => {
                     write_proc_macro_def(
-                        tokens,
+                        inner_tokens,
                         name.span,
                         &syn::Ident::new(&name.formal_name, name.span),
                     );
@@ -184,64 +208,50 @@ impl StyleSheetConstructor for DomStyleSheet {
                 // generate const def and ref
                 StyleSheetItem::ConstDefinition { name, refs, .. } => {
                     write_proc_macro_def(
-                        tokens,
+                        inner_tokens,
                         name.span,
                         &syn::Ident::new(&name.formal_name, name.span),
                     );
                     for r in refs {
                         write_proc_macro_ref(
-                            &mut inner_tokens,
+                            inner_tokens,
                             r.span,
                             &syn::Ident::new(&r.formal_name, r.span),
                         );
                     }
                 }
 
-                // handling config
-                StyleSheetItem::Config { value, .. } => match value {
-                    DomStyleSheetConfig::NameMangling(enabled) => {
-                        name_mangling = *enabled;
-                    }
-                },
-
                 // generate @key-frames block
-                StyleSheetItem::KeyFrames {
+                StyleSheetItem::KeyFramesDefinition {
                     at_keyword,
                     name,
-                    brace_token,
+                    def,
                     content,
+                    ..
                 } => {
-                    if let Some(css_out_dir) = CSS_OUT_FILE.as_ref() {
-                        // TODO
+                    if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
+                        let mut s = String::new();
+                        let cssw = &mut CssWriter::new(&mut s, debug_mode);
+                        at_keyword.write_css(cssw).unwrap();
+                        def.write_css(cssw).unwrap();
+                        cssw.write_brace_block(|cssw| {
+                            for (p, item) in content.iter() {
+                                p.write_css(cssw)?;
+                                item.write_css(cssw)?;
+                            }
+                            Ok(())
+                        }).unwrap();
+                        css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
                     }
-                }
-
-                // generate @font-face block
-                StyleSheetItem::FontFaceRule { at_keyword, items } => {
-                    if let Some(css_out_dir) = CSS_OUT_FILE.as_ref() {
-                        // TODO
-                    }
+                    write_proc_macro_def(
+                        inner_tokens,
+                        name.span,
+                        &syn::Ident::new(&name.formal_name, name.span),
+                    );
                 }
 
                 // generate common rule
                 StyleSheetItem::Rule { ident, content, .. } => {
-                    // a helper for CSS class name generation
-                    fn generate_css_name(
-                        full_ident: &CssIdent,
-                        name_mangling: bool,
-                        debug_mode: bool,
-                    ) -> String {
-                        let class_id_start = nanoid!(1, &CLASS_START_CHARS);
-                        let class_id = nanoid!(10, &CLASS_CHARS);
-                        if !name_mangling {
-                            full_ident.css_name()
-                        } else if debug_mode {
-                            full_ident.css_name() + "_" + &class_id_start + &class_id
-                        } else {
-                            class_id_start + &class_id
-                        }
-                    }
-
                     // rec to generate all CSS rules
                     fn handle_rule_content(
                         tokens: &mut proc_macro2::TokenStream,
@@ -250,11 +260,11 @@ impl StyleSheetConstructor for DomStyleSheet {
                         debug_mode: bool,
                         full_ident: &CssIdent,
                         content: &RuleContent<DomStyleSheet>,
-                        cssw: &mut CssWriter<String>,
+                        cssw: &mut Option<CssWriter<String>>,
                     ) -> Result<(), std::fmt::Error> {
                         let class_name = generate_css_name(full_ident, name_mangling, debug_mode);
 
-                        // generate proc macro output (for IDE hinting)
+                        // generate proc macro output
                         write_proc_macro_class(
                             tokens,
                             full_ident.span,
@@ -359,19 +369,21 @@ impl StyleSheetConstructor for DomStyleSheet {
                             };
 
                         // write CSS for the class itself
-                        write_main_rule_and_at_blocks(
-                            cssw,
-                            None,
-                            &content.props,
-                            &content.at_blocks,
-                        )?;
-                        for c in content.pseudo_classes.iter() {
+                        if let Some(cssw) = cssw.as_mut() {
                             write_main_rule_and_at_blocks(
                                 cssw,
-                                Some(&c.ident),
-                                c.content.props.as_slice(),
-                                c.content.at_blocks.as_slice(),
+                                None,
+                                &content.props,
+                                &content.at_blocks,
                             )?;
+                            for c in content.pseudo_classes.iter() {
+                                write_main_rule_and_at_blocks(
+                                    cssw,
+                                    Some(&c.ident),
+                                    c.content.props.as_slice(),
+                                    c.content.at_blocks.as_slice(),
+                                )?;
+                            }
                         }
 
                         // write CSS for sub classes
@@ -396,22 +408,33 @@ impl StyleSheetConstructor for DomStyleSheet {
 
                         Ok(())
                     }
-                    let mut s = String::new();
-                    let mut cssw = CssWriter::new(&mut s, debug_mode);
-                    handle_rule_content(
-                        tokens,
-                        &mut inner_tokens,
-                        name_mangling,
-                        debug_mode,
-                        ident,
-                        &content.block,
-                        &mut cssw,
-                    )
-                    .unwrap();
 
                     // write generated string to file
                     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
+                        let mut s = String::new();
+                        let cssw = CssWriter::new(&mut s, debug_mode);
+                        handle_rule_content(
+                            tokens,
+                            inner_tokens,
+                            self.name_mangling,
+                            debug_mode,
+                            ident,
+                            &content.block,
+                            &mut Some(cssw),
+                        )
+                        .unwrap();
                         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
+                    } else {
+                        handle_rule_content(
+                            tokens,
+                            inner_tokens,
+                            self.name_mangling,
+                            debug_mode,
+                            ident,
+                            &content.block,
+                            &mut None,
+                        )
+                        .unwrap();
                     }
                 }
             }
@@ -505,22 +528,22 @@ mod test {
             env.write_import_file(
                 "a.css",
                 r#"
-                @const $a: 1px;                
-                .imported {
-                    padding: $a;
-                }
-            "#,
+                    @const $a: 1px;                
+                    .imported {
+                        padding: $a;
+                    }
+                "#,
             );
             parse_str(
                 r#"
-                @config name_mangling: off;
-                @import "/a.css";
-                @const $b: $a 2px;
-                .self {
-                    padding: $b $a;
-                    margin: $b;
-                }
-            "#,
+                    @config name_mangling: off;
+                    @import "/a.css";
+                    @const $b: $a 2px;
+                    .self {
+                        padding: $b $a;
+                        margin: $b;
+                    }
+                "#,
             );
             assert_eq!(
                 env.read_output(),
@@ -535,14 +558,14 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                @config name_mangling: off;
-                .c {
-                    padding: 1px;
-                    @media (aspect_ratio: 16/9) {
-                        margin: 2px;
+                    @config name_mangling: off;
+                    .c {
+                        padding: 1px;
+                        @media (aspect_ratio: 16/9) {
+                            margin: 2px;
+                        }
                     }
-                }
-            "#,
+                "#,
             );
             assert_eq!(
                 env.read_output(),
@@ -552,14 +575,14 @@ mod test {
         setup_env(true, |env| {
             parse_str(
                 r#"
-                @config name_mangling: off;
-                .c {
-                    padding: 1px;
-                    @media (aspect_ratio: 16/9) {
-                        margin: 2px;
+                    @config name_mangling: off;
+                    .c {
+                        padding: 1px;
+                        @media (aspect_ratio: 16/9) {
+                            margin: 2px;
+                        }
                     }
-                }
-            "#,
+                "#,
             );
             assert_eq!(
                 env.read_output(),
@@ -574,6 +597,251 @@ mod test {
     }
 }
 "#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn supports() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        padding: 1px;
+                        @supports (margin: 2px) {
+                            margin: 2px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1px}@supports(margin:2px){.c{margin:2px}}"#,
+            );
+        });
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @supports not (margin: 2px) {
+                            padding: 2px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@supports not (margin:2px){.c{padding:2px}}"#,
+            );
+        });
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @supports (margin: 2px) and (margin: 3px) {
+                            margin: 2px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@supports(margin:2px)and (margin:3px){.c{margin:2px}}"#,
+            );
+        });
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @supports (margin: 2px) or (margin: 3px) {
+                            margin: 2px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@supports(margin:2px)or (margin:3px){.c{margin:2px}}"#,
+            );
+        });
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        @supports (not ((margin: 2px))) and ((((margin: 3px)) or (margin: 4px))) {
+                            margin: 2px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@supports(not (margin:2px))and ((margin:3px)or (margin:4px)){.c{margin:2px}}"#,
+            );
+        });
+        setup_env(false, |_| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @supports margin: 2px {}
+                    }
+                "#
+            )
+            .is_err());
+        });
+        setup_env(false, |_| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        @supports(margin: 2px) and (margin: 3px) or (margin: 4px) {}
+                    }
+                "#
+            )
+            .is_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn key_frames() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    @keyframes $kf {
+                        from {
+                            transform: translateX(0px);
+                        }
+                        50% {
+                            transform: translateX(10%);
+                        }
+                        to {
+                            transform: translateX(100%);
+                        }
+                    }
+                    .c {
+                        animation-name: $kf;
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"@keyframes kf{0%{transform:translateX(0px);}50%{transform:translateX(10%);}100%{transform:translateX(100%);}}.c{animation-name:kf}"#,
+            );
+        });
+        setup_env(true, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    @keyframes $kf {
+                        from {
+                            transform: translateX(0px);
+                        }
+                        50% {
+                            transform: translateX(10%);
+                        }
+                        to {
+                            transform: translateX(100%);
+                        }
+                    }
+                    .c {
+                        animation-name: $kf;
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#"
+@keyframes kf {
+    0% {
+        transform: translateX(0px);
+    }
+
+    50% {
+        transform: translateX(10%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.c {
+    animation-name: kf;
+}
+"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn pseudo_classes() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        padding: 1px;
+                        :hover {
+                            @media (aspect-ratio: 16/9) {
+                                margin: 2px;
+                            }
+                        }
+                        :active {
+                            margin: 3px;
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1px}@media(aspect-ratio:16/9){.c:hover{margin:2px}}.c:active{margin:3px}"#,
+            );
+        });
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
+                r#"
+                    .c {
+                        :hover {
+                            -d {}
+                        }
+                    }
+                "#
+            )
+            .is_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn sub_classes() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    .c {
+                        padding: 1px;
+                        -d {
+                            @media (aspect-ratio: 16/9) {
+                                margin: 2px;
+                            }
+                            _e {
+                                margin: 3px;
+                            }
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1px}@media(aspect-ratio:16/9){.c-d{margin:2px}}.c-d-e{margin:3px}"#,
             );
         });
     }

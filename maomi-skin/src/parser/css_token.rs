@@ -920,14 +920,17 @@ fn parse_token(
     if input.peek(Token![$]) {
         input.parse::<Token![$]>()?;
         let name: CssIdent = input.parse()?;
-        let items = vars.consts.get(&name.formal_name).ok_or_else(|| {
-            Error::new(
+        if let Some(items) = vars.consts.get(&name.formal_name) {
+            for item in items {
+                ret.push(item.clone());
+            }
+        } else if let Some(ident) = vars.keyframes.get(&name.formal_name) {
+            ret.push(CssToken::Ident(ident.clone()));
+        } else {
+            return Err(Error::new(
                 name.span(),
-                format!("No const named {:?}", name.formal_name),
-            )
-        })?;
-        for item in items {
-            ret.push(item.clone());
+                format!("No const or keyframes named {:?}", name.formal_name),
+            ));
         }
         refs.push(name);
     } else if input.peek(token::At) {
