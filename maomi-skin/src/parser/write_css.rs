@@ -33,8 +33,9 @@ impl<'a, W: Write> CssWriter<'a, W> {
         }
         if self.line_status == LineStatus::Other {
             self.line_status = LineStatus::LineStart;
+            write!(self.w, "\n")?;
         }
-        write!(self.w, "\n")
+        Ok(())
     }
 
     fn prepare_write(&mut self) -> Result {
@@ -50,6 +51,7 @@ impl<'a, W: Write> CssWriter<'a, W> {
                 write!(self.w, "    ")?;
             }
             self.line_status = LineStatus::Other;
+            self.sc = WriteCssSepCond::Whitespace;
         }
         Ok(())
     }
@@ -69,7 +71,8 @@ impl<'a, W: Write> CssWriter<'a, W> {
         let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
         if *debug_mode && prefer_sep_before {
             match sc {
-                WriteCssSepCond::BlockStart => {}
+                WriteCssSepCond::BlockStart
+                | WriteCssSepCond::Whitespace => {}
                 _ => {
                     write!(w, " ")?;
                 }
@@ -95,7 +98,8 @@ impl<'a, W: Write> CssWriter<'a, W> {
         let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
         let need_sep = if *debug_mode && prefer_sep_before {
             match sc {
-                WriteCssSepCond::BlockStart => false,
+                WriteCssSepCond::BlockStart
+                | WriteCssSepCond::Whitespace => false,
                 _ => true
             }
         } else {
@@ -130,7 +134,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
         {
             let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
             if *debug_mode {
-                write!(w, " ")?;
+                match sc {
+                    WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
             } else {
                 match sc {
                     WriteCssSepCond::Ident
@@ -159,7 +168,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
         {
             let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
             if *debug_mode {
-                write!(w, " ")?;
+                match sc {
+                    WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
             } else {
                 match sc {
                     WriteCssSepCond::Ident => {
@@ -185,7 +199,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
         {
             let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
             if *debug_mode {
-                write!(w, " ")?;
+                match sc {
+                    WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
             }
             write!(w, "[")?;
             *sc = WriteCssSepCond::BlockStart;
@@ -204,7 +223,12 @@ impl<'a, W: Write> CssWriter<'a, W> {
         {
             let CssWriter { ref mut w, ref mut sc, debug_mode, .. } = self;
             if *debug_mode {
-                write!(w, " ")?;
+                match sc {
+                    WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
             }
             write!(w, "{{")?;
             *sc = WriteCssSepCond::BlockStart;
@@ -213,7 +237,11 @@ impl<'a, W: Write> CssWriter<'a, W> {
         self.line_wrap()?;
         f(self)?;
         self.tab_count -= 1;
+        if self.line_status == LineStatus::BlockStart {
+            self.line_status = LineStatus::LineStart;
+        }
         self.line_wrap()?;
+        self.prepare_write()?;
         {
             let CssWriter { ref mut w, ref mut sc, .. } = self;
             write!(w, "}}")?;
@@ -273,6 +301,10 @@ pub enum WriteCssSepCond {
     ///
     /// Always no separators needed, but separators may be added in debug mode.
     BlockStart,
+    /// The CSS string ends with whitespace
+    ///
+    /// Always no separators needed.
+    Whitespace,
     /// Other cases
     ///
     /// Always no separators needed, but separators may be added in debug mode.

@@ -163,6 +163,8 @@ pub enum MediaType {
 #[derive(Debug, Clone)]
 pub struct MediaCond<V> {
     pub not: Option<CssIdent>,
+    pub name: CssIdent,
+    pub colon_token: CssColon,
     pub cond: V,
     pub refs: Vec<CssIdent>,
 }
@@ -200,22 +202,16 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                 } else {
                     None
                 };
-                let la = input.lookahead1();
-                let (cond, refs) = if la.peek(token::Paren) {
-                    let content;
-                    let _paren = parenthesized!(content in input);
-                    let input = content;
-                    let name: CssIdent = input.parse()?;
-                    input.parse::<token::Colon>()?;
-                    let (tokens, refs) = Repeat::parse_with_vars(&input, vars)?.get();
-                    let mut stream = CssTokenStream::new(input.span(), tokens);
-                    let ret = V::parse_value(&name, &mut stream)?;
-                    stream.expect_ended()?;
-                    (ret, refs)
-                } else {
-                    return Err(la.error());
-                };
-                cond_list.push(MediaCond { not, cond, refs });
+                let content;
+                let _paren = parenthesized!(content in input);
+                let input = content;
+                let name: CssIdent = input.parse()?;
+                let colon_token = input.parse()?;
+                let (tokens, refs) = Repeat::parse_with_vars(&input, vars)?.get();
+                let mut stream = CssTokenStream::new(input.span(), tokens);
+                let cond = V::parse_value(&name, &mut stream)?;
+                stream.expect_ended()?;
+                cond_list.push(MediaCond { not, name, colon_token, cond, refs });
                 if !input.peek(kw::and) {
                     break;
                 }
@@ -266,7 +262,10 @@ impl<V: WriteCss> WriteCss for MediaQuery<V> {
             }
             item.not.write_css(cssw)?;
             cssw.write_paren_block(|cssw| {
-                item.cond.write_css(cssw)
+                item.name.write_css(cssw)?;
+                item.colon_token.write_css(cssw)?;
+                item.cond.write_css(cssw)?;
+                Ok(())
             })?;
         }
         Ok(())
@@ -286,6 +285,15 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsCond<V> {
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        todo!() // TODO
+    }
+}
+
+impl<V: WriteCss> WriteCss for SupportsCond<V> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::fmt::Result {
         todo!() // TODO
     }
 }
@@ -372,7 +380,7 @@ pub enum AtBlock<T: StyleSheetConstructor> {
 }
 
 pub struct PseudoClass<T: StyleSheetConstructor> {
-    pub colon_token: token::Colon,
+    pub colon_token: CssColon,
     pub ident: CssIdent,
     pub content: PseudoClassContent<T>,
 }

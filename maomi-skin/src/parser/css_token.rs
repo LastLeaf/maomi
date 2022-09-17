@@ -1,4 +1,5 @@
 use std::iter::Peekable;
+use std::num::NonZeroU64;
 use proc_macro2::Span;
 use syn::{parse::*, ext::IdentExt};
 use syn::spanned::Spanned;
@@ -124,7 +125,8 @@ impl WriteCss for CssAtKeyword {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart => {}
+                    WriteCssSepCond::BlockStart
+                    | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -167,7 +169,8 @@ impl WriteCss for CssString {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart => {}
+                    WriteCssSepCond::BlockStart
+                    | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -364,6 +367,16 @@ impl CssNumber {
             Number::Float(_) => None,
         }
     }
+
+    pub fn positive_integer(&self) -> Option<NonZeroU64> {
+        self.integer().and_then(|x| {
+            if x <= 0 {
+                None
+            } else {
+                Some(unsafe { NonZeroU64::new_unchecked(x as u64) })
+            }
+        })
+    }
 }
 
 impl Spanned for CssNumber {
@@ -407,7 +420,8 @@ impl WriteCss for CssNumber {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart => {}
+                    WriteCssSepCond::BlockStart
+                    | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -457,7 +471,8 @@ impl WriteCss for CssPercentage {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart => {}
+                    WriteCssSepCond::BlockStart
+                    | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -529,7 +544,8 @@ impl WriteCss for CssDimension {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
                 match sc {
-                    WriteCssSepCond::BlockStart => {}
+                    WriteCssSepCond::BlockStart
+                    | WriteCssSepCond::Whitespace => {}
                     _ => {
                         write!(w, " ")?;
                     }
@@ -1158,18 +1174,6 @@ impl CssTokenStream {
         } else {
             Err(Error::new(x.span(), "Expected number"))
         }
-    }
-
-    #[inline]
-    pub fn expect_integer(&mut self) -> Result<i64> {
-        let x = self.next()?;
-        let span = x.span();
-        if let CssToken::Number(x) = x {
-            if let Some(x) = x.integer() {
-                return Ok(x);
-            }
-        }
-        Err(Error::new(span, "Expected integer"))
     }
 
     #[inline]

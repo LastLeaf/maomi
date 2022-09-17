@@ -1,12 +1,9 @@
-use std::num::NonZeroU32;
 use syn::{Error, spanned::Spanned};
 
-use maomi_skin::parser::{CssDimension, ParseStyleSheetValue, CssIdent, CssTokenStream};
+use maomi_skin::parser::{*, write_css::WriteCss};
 
 pub(crate) enum DomMediaCondValue {
-    AspectRatio(NonZeroU32, NonZeroU32),
-    MinAspectRatio(NonZeroU32, NonZeroU32),
-    MaxAspectRatio(NonZeroU32, NonZeroU32),
+    AspectRatio(CssNumber, CssNumber),
     Orientation(DomMediaOrientation),
     PrefersColorScheme(DomMediaColorScheme),
     Resolution(CssDimension),
@@ -30,19 +27,19 @@ pub(crate) enum DomMediaColorScheme {
     Dark,
 }
 
-fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(NonZeroU32, NonZeroU32)> {
+fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(CssNumber, CssNumber)> {
     let span = tokens.span();
-    let a = tokens.expect_integer()?;
-    if a < 0 || a > u32::MAX as i64 {
+    let a = tokens.expect_number()?;
+    if a.positive_integer().is_none() {
         return Err(Error::new(span, "Expected positive integer"));
     }
     let _ = tokens.expect_delim("/")?;
     let span = tokens.span();
-    let b = tokens.expect_integer()?;
-    if b < 0 || b > u32::MAX as i64 {
+    let b = tokens.expect_number()?;
+    if b.positive_integer().is_none() {
         return Err(Error::new(span, "Expected positive integer"));
     }
-    Ok((NonZeroU32::new(a as u32).unwrap(), NonZeroU32::new(b as u32).unwrap()))
+    Ok((a, b))
 }
 
 impl ParseStyleSheetValue for DomMediaCondValue {
@@ -51,13 +48,9 @@ impl ParseStyleSheetValue for DomMediaCondValue {
         tokens: &mut CssTokenStream,
     ) -> syn::Result<Self> where Self: Sized {
         let ret = match name.formal_name.as_str() {
-            "aspect_ratio" => {
+            "aspect_ratio" | "min_aspect_ratio" | "max_aspect_ratio" => {
                 let (a, b) = parse_aspect_ratio(tokens)?;
                 Self::AspectRatio(a, b)
-            }
-            "min_aspect_ratio" => {
-                let (a, b) = parse_aspect_ratio(tokens)?;
-                Self::MinAspectRatio(a, b)
             }
             // TODO
             _ => {
@@ -65,5 +58,55 @@ impl ParseStyleSheetValue for DomMediaCondValue {
             }
         };
         Ok(ret)
+    }
+}
+
+impl WriteCss for DomMediaCondValue {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut maomi_skin::parser::write_css::CssWriter<W>,
+    ) -> std::fmt::Result {
+        match self {
+            Self::AspectRatio(a, b) => {
+                a.write_css(cssw)?;
+                cssw.write_delim("/", true)?;
+                b.write_css(cssw)?;
+            }
+            _ => {
+                todo!() // TODO
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::test::{setup_env, parse_str};
+    use crate::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn aspect_ratio() {
+        setup_env(false, |env| {
+            assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(r#"
+                .c {
+                    @media (aspect-ratio: 16/0) {}
+                }
+            "#).is_err());
+            parse_str(r#"
+                @config name_mangling: off;
+                .c {
+                    @media (aspect-ratio: 16/9), (min-aspect-ratio: 4/3), (max-aspect-ratio: 2/1) {
+                        padding: 1px;
+                    }
+                }
+            "#);
+            assert_eq!(
+                env.read_output(),
+                r#"@media(aspect-ratio:16/9),(min-aspect-ratio:4/3),(max-aspect-ratio:2/1){.c{padding:1px}}"#,
+            );
+        });
     }
 }
