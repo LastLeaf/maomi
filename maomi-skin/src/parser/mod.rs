@@ -514,12 +514,12 @@ pub enum AtBlock<T: StyleSheetConstructor> {
 pub struct PseudoClass<T: StyleSheetConstructor> {
     pub colon_token: CssColon,
     pub ident: CssIdent,
-    pub content: PseudoClassContent<T>,
+    pub content: CssBrace<PseudoClassContent<T>>,
 }
 
 pub struct SubClass<T: StyleSheetConstructor> {
     pub partial_ident: CssIdent,
-    pub content: RuleContent<T>,
+    pub content: CssBrace<RuleContent<T>>,
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {

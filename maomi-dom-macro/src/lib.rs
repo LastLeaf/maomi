@@ -380,8 +380,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 write_main_rule_and_at_blocks(
                                     cssw,
                                     Some(&c.ident),
-                                    c.content.props.as_slice(),
-                                    c.content.at_blocks.as_slice(),
+                                    c.content.block.props.as_slice(),
+                                    c.content.block.at_blocks.as_slice(),
                                 )?;
                             }
                         }
@@ -401,7 +401,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 name_mangling,
                                 debug_mode,
                                 &full_ident,
-                                content,
+                                &c.content.block,
                                 cssw,
                             )?;
                         }
@@ -788,12 +788,12 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        padding: 1px;
                         :hover {
                             @media (aspect-ratio: 16/9) {
                                 margin: 2px;
                             }
                         }
+                        padding: 1px;
                         :active {
                             margin: 3px;
                         }
@@ -805,7 +805,7 @@ mod test {
                 r#".c{padding:1px}@media(aspect-ratio:16/9){.c:hover{margin:2px}}.c:active{margin:3px}"#,
             );
         });
-        setup_env(false, |env| {
+        setup_env(false, |_| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
                     .c {
@@ -827,7 +827,6 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        padding: 1px;
                         -d {
                             @media (aspect-ratio: 16/9) {
                                 margin: 2px;
@@ -836,6 +835,7 @@ mod test {
                                 margin: 3px;
                             }
                         }
+                        padding: 1px;
                     }
                 "#,
             );
