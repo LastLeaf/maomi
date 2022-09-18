@@ -447,15 +447,19 @@ impl Parse for StyleSheetImportItem {
 
 struct StyleSheetMacroItem {
     name: CssIdent,
-    mac: MacroDefinition,
+    mac: CssBrace<MacroDefinition>,
 }
 
-impl Parse for StyleSheetMacroItem {
-    fn parse(input: ParseStream) -> Result<Self> {
+impl ParseWithVars for StyleSheetMacroItem {
+    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
         Ok(Self {
             name: input.parse()?,
-            mac: input.parse()?,
+            mac: ParseWithVars::parse_with_vars(input, vars)?,
         })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.mac.for_each_ref(f);
     }
 }
 
@@ -755,9 +759,9 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         items.append(&mut ss.items);
                     }
                     "macro" => {
-                        let item: StyleSheetMacroItem = input.parse()?;
+                        let item = StyleSheetMacroItem::parse_with_vars(input, &vars)?;
                         // TODO add proper refs
-                        vars.macros.insert(item.name.formal_name.clone(), item.mac);
+                        vars.macros.insert(item.name.formal_name.clone(), item.mac.block);
                         items.push(StyleSheetItem::MacroDefinition {
                             at_keyword,
                             name: item.name,

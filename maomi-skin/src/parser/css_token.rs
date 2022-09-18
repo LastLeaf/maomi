@@ -791,6 +791,17 @@ impl<T> Repeat<T> {
     }
 }
 
+impl<T: Parse> Parse for Repeat<T> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut inner = vec![];
+        let refs = Vec::with_capacity(0);
+        while !input.is_empty() {
+            inner.push(input.parse()?);
+        }
+        Ok(Self { inner, refs })
+    }
+}
+
 impl ParseWithVars for Repeat<CssToken> {
     fn parse_with_vars(input: ParseStream, vars: &super::StyleSheetVars) -> Result<Self> {
         let mut inner = vec![];
@@ -886,6 +897,83 @@ impl Spanned for CssToken {
     }
 }
 
+impl Parse for CssToken {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let t = if input.peek(token::At) {
+            CssToken::AtKeyword(input.parse()?)
+        } else if input.peek(LitStr) {
+            CssToken::String(input.parse()?)
+        } else if input.peek(token::Colon) {
+            CssToken::Colon(input.parse()?)
+        } else if input.peek(token::Semi) {
+            CssToken::Semi(input.parse()?)
+        } else if input.peek(token::Comma) {
+            CssToken::Comma(input.parse()?)
+        } else if input.peek(token::Paren) {
+            CssToken::Paren(input.parse()?)
+        } else if input.peek(token::Bracket) {
+            CssToken::Bracket(input.parse()?)
+        } else if input.peek(token::Brace) {
+            CssToken::Brace(input.parse()?)
+        } else if input.peek(LitInt) {
+            let n: LitInt = input.parse()?;
+            let span = n.span();
+            let num = Number::Int(n.base10_parse()?);
+            if n.suffix().len() == 0 {
+                if input.peek(Token![%]) {
+                    let _: Token![%] = input.parse()?;
+                    CssToken::Percentage(CssPercentage { span, num })
+                } else {
+                    CssToken::Number(CssNumber { span, num })
+                }
+            } else {
+                CssToken::Dimension(CssDimension {
+                    span,
+                    num,
+                    unit: n.suffix().to_string(),
+                })
+            }
+        } else if input.peek(LitFloat) {
+            let n: LitFloat = input.parse()?;
+            let span = n.span();
+            let num = Number::Float(n.base10_parse()?);
+            if n.suffix().len() == 0 {
+                if input.peek(Token![%]) {
+                    let _: Token![%] = input.parse()?;
+                    CssToken::Percentage(CssPercentage { span, num })
+                } else {
+                    CssToken::Number(CssNumber { span, num })
+                }
+            } else {
+                CssToken::Dimension(CssDimension {
+                    span,
+                    num,
+                    unit: n.suffix().to_string(),
+                })
+            }
+        } else if let Ok(x) = input.parse::<CssIdent>() {
+            if input.peek(token::Paren) {
+                let content;
+                let paren_token = parenthesized!(content in input);
+                let block = content.parse()?;
+                CssToken::Function(CssFunction {
+                    span: x.span,
+                    formal_name: x.formal_name,
+                    paren_token,
+                    block,
+                })
+            } else {
+                CssToken::Ident(x)
+            }
+        } else if let Ok(x) = input.parse() {
+            CssToken::Delim(x)
+        } else {
+            return Err(input.error("Illegal CSS token"));
+        };
+        Ok(t)
+    }
+}
+
 impl WriteCss for CssToken {
     fn write_css<W: std::fmt::Write>(
         &self,
@@ -911,7 +999,7 @@ impl WriteCss for CssToken {
     }
 }
 
-fn parse_token(
+pub(crate) fn parse_token(
     ret: &mut Vec<CssToken>,
     refs: &mut Vec<CssIdent>,
     input: ParseStream,
@@ -933,16 +1021,6 @@ fn parse_token(
             ));
         }
         refs.push(name);
-    } else if input.peek(token::At) {
-        ret.push(CssToken::AtKeyword(input.parse()?));
-    } else if input.peek(LitStr) {
-        ret.push(CssToken::String(input.parse()?));
-    } else if input.peek(token::Colon) {
-        ret.push(CssToken::Colon(input.parse()?));
-    } else if input.peek(token::Semi) {
-        ret.push(CssToken::Semi(input.parse()?));
-    } else if input.peek(token::Comma) {
-        ret.push(CssToken::Comma(input.parse()?));
     } else if input.peek(token::Paren) {
         ret.push(CssToken::Paren(ParseWithVars::parse_with_vars(
             &input, vars,
@@ -955,42 +1033,6 @@ fn parse_token(
         ret.push(CssToken::Brace(ParseWithVars::parse_with_vars(
             &input, vars,
         )?));
-    } else if input.peek(LitInt) {
-        let n: LitInt = input.parse()?;
-        let span = n.span();
-        let num = Number::Int(n.base10_parse()?);
-        if n.suffix().len() == 0 {
-            if input.peek(Token![%]) {
-                let _: Token![%] = input.parse()?;
-                ret.push(CssToken::Percentage(CssPercentage { span, num }));
-            } else {
-                ret.push(CssToken::Number(CssNumber { span, num }));
-            }
-        } else {
-            ret.push(CssToken::Dimension(CssDimension {
-                span,
-                num,
-                unit: n.suffix().to_string(),
-            }));
-        }
-    } else if input.peek(LitFloat) {
-        let n: LitFloat = input.parse()?;
-        let span = n.span();
-        let num = Number::Float(n.base10_parse()?);
-        if n.suffix().len() == 0 {
-            if input.peek(Token![%]) {
-                let _: Token![%] = input.parse()?;
-                ret.push(CssToken::Percentage(CssPercentage { span, num }));
-            } else {
-                ret.push(CssToken::Number(CssNumber { span, num }));
-            }
-        } else {
-            ret.push(CssToken::Dimension(CssDimension {
-                span,
-                num,
-                unit: n.suffix().to_string(),
-            }));
-        }
     } else if let Ok(x) = input.parse::<CssIdent>() {
         if input.peek(Token![!]) {
             let mac = vars.macros.get(&x.formal_name).ok_or_else(|| {
@@ -1012,7 +1054,7 @@ fn parse_token(
             ret.push(CssToken::Ident(x));
         }
     } else if let Ok(x) = input.parse() {
-        ret.push(CssToken::Delim(x));
+        ret.push(x);
     } else {
         return Err(input.error("Illegal CSS token"));
     };

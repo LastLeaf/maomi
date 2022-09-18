@@ -528,6 +528,11 @@ mod test {
             env.write_import_file(
                 "a.css",
                 r#"
+                    @macro ma {
+                        () => {
+                            2px;
+                        };
+                    }
                     @const $a: 1px;                
                     .imported {
                         padding: $a;
@@ -538,16 +543,77 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     @import "/a.css";
-                    @const $b: $a 2px;
+                    @const $b: $a ma!();
                     .self {
-                        padding: $b $a;
+                        padding: $b $a ma!();
                         margin: $b;
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#".imported{padding:1px}.self{padding:1px 2px 1px;margin:1px 2px}"#,
+                r#".imported{padding:1px}.self{padding:1px 2px 1px 2px;margin:1px 2px}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn value_position_macro() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    @const $ok: 2px;
+                    @macro ma {
+                        ($$ $t:tt) => { $ok $t };
+                        ($($t:tt),*) => { $($t)* };
+                    }
+                    @const $p: ma!($ 1px);
+                    .c {
+                        padding: $p;
+                        margin: ma!(1px, 2px, 3px);
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:2px 1px;margin:1px 2px 3px}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn property_position_macro() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    @macro ma {
+                        ($k:ident = $($v:tt)*) => {
+                            $k: $($v)*;
+                        };
+                    }
+                    @macro mb {
+                        ($($i:value);*) => {
+                            $(
+                                ma!($i)
+                            );*
+                        };
+                    }
+                    .c {
+                        ma![padding: 1px];
+                        margin: 2px;
+                        :hover {
+                            mb!{ padding = 3px; margin = 4px }
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1px;margin:2px}.c:hover{padding:3px;margin:4px}"#,
             );
         });
     }
