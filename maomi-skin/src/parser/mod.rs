@@ -73,14 +73,19 @@ pub trait StyleSheetConstructor {
     type FontFacePropertyValue: ParseStyleSheetValue;
     type MediaCondValue: ParseStyleSheetValue;
 
-    fn new() -> Self where Self: Sized;
+    fn new() -> Self
+    where
+        Self: Sized;
 
     fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<()>;
 
     fn define_key_frames(
         &mut self,
         name: &CssIdent,
-        content: &Vec<(CssPercentage, CssBrace<Repeat<Property<Self::PropertyValue>>>)>,
+        content: &Vec<(
+            CssPercentage,
+            CssBrace<Repeat<Property<Self::PropertyValue>>>,
+        )>,
     ) -> CssIdent;
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
@@ -184,24 +189,25 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
         } else {
             None
         };
-        let (media_type, has_media_feature) = if only.is_some() || (!input.peek(kw::not) && input.peek(Ident)) {
-            let ident: CssIdent = input.parse()?;
-            let media_type = match ident.formal_name.as_str() {
-                "all" => MediaType::All,
-                "screen" => MediaType::Screen,
-                "print" => MediaType::Print,
-                _ => {
-                    return Err(Error::new(ident.span(), "Unknown media type"));
+        let (media_type, has_media_feature) =
+            if only.is_some() || (!input.peek(kw::not) && input.peek(Ident)) {
+                let ident: CssIdent = input.parse()?;
+                let media_type = match ident.formal_name.as_str() {
+                    "all" => MediaType::All,
+                    "screen" => MediaType::Screen,
+                    "print" => MediaType::Print,
+                    _ => {
+                        return Err(Error::new(ident.span(), "Unknown media type"));
+                    }
+                };
+                let has_media_feature = input.peek(kw::and);
+                if has_media_feature {
+                    input.parse::<CssIdent>()?;
                 }
+                (media_type, has_media_feature)
+            } else {
+                (MediaType::All, true)
             };
-            let has_media_feature = input.peek(kw::and);
-            if has_media_feature {
-                input.parse::<CssIdent>()?;
-            }
-            (media_type, has_media_feature)
-        } else {
-            (MediaType::All, true)
-        };
         let mut cond_list = vec![];
         if has_media_feature {
             loop {
@@ -328,7 +334,8 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
                 }];
                 loop {
                     let _: Ident = input.parse()?;
-                    let item: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars)?;
+                    let item: CssParen<SupportsQuery<V>> =
+                        ParseWithVars::parse_with_vars(input, vars)?;
                     if let Self::Sub(item) = item.block {
                         list.push(*item);
                     } else {
@@ -761,7 +768,8 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                     "macro" => {
                         let item = StyleSheetMacroItem::parse_with_vars(input, &vars)?;
                         // TODO add proper refs
-                        vars.macros.insert(item.name.formal_name.clone(), item.mac.block);
+                        vars.macros
+                            .insert(item.name.formal_name.clone(), item.mac.block);
                         items.push(StyleSheetItem::MacroDefinition {
                             at_keyword,
                             name: item.name,

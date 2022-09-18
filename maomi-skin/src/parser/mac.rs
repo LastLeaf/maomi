@@ -82,7 +82,10 @@ impl Parse for MacroPat {
                     "ident" => MacroPatTy::Ident,
                     "value" => MacroPatTy::Value,
                     _ => {
-                        return Err(Error::new(ty_name.span(), "Illegal var type (expected `tt` `ident` or `value`)"));
+                        return Err(Error::new(
+                            ty_name.span(),
+                            "Illegal var type (expected `tt` `ident` or `value`)",
+                        ));
                     }
                 };
                 MacroPat::Var {
@@ -158,27 +161,32 @@ impl ParseWithVars for MacroContent {
             let dollar_token = input.parse()?;
             let var_name: CssIdent = input.parse()?;
             if let Some(items) = vars.consts.get(&var_name.formal_name) {
-                MacroContent::ConstRef { dollar_token, var_name, tokens: items.clone() }
+                MacroContent::ConstRef {
+                    dollar_token,
+                    var_name,
+                    tokens: items.clone(),
+                }
             } else if let Some(ident) = vars.keyframes.get(&var_name.formal_name).cloned() {
-                MacroContent::KeyframesRef { dollar_token, var_name, ident }
+                MacroContent::KeyframesRef {
+                    dollar_token,
+                    var_name,
+                    ident,
+                }
             } else {
                 return Err(Error::new(
                     var_name.span(),
-                    format!("No variable, const or keyframes named {:?}", var_name.formal_name),
+                    format!(
+                        "No variable, const or keyframes named {:?}",
+                        var_name.formal_name
+                    ),
                 ));
             }
         } else if input.peek(token::Paren) {
-            MacroContent::Paren(ParseWithVars::parse_with_vars(
-                &input, vars,
-            )?)
+            MacroContent::Paren(ParseWithVars::parse_with_vars(&input, vars)?)
         } else if input.peek(token::Bracket) {
-            MacroContent::Bracket(ParseWithVars::parse_with_vars(
-                &input, vars,
-            )?)
+            MacroContent::Bracket(ParseWithVars::parse_with_vars(&input, vars)?)
         } else if input.peek(token::Brace) {
-            MacroContent::Brace(ParseWithVars::parse_with_vars(
-                &input, vars,
-            )?)
+            MacroContent::Brace(ParseWithVars::parse_with_vars(&input, vars)?)
         } else if let Ok(x) = input.parse::<CssIdent>() {
             if input.peek(Token![!]) {
                 MacroContent::MacroRef {
@@ -209,7 +217,8 @@ impl ParseWithVars for MacroContent {
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
         match self {
             MacroContent::VarRef { .. } => {}
-            MacroContent::ConstRef { var_name, .. } | MacroContent::KeyframesRef { var_name, .. } => {
+            MacroContent::ConstRef { var_name, .. }
+            | MacroContent::KeyframesRef { var_name, .. } => {
                 f(var_name);
             }
             MacroContent::MacroRef { name, .. } => {

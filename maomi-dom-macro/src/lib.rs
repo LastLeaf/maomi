@@ -70,11 +70,7 @@ enum CssOutMode {
     Release,
 }
 
-fn generate_css_name(
-    full_ident: &CssIdent,
-    name_mangling: bool,
-    debug_mode: bool,
-) -> String {
+fn generate_css_name(full_ident: &CssIdent, name_mangling: bool, debug_mode: bool) -> String {
     let class_id_start = nanoid!(1, &CLASS_START_CHARS);
     let class_id = nanoid!(10, &CLASS_CHARS);
     if !name_mangling {
@@ -98,7 +94,10 @@ impl StyleSheetConstructor for DomStyleSheet {
     type FontFacePropertyValue = DomFontFaceProperty;
     type MediaCondValue = DomMediaCondValue;
 
-    fn new() -> Self where Self: Sized {
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
         Self {
             name_mangling: false,
         }
@@ -130,11 +129,17 @@ impl StyleSheetConstructor for DomStyleSheet {
     fn define_key_frames(
         &mut self,
         name: &CssIdent,
-        _: &Vec<(CssPercentage, CssBrace<Repeat<Property<Self::PropertyValue>>>)>,
+        _: &Vec<(
+            CssPercentage,
+            CssBrace<Repeat<Property<Self::PropertyValue>>>,
+        )>,
     ) -> CssIdent {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
         let formal_name = generate_css_name(name, self.name_mangling, debug_mode);
-        CssIdent { span: name.span, formal_name }
+        CssIdent {
+            span: name.span,
+            formal_name,
+        }
     }
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
@@ -240,7 +245,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 item.write_css(cssw)?;
                             }
                             Ok(())
-                        }).unwrap();
+                        })
+                        .unwrap();
                         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
                     }
                     write_proc_macro_def(

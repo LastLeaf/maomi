@@ -46,13 +46,14 @@ impl ParseStyleSheetValue for DomMediaCondValue {
                 let (a, b) = parse_aspect_ratio(tokens)?;
                 Self::AspectRatio(a, b)
             }
-            "orientation" => {
-                Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
-                    "landscape" => DomMediaOrientation::Landscape,
-                    "portrait" => DomMediaOrientation::Portrait,
-                    _ => Err(Error::new(name.span(), "Expected `landscape` or `portrait`"))?,
-                })
-            }
+            "orientation" => Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
+                "landscape" => DomMediaOrientation::Landscape,
+                "portrait" => DomMediaOrientation::Portrait,
+                _ => Err(Error::new(
+                    name.span(),
+                    "Expected `landscape` or `portrait`",
+                ))?,
+            }),
             "prefers_color_scheme" => {
                 Self::PrefersColorScheme(match tokens.expect_ident()?.formal_name.as_str() {
                     "light" => DomMediaColorScheme::Light,
