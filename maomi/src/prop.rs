@@ -76,19 +76,25 @@ impl<S: ?Sized + PartialEq, T: PropAsRef<S>> PropertyUpdate<S> for Prop<T> {
     }
 }
 
+/// The list property
+///
+/// List properties can be updated in `prop:item_name={}` form,
+/// while the `item_name` is a type that implements `ListPropertyItem` .
+pub trait ListPropertyInit {
+    /// Must be `bool` if used in components
+    type UpdateContext;
+
+    /// The initiator with item count provided
+    fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext) where Self: Sized;
+}
+
 /// The list property updater
 ///
 /// List properties can be updated in `prop:item_name={}` form,
 /// while the `item_name` is a type that implements `ListPropertyItem` .
-pub trait ListPropertyUpdate<S: ?Sized> {
-    /// Must be `bool` if used in components
-    type UpdateContext;
-
+pub trait ListPropertyUpdate<S: ?Sized>: ListPropertyInit {
     /// The updater return value
-    type ItemValue;
-
-    /// The initiator with item count provided
-    fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext);
+    type ItemValue: ?Sized;
 
     /// The updater
     ///
@@ -107,18 +113,19 @@ pub trait ListPropertyItem<L: ListPropertyUpdate<S>, S: ?Sized> {
     type Value: ?Sized;
 
     /// Generate the item value
-    fn item_value(dest: &mut L, index: usize, s: &S, ctx: &mut L::UpdateContext) -> Self::Value;
+    fn item_value<'a>(dest: &mut L, index: usize, s: &'a S, ctx: &mut L::UpdateContext) -> &'a Self::Value;
 }
 
 /// A list property that can be used in templates
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ListProp<T: Default> {
-    inner: Vec<T>,
+    inner: Box<[T]>,
 }
 
 impl<T: Default> ListProp<T> {
     pub fn new() -> Self {
         Self {
-            inner: Vec::with_capacity(0),
+            inner: Box::new([]),
         }
     }
 }
@@ -143,14 +150,19 @@ impl<T: Default> Borrow<[T]> for ListProp<T> {
     }
 }
 
-impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyUpdate<S> for ListProp<T> {
+impl<T: Default> ListPropertyInit for ListProp<T> {
     type UpdateContext = bool;
-    type ItemValue = ();
 
     #[inline]
     fn init_list(dest: &mut Self, count: usize, _ctx: &mut bool) {
-        dest.inner.resize_with(count, T::default);
+        let mut v = Vec::with_capacity(count);
+        v.resize_with(count, T::default);
+        dest.inner = v.into_boxed_slice();
     }
+}
+
+impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyUpdate<S> for ListProp<T> {
+    type ItemValue = ();
 
     #[inline]
     fn compare_and_set_item_ref<U: ListPropertyItem<Self, S, Value = ()>>(
@@ -171,11 +183,12 @@ impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyItem<ListProp
     type Value = ();
 
     #[inline]
-    fn item_value(dest: &mut Self, index: usize, src: &S, ctx: &mut bool) -> Self::Value {
+    fn item_value<'a>(dest: &mut Self, index: usize, src: &'a S, ctx: &mut bool) -> &'a Self::Value {
         if dest.inner[index].property_as_ref() == src {
-            return;
+            return &();
         }
         dest.inner[index] = PropAsRef::property_to_owned(src);
         *ctx = true;
+        &()
     }
 }

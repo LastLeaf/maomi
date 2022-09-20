@@ -201,6 +201,7 @@ impl TouchTracker {
 /// The tap event detail
 ///
 /// Tap events are generated from DOM `touch*` or `mouse*` events automatically.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TapEvent {
     propagation_stopped: bool,
     default_prevented: bool,

@@ -7,6 +7,8 @@ members = [
     "maomi-dom",
     "maomi-dom-macro",
     "maomi-dom-template",
+    "dom-bench/keyed",
+    "dom-bench/keyed-comp",
 ]
 
 [profile.release]

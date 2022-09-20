@@ -48,7 +48,7 @@ fn get_import_content(src: &CssString) -> Result<String> {
     let mut target = CSS_IMPORT_DIR.with(|import_dir| match import_dir {
         None => Err(Error::new(
             src.span(),
-            "No MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
+            "no MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
         )),
         Some(s) => Ok(s.clone()),
     })?;
@@ -64,7 +64,7 @@ fn get_import_content(src: &CssString) -> Result<String> {
         }
     }
     std::fs::read_to_string(&target)
-        .map_err(|_| Error::new(src.span(), &format!("Cannot open file {:?}", target)))
+        .map_err(|_| Error::new(src.span(), &format!("cannot open file {:?}", target)))
 }
 
 /// Handlers for CSS details (varies between backends)
@@ -101,8 +101,22 @@ pub trait ParseStyleSheetValue {
 }
 
 pub trait ParseWithVars: Sized {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self>;
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self>;
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent));
+}
+
+pub struct ScopeVars<'a> {
+    macro_pat_vars: Option<&'a mut mac::MacroPatVars>,
+}
+
+impl<'a> ScopeVars<'a> {
+    fn new() -> Self {
+        Self { macro_pat_vars: None }
+    }
 }
 
 /// A CSS property (name-value pair)
@@ -121,7 +135,7 @@ impl<V: ParseStyleSheetValue> Property<V> {
         vars: &StyleSheetVars,
     ) -> Result<Self> {
         let colon_token = input.parse()?;
-        let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars)?;
+        let tokens = ParseTokenUntilSemi::parse_with_vars(input, vars, &mut ScopeVars::new())?;
         let (tokens, refs) = tokens.get();
         let mut stream = CssTokenStream::new(input.span(), tokens);
         let value = V::parse_value(&name, &mut stream)?;
@@ -137,7 +151,11 @@ impl<V: ParseStyleSheetValue> Property<V> {
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
         let name = input.parse()?;
         Self::parse_property_with_name(name, input, vars)
     }
@@ -183,7 +201,11 @@ pub struct MediaCond<V> {
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
         let only = if input.peek(kw::only) {
             Some(input.parse()?)
         } else {
@@ -197,7 +219,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                     "screen" => MediaType::Screen,
                     "print" => MediaType::Print,
                     _ => {
-                        return Err(Error::new(ident.span(), "Unknown media type"));
+                        return Err(Error::new(ident.span(), "unknown media type"));
                     }
                 };
                 let has_media_feature = input.peek(kw::and);
@@ -222,7 +244,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                     let input = content;
                     let name: CssIdent = input.parse()?;
                     let colon_token = input.parse()?;
-                    let (tokens, refs) = Repeat::parse_with_vars(&input, vars)?.get();
+                    let (tokens, refs) = Repeat::parse_with_vars(&input, vars, scope)?.get();
                     let mut stream = CssTokenStream::new(input.span(), tokens);
                     let cond = V::parse_value(&name, &mut stream)?;
                     stream.expect_ended()?;
@@ -311,18 +333,22 @@ pub struct SupportsCond<V> {
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
         let la = input.lookahead1();
         let ret = if la.peek(kw::not) {
             let _: kw::not = input.parse()?;
-            let item: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars)?;
+            let item: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars, scope)?;
             if let Self::Sub(item) = item.block {
                 Self::Not(item)
             } else {
                 Self::Not(Box::new(item))
             }
         } else if la.peek(token::Paren) {
-            let first: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars)?;
+            let first: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars, scope)?;
             let la = input.lookahead1();
             let is_and = la.peek(kw::and);
             let is_or = la.peek(kw::or);
@@ -335,7 +361,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
                 loop {
                     let _: Ident = input.parse()?;
                     let item: CssParen<SupportsQuery<V>> =
-                        ParseWithVars::parse_with_vars(input, vars)?;
+                        ParseWithVars::parse_with_vars(input, vars, scope)?;
                     if let Self::Sub(item) = item.block {
                         list.push(*item);
                     } else {
@@ -345,7 +371,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
                     let next_is_or = input.peek(kw::and);
                     if next_is_and || next_is_or {
                         if is_and && next_is_or || is_or && next_is_and {
-                            return Err(input.error("Cannot mix `and` and `or`"));
+                            return Err(input.error("cannot mix `and` and `or`"));
                         }
                     } else {
                         break;
@@ -366,7 +392,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
         } else if la.peek(Ident) || la.peek(token::Sub) {
             let name = input.parse()?;
             let colon_token = input.parse()?;
-            let (tokens, refs) = Repeat::parse_with_vars(&input, vars)?.get();
+            let (tokens, refs) = Repeat::parse_with_vars(&input, vars, scope)?.get();
             let mut stream = CssTokenStream::new(input.span(), tokens);
             let value = V::parse_value(&name, &mut stream)?;
             stream.expect_ended()?;
@@ -458,10 +484,14 @@ struct StyleSheetMacroItem {
 }
 
 impl ParseWithVars for StyleSheetMacroItem {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
         Ok(Self {
             name: input.parse()?,
-            mac: ParseWithVars::parse_with_vars(input, vars)?,
+            mac: ParseWithVars::parse_with_vars(input, vars, scope)?,
         })
     }
 
@@ -482,12 +512,16 @@ struct StyleSheetConstItem {
 }
 
 impl ParseWithVars for StyleSheetConstItem {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
         Ok(Self {
             dollar_token: input.parse()?,
             name: input.parse()?,
             colon_token: input.parse()?,
-            content: ParseTokenUntilSemi::parse_with_vars(input, vars)?,
+            content: ParseTokenUntilSemi::parse_with_vars(input, vars, scope)?,
             semi_token: input.parse()?,
         })
     }
@@ -534,8 +568,12 @@ pub struct SubClass<T: StyleSheetConstructor> {
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
-        let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars)?;
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
+        let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars, scope)?;
         let RuleContent {
             props,
             at_blocks,
@@ -545,13 +583,13 @@ impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
         if let Some(x) = pseudo_classes.get(0) {
             return Err(Error::new(
                 x.ident.span,
-                "Pseudo classes are not allowed inside pseudo classes",
+                "pseudo classes are not allowed inside pseudo classes",
             ));
         }
         if let Some(x) = sub_classes.get(0) {
             return Err(Error::new(
                 x.partial_ident.span,
-                "Sub classes are not allowed inside pseudo classes",
+                "sub classes are not allowed inside pseudo classes",
             ));
         }
         Ok(Self { props, at_blocks })
@@ -579,7 +617,11 @@ impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
-    fn parse_with_vars(input: ParseStream, vars: &StyleSheetVars) -> Result<Self> {
+    fn parse_with_vars(
+        input: ParseStream,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self> {
         let mut props = vec![];
         let mut at_blocks = vec![];
         let mut pseudo_classes = vec![];
@@ -597,12 +639,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                     if ident.formal_name.chars().nth(0) != Some('_') {
                         return Err(Error::new(
                             ident.span,
-                            "Sub class names must be started with `_` or `-`",
+                            "sub class names must be started with `_` or `-`",
                         ));
                     }
                     sub_classes.push(SubClass {
                         partial_ident: ident,
-                        content: ParseWithVars::parse_with_vars(input, vars)?,
+                        content: ParseWithVars::parse_with_vars(input, vars, scope)?,
                     });
                 } else {
                     return Err(la.error());
@@ -613,7 +655,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                     "media" => {
                         let mut expr = vec![];
                         loop {
-                            expr.push(ParseWithVars::parse_with_vars(input, vars)?);
+                            expr.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
                             if !input.peek(Token![,]) {
                                 break;
                             }
@@ -622,7 +664,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                         at_blocks.push(AtBlock::Media {
                             at_keyword,
                             expr,
-                            items: ParseWithVars::parse_with_vars(input, vars)?,
+                            items: ParseWithVars::parse_with_vars(input, vars, scope)?,
                         });
                     }
                     "supports" => {
@@ -634,12 +676,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                         }
                         at_blocks.push(AtBlock::Supports {
                             at_keyword,
-                            expr: ParseWithVars::parse_with_vars(input, vars)?,
-                            items: ParseWithVars::parse_with_vars(input, vars)?,
+                            expr: ParseWithVars::parse_with_vars(input, vars, scope)?,
+                            items: ParseWithVars::parse_with_vars(input, vars, scope)?,
                         });
                     }
                     _ => {
-                        return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
+                        return Err(Error::new(at_keyword.span(), "unknown at-keyword"));
                     }
                 }
             } else if la.peek(token::Colon) {
@@ -648,7 +690,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                 pseudo_classes.push(PseudoClass {
                     colon_token,
                     ident,
-                    content: ParseWithVars::parse_with_vars(input, vars)?,
+                    content: ParseWithVars::parse_with_vars(input, vars, scope)?,
                 });
             } else {
                 return Err(la.error());
@@ -738,6 +780,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
 
         // parse items
         while !input.is_empty() {
+            let vars = &mut vars;
             let la = input.lookahead1();
             if la.peek(token::At) {
                 let at_keyword: CssAtKeyword = input.parse()?;
@@ -753,7 +796,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                             Error::new(
                                 at_keyword.span(),
                                 format_args!(
-                                    "When parsing {}:{}:{}: {}",
+                                    "when parsing {}:{}:{}: {}",
                                     item.src.value(),
                                     start.line,
                                     start.column,
@@ -766,19 +809,22 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         items.append(&mut ss.items);
                     }
                     "macro" => {
-                        let item = StyleSheetMacroItem::parse_with_vars(input, &vars)?;
+                        let item = StyleSheetMacroItem::parse_with_vars(input, vars, &mut ScopeVars::new())?;
                         // TODO add proper refs
-                        vars.macros
-                            .insert(item.name.formal_name.clone(), item.mac.block);
+                        if vars.macros.insert(item.name.formal_name.clone(), item.mac.block).is_some() {
+                            return Err(Error::new(item.name.span, format!("macro named `{}` has already defined", item.name.formal_name)));
+                        }
                         items.push(StyleSheetItem::MacroDefinition {
                             at_keyword,
                             name: item.name,
                         })
                     }
                     "const" => {
-                        let item = StyleSheetConstItem::parse_with_vars(&input, &vars)?;
+                        let item = StyleSheetConstItem::parse_with_vars(&input, vars, &mut ScopeVars::new())?;
                         let (tokens, refs) = item.content.get();
-                        vars.consts.insert(item.name.formal_name.clone(), tokens);
+                        if vars.consts.insert(item.name.formal_name.clone(), tokens).is_some() {
+                            return Err(Error::new(item.name.span, format!("const named `{}` has already defined", item.name.formal_name)));
+                        }
                         items.push(StyleSheetItem::ConstDefinition {
                             at_keyword,
                             name: item.name,
@@ -789,7 +835,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         let name: CssIdent = input.parse()?;
                         let _: CssColon = input.parse()?;
                         let (tokens, _refs) =
-                            ParseTokenUntilSemi::parse_with_vars(input, &vars)?.get();
+                            ParseTokenUntilSemi::parse_with_vars(input, vars, &mut ScopeVars::new())?.get();
                         let mut stream = CssTokenStream::new(input.span(), tokens);
                         ssc.set_config(&name, &mut stream)?;
                         stream.expect_ended()?;
@@ -815,14 +861,14 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                                         span: s.span(),
                                         num: Number::Int(100),
                                     },
-                                    _ => return Err(Error::new(s.span(), "Illegal ident")),
+                                    _ => return Err(Error::new(s.span(), "illegal ident")),
                                 }
                             } else if la.peek(Lit) {
                                 input.parse()?
                             } else {
                                 return Err(la.error());
                             };
-                            let props = ParseWithVars::parse_with_vars(&input, &vars)?;
+                            let props = ParseWithVars::parse_with_vars(&input, vars, &mut ScopeVars::new())?;
                             content.push((percentage, props));
                         }
                         let def = ssc.define_key_frames(&name, &content);
@@ -837,7 +883,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         })
                     }
                     _ => {
-                        return Err(Error::new(at_keyword.span(), "Unknown at-keyword"));
+                        return Err(Error::new(at_keyword.span(), "unknown at-keyword"));
                     }
                 }
             } else if la.peek(token::Dot) {
@@ -846,7 +892,7 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                 items.push(StyleSheetItem::Rule {
                     dot_token,
                     ident,
-                    content: ParseWithVars::parse_with_vars(input, &vars)?,
+                    content: ParseWithVars::parse_with_vars(input, vars, &mut ScopeVars::new())?,
                 })
             } else {
                 return Err(la.error());

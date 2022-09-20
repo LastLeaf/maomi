@@ -68,6 +68,10 @@ pub(crate) enum ColdEventItem {
         Box<dyn 'static + Fn(&mut MouseEvent)>,
         Closure<dyn Fn(web_sys::MouseEvent)>,
     ),
+    Click(
+        Box<dyn 'static + Fn(&mut MouseEvent)>,
+        Closure<dyn Fn(web_sys::MouseEvent)>,
+    ),
     Scroll(
         Box<dyn 'static + Fn(&mut ScrollEvent)>,
         Closure<dyn Fn(web_sys::Event)>,
@@ -114,6 +118,7 @@ impl ColdEventItem {
             Self::MouseMove(_, cb) => ("mousemove", cb.as_ref()),
             Self::MouseEnter(_, cb) => ("mouseenter", cb.as_ref()),
             Self::MouseLeave(_, cb) => ("mouseleave", cb.as_ref()),
+            Self::Click(_, cb) => ("click", cb.as_ref()),
             Self::Scroll(_, cb) => ("scroll", cb.as_ref()),
             Self::AnimationStart(_, cb) => ("animationstart", cb.as_ref()),
             Self::AnimationIteration(_, cb) => ("animationiteration", cb.as_ref()),

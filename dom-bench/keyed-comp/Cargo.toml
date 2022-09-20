@@ -1,0 +1,23 @@
+[package]
+name = "maomi-dom-bench-keyed-comp"
+version = "0.4.0"
+authors = ["LastLeaf <bqfu@163.com>"]
+license = "MIT"
+description = "A rust wasm framework for building pages with components"
+homepage = "https://github.com/LastLeaf/maomi"
+documentation = "https://github.com/LastLeaf/maomi"
+repository = "https://github.com/LastLeaf/maomi"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+maomi = { version = "=0.4.0", path = "../../maomi" }
+maomi-dom = { version = "=0.4.0", path = "../../maomi-dom" }
+log = "0.4"
+env_logger = "0.9"
+console_log = { version = "0.2", features = ["color"] }
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
+getrandom = { version = "0.2.7", features = ["js"] }

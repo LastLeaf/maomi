@@ -162,13 +162,25 @@ impl StyleSheetConstructor for DomStyleSheet {
                 impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomClassList, bool> for #struct_name {
                     type Value = &'static str;
                     #[inline(always)]
-                    fn item_value(
+                    fn item_value<'a>(
                         _dest: &mut maomi_dom::class_list::DomClassList,
                         _index: usize,
-                        _s: &bool,
-                        _ctx: &mut <maomi_dom::class_list::DomClassList as maomi::prop::ListPropertyUpdate<bool>>::UpdateContext,
-                    ) -> Self::Value {
-                        #class_name
+                        _s: &'a bool,
+                        _ctx: &mut <maomi_dom::class_list::DomClassList as maomi::prop::ListPropertyInit>::UpdateContext,
+                    ) -> &'a Self::Value {
+                        &#class_name
+                    }
+                }
+                impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomExternalClasses, bool> for #struct_name {
+                    type Value = &'static str;
+                    #[inline(always)]
+                    fn item_value<'a>(
+                        _dest: &mut maomi_dom::class_list::DomExternalClasses,
+                        _index: usize,
+                        _s: &'a bool,
+                        _ctx: &mut <maomi_dom::class_list::DomExternalClasses as maomi::prop::ListPropertyInit>::UpdateContext,
+                    ) -> &'a Self::Value {
+                        &#class_name
                     }
                 }
             });
@@ -604,7 +616,7 @@ mod test {
                     @macro mb {
                         ($($i:value);*) => {
                             $(
-                                ma!($i)
+                                ma!($i);
                             );*
                         };
                     }

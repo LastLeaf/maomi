@@ -26,7 +26,7 @@ impl TransitionEvent {
 fn trigger_ev<T: DomEventRegister<Detail = TransitionEvent>>(dom_event: web_sys::TransitionEvent) {
     let target = dom_event
         .target()
-        .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref()));
+        .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), false));
     if let Some(n) = target {
         if let DomGeneralElement::Element(x) = &mut *n.borrow_mut() {
             T::trigger(x, &mut TransitionEvent { dom_event });

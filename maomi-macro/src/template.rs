@@ -739,7 +739,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) = list_prop_count.iter().unzip();
                 let attrs_list_init = quote_spanned! {span=>
                     #(
-                        maomi::prop::ListPropertyUpdate::init_list(
+                        maomi::prop::ListPropertyInit::init_list(
                             &mut __m_child.#list_prop_name,
                             #list_prop_count,
                             __m_update_ctx,

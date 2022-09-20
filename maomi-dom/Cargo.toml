@@ -48,6 +48,8 @@ features = [
   "KeyboardEvent",
   "AnimationEvent",
   "TransitionEvent",
+  "HtmlButtonElement",
+  "HtmlAnchorElement",
 ]
 
 [dev-dependencies]

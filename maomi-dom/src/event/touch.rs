@@ -75,7 +75,7 @@ fn add_touch_event_listener<T: DomEventRegister<Detail = TouchEvent>>(
             let touch = changed_touches.get(index).unwrap();
             let target = touch
                 .target()
-                .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref()));
+                .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), true));
             if let Some(target) = target {
                 let mut single_touch = TouchEvent {
                     propagation_stopped: false,
@@ -120,7 +120,7 @@ fn add_mouse_event_listener(
     let cb = Closure::new(move |ev: web_sys::MouseEvent| {
         let target = ev
             .target()
-            .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref()));
+            .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), true));
         if let Some(target) = target {
             final_fn(target, ev);
         }

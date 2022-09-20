@@ -4,6 +4,7 @@ use maomi::{
     node::{OwnerWeak, SlotChange},
     BackendContext,
 };
+use wasm_bindgen::JsCast;
 
 use crate::{
     base_element::*, class_list::DomClassList, event::*, tree::*, DomBackend, DomGeneralElement,
@@ -170,12 +171,19 @@ fn set_id(elem: &web_sys::HtmlElement, s: &str) {
     web_sys::Element::set_id(&elem, s)
 }
 
+// TODO add common elements and attributes
+
+fn set_aria_hidden(elem: &web_sys::HtmlElement, s: &str) {
+    elem.set_attribute("aria-hidden", s).ok();
+}
+
 macro_rules! define_element_with_shared_props {
     ($tag_name:ident, { $($prop:ident: $prop_type:ident: $f:expr,)* }, { $($event:ident: $event_type:ty,)* }) => {
         define_element!($tag_name, {
             id: DomStrAttr: set_id,
             title: DomStrAttr: web_sys::HtmlElement::set_title,
             hidden: DomBoolAttr: web_sys::HtmlElement::set_hidden,
+            aria_hidden: DomStrAttr: set_aria_hidden,
             $($prop: $prop_type: $f,)*
         }, {
             touch_start: DomEvent<crate::event::touch::TouchStart>,
@@ -187,6 +195,7 @@ macro_rules! define_element_with_shared_props {
             mouse_move: DomEvent<crate::event::mouse::MouseMove>,
             mouse_enter: DomEvent<crate::event::mouse::MouseEnter>,
             mouse_leave: DomEvent<crate::event::mouse::MouseLeave>,
+            click: DomEvent<crate::event::mouse::Click>,
             tap: DomEvent<crate::event::tap::Tap>,
             long_tap: DomEvent<crate::event::tap::LongTap>,
             cancel_tap: DomEvent<crate::event::tap::CancelTap>,
@@ -205,3 +214,31 @@ macro_rules! define_element_with_shared_props {
 
 define_element_with_shared_props!(div, {}, {});
 define_element_with_shared_props!(span, {}, {});
+define_element_with_shared_props!(h1, {}, {});
+define_element_with_shared_props!(h2, {}, {});
+define_element_with_shared_props!(h3, {}, {});
+define_element_with_shared_props!(h4, {}, {});
+define_element_with_shared_props!(h5, {}, {});
+define_element_with_shared_props!(h6, {}, {});
+define_element_with_shared_props!(table, {}, {});
+define_element_with_shared_props!(thead, {}, {});
+define_element_with_shared_props!(tbody, {}, {});
+define_element_with_shared_props!(tfoot, {}, {});
+define_element_with_shared_props!(tr, {}, {});
+define_element_with_shared_props!(td, {}, {});
+
+fn set_a_href(elem: &web_sys::HtmlElement, s: &str) {
+    web_sys::HtmlAnchorElement::set_href(elem.unchecked_ref(), s)
+}
+
+define_element_with_shared_props!(a, {
+    href: DomStrAttr: set_a_href,
+}, {});
+
+fn set_button_type(elem: &web_sys::HtmlElement, s: &str) {
+    web_sys::HtmlButtonElement::set_type(elem.unchecked_ref(), s)
+}
+
+define_element_with_shared_props!(button, {
+    r#type: DomStrAttr: set_button_type,
+}, {});

@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "js-framework-benchmark-maomi",
+  "version": "0.0.1",
+  "main": "index.js",
+  "js-framework-benchmark": {
+    "frameworkVersion": ""
+  },
+  "scripts": {
+    "build-prod": "wasm-pack build --target no-modules"
+  }
+}

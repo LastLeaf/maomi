@@ -112,7 +112,7 @@ impl BubbleEvent for MouseEvent {
 fn trigger_ev<T: DomEventRegister<Detail = MouseEvent>>(dom_event: web_sys::MouseEvent) {
     let target = dom_event
         .target()
-        .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref()));
+        .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), false));
     if let Some(n) = target {
         if let DomGeneralElement::Element(x) = &mut *n.borrow_mut() {
             T::trigger(
@@ -164,5 +164,13 @@ cold_event!(
     MouseEvent,
     Closure::new(move |dom_event: web_sys::MouseEvent| {
         trigger_ev::<MouseLeave>(dom_event);
+    })
+);
+
+cold_event!(
+    Click,
+    MouseEvent,
+    Closure::new(move |dom_event: web_sys::MouseEvent| {
+        trigger_ev::<Click>(dom_event);
     })
 );

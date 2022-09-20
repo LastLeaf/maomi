@@ -272,17 +272,32 @@ impl DomElement {
 
     pub(crate) fn from_event_dom_elem(
         dom_elem: &web_sys::Element,
+        bubbles: bool,
     ) -> Option<ForestNodeRc<DomGeneralElement>> {
         let ptr = dom_elem.unchecked_ref::<MaomiDomElement>().maomi();
         if let Some(ptr) = ptr {
-            unsafe {
+            return unsafe {
                 ForestTokenAddr::from_ptr(ptr as *const ())
                     .token()
                     .unsafe_resolve_token()
-            }
-        } else {
-            None
+            };
         }
+        if !bubbles {
+            return None;
+        }
+        let mut next = dom_elem.parent_element();
+        while let Some(cur) = next.as_ref() {
+            let ptr = cur.unchecked_ref::<MaomiDomElement>().maomi();
+            if let Some(ptr) = ptr {
+                return unsafe {
+                    ForestTokenAddr::from_ptr(ptr as *const ())
+                        .token()
+                        .unsafe_resolve_token()
+                };
+            }
+            next = cur.parent_element();
+        }
+        None
     }
 
     fn init_event_token(&mut self) {
