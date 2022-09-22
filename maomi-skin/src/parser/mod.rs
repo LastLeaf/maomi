@@ -556,7 +556,7 @@ pub enum AtBlock<T: StyleSheetConstructor> {
     },
 }
 
-pub struct PseudoClass<T: StyleSheetConstructor> {
+pub struct PseudoClass<T: StyleSheetConstructor> { // TODO recognize each pseudo classes
     pub colon_token: CssColon,
     pub ident: CssIdent,
     pub content: CssBrace<PseudoClassContent<T>>,

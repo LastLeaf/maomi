@@ -763,11 +763,11 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         &mut __m_child,
                         __m_backend_context,
                         __m_parent_element,
-                        |__m_child, __m_update_ctx| {
+                        #[inline] |__m_child, __m_update_ctx| {
                             #attrs_list_init
                             #(#attrs)*
                         },
-                        |__m_parent_element, __m_backend_element_token, #slot_var_name| {
+                        #[inline] |__m_parent_element, __m_backend_element_token, #slot_var_name| {
                             __m_slot_children.add(__m_backend_element_token.stable_addr(), (#({#children},)*));
                             Ok(())
                         },
@@ -873,7 +873,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         #for_token #pat #in_token __m_list {
                             __m_list_update_iter.next(
                                 #next_arg
-                                |__m_parent_element| {
+                                #[inline] |__m_parent_element| {
                                     Ok((#({#children},)*))
                                 },
                             )?;
@@ -1028,13 +1028,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
-                        |
+                        #[inline] |
                             __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
                             __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
                         | {
                             #(#attrs)*
                         },
-                        |__m_slot_change| {
+                        #[inline] |__m_slot_change| {
                             match __m_slot_change {
                                 maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
                                     let __m_children = (#({#create_children},)*);
@@ -1193,7 +1193,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     #for_token #pat #in_token __m_list {
                         __m_list_update_iter.next(
                             #next_arg
-                            |__m_children, __m_parent_element| {
+                            #[inline] |__m_children, __m_parent_element| {
                                 if let Some(__m_children) = __m_children {
                                     #({#update_children})*
                                     Ok(None)

@@ -21,3 +21,6 @@ console_log = { version = "0.2", features = ["color"] }
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 getrandom = { version = "0.2.7", features = ["js"] }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-Oz']

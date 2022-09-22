@@ -5,9 +5,10 @@ use syn::spanned::Spanned;
 use syn::*;
 use syn::{ext::IdentExt, parse::*};
 
+use super::mac::MacroArgsToken;
 use super::{write_css::CssWriter, ParseWithVars, WriteCss, WriteCssSepCond, StyleSheetVars, ScopeVars};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Number {
     Int(i64),
     Float(f64),
@@ -900,6 +901,101 @@ pub enum CssToken {
     Brace(CssBrace<Repeat<CssToken>>),
 }
 
+impl CssToken {
+    pub(crate) fn content_eq(&self, other: &Self) -> bool {
+        match self {
+            Self::Ident(x) => {
+                if let Self::Ident(y) = other { x.formal_name == y.formal_name } else { false }
+            }
+            Self::AtKeyword(x) => {
+                if let Self::AtKeyword(y) = other { x.formal_name == y.formal_name } else { false }
+            }
+            Self::String(x) => {
+                if let Self::String(y) = other { x.s.value() == y.s.value() } else { false }
+            }
+            Self::Colon(_) => {
+                if let Self::Colon(_) = other { true } else { false }
+            }
+            Self::Semi(_) => {
+                if let Self::Semi(_) = other { true } else { false }
+            }
+            Self::Comma(_) => {
+                if let Self::Comma(_) = other { true } else { false }
+            }
+            Self::Delim(x) => {
+                if let Self::Delim(y) = other { x.s == y.s } else { false }
+            }
+            Self::Number(x) => {
+                if let Self::Number(y) = other { x.num == y.num } else { false }
+            }
+            Self::Percentage(x) => {
+                if let Self::Percentage(y) = other { x.num == y.num } else { false }
+            }
+            Self::Dimension(x) => {
+                if let Self::Dimension(y) = other { x.num == y.num && x.unit == y.unit } else { false }
+            }
+            Self::Function(x) => {
+                if let Self::Function(y) = other {
+                    let mut eq = x.formal_name == y.formal_name;
+                    if eq {
+                        for (x, y) in x.block.iter().zip(y.block.iter()) {
+                            if !x.content_eq(y) {
+                                eq = false;
+                                break;
+                            }
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::Paren(x) => {
+                if let Self::Paren(y) = other {
+                    let mut eq = true;
+                    for (x, y) in x.block.iter().zip(y.block.iter()) {
+                        if !x.content_eq(y) {
+                            eq = false;
+                            break;
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::Bracket(x) => {
+                if let Self::Bracket(y) = other {
+                    let mut eq = true;
+                    for (x, y) in x.block.iter().zip(y.block.iter()) {
+                        if !x.content_eq(y) {
+                            eq = false;
+                            break;
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::Brace(x) => {
+                if let Self::Brace(y) = other {
+                    let mut eq = true;
+                    for (x, y) in x.block.iter().zip(y.block.iter()) {
+                        if !x.content_eq(y) {
+                            eq = false;
+                            break;
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
 impl Spanned for CssToken {
     fn span(&self) -> Span {
         match self {
@@ -1030,60 +1126,13 @@ pub(crate) fn parse_token(
     vars: &StyleSheetVars,
     scope: &mut ScopeVars,
 ) -> Result<()> {
-    if input.peek(Token![$]) {
-        input.parse::<Token![$]>()?;
-        let name: CssIdent = input.parse()?;
-        if let Some(items) = vars.consts.get(&name.formal_name) {
-            for item in items {
-                ret.push(item.clone());
-            }
-        } else if let Some(ident) = vars.keyframes.get(&name.formal_name) {
-            ret.push(CssToken::Ident(ident.clone()));
-        } else {
-            return Err(Error::new(
-                name.span(),
-                format!("No const or keyframes named {:?}", name.formal_name),
-            ));
-        }
-        refs.push(name);
-    } else if input.peek(token::Paren) {
-        ret.push(CssToken::Paren(ParseWithVars::parse_with_vars(
-            &input, vars, scope,
-        )?));
-    } else if input.peek(token::Bracket) {
-        ret.push(CssToken::Bracket(ParseWithVars::parse_with_vars(
-            &input, vars, scope,
-        )?));
-    } else if input.peek(token::Brace) {
-        ret.push(CssToken::Brace(ParseWithVars::parse_with_vars(
-            &input, vars, scope,
-        )?));
-    } else if let Ok(x) = input.parse::<CssIdent>() {
-        if input.peek(Token![!]) {
-            let mac = vars.macros.get(&x.formal_name).ok_or_else(|| {
-                Error::new(x.span(), format!("no macro named {:?}", x.formal_name))
-            })?;
-            todo!(); // TODO
-            refs.push(x);
-        } else if input.peek(token::Paren) {
-            let content;
-            let paren_token = parenthesized!(content in input);
-            let block = ParseWithVars::parse_with_vars(&content, vars, scope)?;
-            ret.push(CssToken::Function(CssFunction {
-                span: x.span,
-                formal_name: x.formal_name,
-                paren_token,
-                block,
-            }));
-        } else {
-            ret.push(CssToken::Ident(x));
-        }
-    } else if let Ok(x) = input.parse() {
-        ret.push(x);
-    } else {
-        return Err(input.error("illegal CSS token"));
-    };
-    Ok(())
+    MacroArgsToken::parse_input_and_write(
+        ret,
+        refs,
+        input,
+        vars,
+        scope,
+    )
 }
 
 pub(crate) struct ParseTokenUntilSemi {
