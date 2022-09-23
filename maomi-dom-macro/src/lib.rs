@@ -638,6 +638,58 @@ mod test {
 
     #[test]
     #[serial]
+    fn recursive_macro() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    @macro ma {
+                        ({ $a:tt }) => { $a; };
+                        ({ $a:tt } $($b:tt)*) => { $a; ma!($(b)*) };
+                    }
+                    @const $p: ma!($ 1px);
+                    .c {
+                        ma! {
+                            { padding: 1px }
+                            { margin: 2px }
+                        }
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1px;margin:2px}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn outer_then_inner_macro_expand() {
+        setup_env(false, |env| {
+            parse_str(
+                r#"
+                    @config name_mangling: off;
+                    @macro ma {
+                        ($a:ident = $b:value) => { $a: 1px $b; };
+                    }
+                    @macro mb {
+                        ($a: value) => { 2px $a };
+                    }
+                    .c {
+                        ma!(padding = mb!(3px));
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1px 2px 3px}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
     fn media() {
         setup_env(false, |env| {
             parse_str(

@@ -16,6 +16,8 @@ use mac::MacroDefinition;
 pub mod write_css;
 use write_css::*;
 
+use self::mac::MacroCall;
+
 mod kw {
     syn::custom_keyword!(only);
     syn::custom_keyword!(not);
@@ -154,7 +156,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
     fn parse_with_vars(
         input: ParseStream,
         vars: &StyleSheetVars,
-        scope: &mut ScopeVars,
+        _scope: &mut ScopeVars,
     ) -> Result<Self> {
         let name = input.parse()?;
         Self::parse_property_with_name(name, input, vars)
@@ -632,7 +634,36 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                 let ident: CssIdent = input.parse()?;
                 let la = input.lookahead1();
                 if la.peek(Token![!]) {
-                    todo!() // TODO apply macro
+                    let call = ParseWithVars::parse_with_vars(input, vars, scope)?;
+                    let mut tokens = vec![];
+                    let mut refs = vec![]; // TODO use this refs
+                    mac::MacroArgsToken::write_macro_ref(&mut tokens, &mut refs, &ident, &call, vars)?;
+                    let mut stream = CssTokenStream::new(ident.span, tokens);
+                    while stream.peek().is_ok() {
+                        let name = stream.expect_ident()?;
+                        let colon_token = stream.expect_colon()?;
+                        let mut value_tokens: Vec<CssToken> = vec![];
+                        loop {
+                            match stream.next() {
+                                Err(_) => {
+                                    let span = value_tokens.last().map(|x| x.span()).unwrap_or(colon_token.span);
+                                    return Err(Error::new(span, "expected `;`"));
+                                }
+                                Ok(CssToken::Semi(_)) => {
+                                    break
+                                }
+                                Ok(x) => {
+                                    value_tokens.push(x);
+                                }
+                            }
+                        }
+                        let first = value_tokens.first().ok_or_else(|| {
+                            Error::new(colon_token.span, "expected property value")
+                        })?;
+                        let mut stream = CssTokenStream::new(first.span(), value_tokens);
+                        T::PropertyValue::parse_value(&name, &mut stream)?;
+                        let _ = stream.expect_semi()?;
+                    }
                 } else if la.peek(token::Colon) {
                     props.push(Property::parse_property_with_name(ident, input, vars)?);
                 } else if la.peek(token::Brace) {
@@ -735,6 +766,7 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
     MacroDefinition {
         at_keyword: CssAtKeyword,
         name: CssIdent,
+        refs: Vec<CssIdent>,
     },
     ConstDefinition {
         at_keyword: CssAtKeyword,
@@ -810,13 +842,15 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                     }
                     "macro" => {
                         let item = StyleSheetMacroItem::parse_with_vars(input, vars, &mut ScopeVars::new())?;
-                        // TODO add proper refs
+                        let mut refs = vec![];
+                        item.for_each_ref(&mut |x| refs.push(x.clone()));
                         if vars.macros.insert(item.name.formal_name.clone(), item.mac.block).is_some() {
                             return Err(Error::new(item.name.span, format!("macro named `{}` has already defined", item.name.formal_name)));
                         }
                         items.push(StyleSheetItem::MacroDefinition {
                             at_keyword,
                             name: item.name,
+                            refs,
                         })
                     }
                     "const" => {

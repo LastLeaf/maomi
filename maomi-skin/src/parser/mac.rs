@@ -3,7 +3,15 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-use super::{css_token::{*, self}, ParseWithVars, StyleSheetVars, ScopeVars};
+use super::{css_token::*, ParseWithVars, StyleSheetVars, ScopeVars};
+
+struct DroppedRefs();
+
+impl Extend<CssIdent> for DroppedRefs {
+    fn extend<T: IntoIterator<Item = CssIdent>>(&mut self, _iter: T) {
+        // empty
+    }
+}
 
 pub struct MacroDefinition {
     branches: Repeat<MacroBranch>,
@@ -409,8 +417,8 @@ pub(super) enum MacroContent {
 }
 
 impl MacroContent {
-    fn expand(
-        ret: &mut Vec<CssToken>,
+    fn shallow_expand(
+        ret: &mut Vec<MacroArgsToken>,
         self_list: &[Self],
         pat_vars: &PatVarValues,
         vars: &StyleSheetVars,
@@ -419,36 +427,48 @@ impl MacroContent {
             match item {
                 Self::VarRef { var_name, .. } => {
                     let t = pat_vars.map.get(&var_name.formal_name).unwrap();
-                    // TODO
+                    match t {
+                        PatVarValueTokens::Single(x) => {
+                            ret.push(x.clone());
+                        }
+                        PatVarValueTokens::Multi(x) => {
+                            for item in x {
+                                ret.push(item.clone());
+                            }
+                        }
+                    }
                 }
                 Self::ListScope { inner, sep, .. } => {
                     for (index, v) in pat_vars.sub.iter().enumerate() {
                         if index > 0 {
                             if let Some(x) = sep.as_ref() {
-                                ret.push(x.clone());
+                                ret.push(MacroArgsToken::Token(x.clone()));
                             }
                         }
-                        Self::expand(ret, inner.block.as_slice(), v, vars);
+                        Self::shallow_expand(ret, inner.block.as_slice(), v, vars)?;
                     }
                 }
                 Self::ConstRef { tokens, .. } => {
                     for x in tokens {
-                        ret.push(x.clone());
+                        ret.push(MacroArgsToken::Token(x.clone()));
                     }
                 }
                 Self::KeyframesRef { ident, .. } => {
-                    ret.push(CssToken::Ident(ident.clone()));
+                    ret.push(MacroArgsToken::Token(CssToken::Ident(ident.clone())));
                 }
                 Self::MacroRef { name, args } => {
                     let mut expanded: Vec<MacroArgsToken> = vec![];
                     MacroContent::shallow_expand(&mut expanded, args.tokens.as_slice(), pat_vars, vars)?;
-                    MacroArgsToken::write_macro_ref(ret, None, name, expanded, vars)?;
+                    ret.push(MacroArgsToken::MacroRef {
+                        name: name.clone(),
+                        args: MacroCall { tokens: Repeat::from_vec(expanded), is_braced: args.is_braced }
+                    })
                 }
                 Self::Function(x) => {
                     let mut sub = vec![];
-                    Self::expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
+                    Self::shallow_expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
                     let block = Repeat::from_vec(sub);
-                    ret.push(CssToken::Function(CssFunction {
+                    ret.push(MacroArgsToken::Function(CssFunction {
                         span: x.span,
                         formal_name: x.formal_name.clone(),
                         paren_token: x.paren_token,
@@ -457,35 +477,51 @@ impl MacroContent {
                 }
                 Self::Paren(x) => {
                     let mut sub = vec![];
-                    Self::expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
+                    Self::shallow_expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
                     let block = Repeat::from_vec(sub);
-                    ret.push(CssToken::Paren(CssParen {
+                    ret.push(MacroArgsToken::Paren(CssParen {
                         paren_token: x.paren_token,
                         block,
                     }));
                 }
                 Self::Bracket(x) => {
                     let mut sub = vec![];
-                    Self::expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
+                    Self::shallow_expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
                     let block = Repeat::from_vec(sub);
-                    ret.push(CssToken::Bracket(CssBracket {
+                    ret.push(MacroArgsToken::Bracket(CssBracket {
                         bracket_token: x.bracket_token,
                         block,
                     }));
                 }
                 Self::Brace(x) => {
                     let mut sub = vec![];
-                    Self::expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
+                    Self::shallow_expand(&mut sub, x.block.as_slice(), pat_vars, vars)?;
                     let block = Repeat::from_vec(sub);
-                    ret.push(CssToken::Brace(CssBrace {
+                    ret.push(MacroArgsToken::Brace(CssBrace {
                         brace_token: x.brace_token,
                         block,
                     }));
                 }
                 Self::Token(x) => {
-                    ret.push(x.clone());
+                    ret.push(MacroArgsToken::Token(x.clone()));
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn expand(
+        ret: &mut Vec<CssToken>,
+        self_list: &[Self],
+        pat_vars: &PatVarValues,
+        vars: &StyleSheetVars,
+    ) -> Result<()> {
+        let refs = &mut DroppedRefs();
+        let scope = &mut ScopeVars::new();
+        let mut tokens = vec![];
+        Self::shallow_expand(&mut tokens, self_list, pat_vars, vars)?;
+        for item in tokens {
+            item.write_self(ret, refs, vars, scope)?;
         }
         Ok(())
     }
@@ -685,7 +721,7 @@ pub(crate) enum MacroArgsToken {
 impl MacroArgsToken {
     fn write_ref(
         ret: &mut Vec<CssToken>,
-        refs: &mut Vec<CssIdent>,
+        refs: &mut impl Extend<CssIdent>,
         var_name: CssIdent,
         vars: &StyleSheetVars,
     ) -> Result<()> {
@@ -701,13 +737,13 @@ impl MacroArgsToken {
                 format!("no const or keyframes named {:?}", var_name.formal_name),
             ));
         }
-        refs.push(var_name);
+        refs.extend(Some(var_name));
         Ok(())
     }
 
-    fn write_macro_ref(
+    pub(crate) fn write_macro_ref(
         ret: &mut Vec<CssToken>,
-        refs: Option<&mut Vec<CssIdent>>,
+        refs: &mut impl Extend<CssIdent>,
         name: &CssIdent,
         args: &MacroCall<Self>,
         vars: &StyleSheetVars,
@@ -721,18 +757,16 @@ impl MacroArgsToken {
                 "no macro rule matched",
             ));
         }
-        if let Some(refs) = refs {
-            args.for_each_ref(&mut |x| refs.push(x.clone()));
-        }
+        args.for_each_ref(&mut |x| refs.extend(Some(x.clone())));
         Ok(())
     }
 
-    fn write_function(
+    fn write_function<T: Extend<CssIdent>>(
         ret: &mut Vec<CssToken>,
-        refs: &mut Vec<CssIdent>,
+        refs: &mut T,
         name: CssIdent,
         input: ParseStream,
-        f: impl FnOnce(&mut Vec<CssToken>, &mut Vec<CssIdent>, ParseStream) -> Result<()>,
+        f: impl FnOnce(&mut Vec<CssToken>, &mut T, ParseStream) -> Result<()>,
     ) -> Result<()> {
         let content;
         let paren_token = parenthesized!(content in input);
@@ -747,11 +781,11 @@ impl MacroArgsToken {
         Ok(())
     }
 
-    fn write_paren(
+    fn write_paren<T: Extend<CssIdent>>(
         ret: &mut Vec<CssToken>,
-        refs: &mut Vec<CssIdent>,
+        refs: &mut T,
         input: ParseStream,
-        f: impl FnOnce(&mut Vec<CssToken>, &mut Vec<CssIdent>, ParseStream) -> Result<()>,
+        f: impl FnOnce(&mut Vec<CssToken>, &mut T, ParseStream) -> Result<()>,
     ) -> Result<()> {
         let content;
         let paren_token = parenthesized!(content in input);
@@ -764,11 +798,11 @@ impl MacroArgsToken {
         Ok(())
     }
 
-    fn write_bracket(
+    fn write_bracket<T: Extend<CssIdent>>(
         ret: &mut Vec<CssToken>,
-        refs: &mut Vec<CssIdent>,
+        refs: &mut T,
         input: ParseStream,
-        f: impl FnOnce(&mut Vec<CssToken>, &mut Vec<CssIdent>, ParseStream) -> Result<()>,
+        f: impl FnOnce(&mut Vec<CssToken>, &mut T, ParseStream) -> Result<()>,
     ) -> Result<()> {
         let content;
         let bracket_token = bracketed!(content in input);
@@ -781,11 +815,11 @@ impl MacroArgsToken {
         Ok(())
     }
 
-    fn write_braced(
+    fn write_braced<T: Extend<CssIdent>>(
         ret: &mut Vec<CssToken>,
-        refs: &mut Vec<CssIdent>,
+        refs: &mut T,
         input: ParseStream,
-        f: impl FnOnce(&mut Vec<CssToken>, &mut Vec<CssIdent>, ParseStream) -> Result<()>,
+        f: impl FnOnce(&mut Vec<CssToken>, &mut T, ParseStream) -> Result<()>,
     ) -> Result<()> {
         let content;
         let brace_token = braced!(content in input);
@@ -837,7 +871,7 @@ impl MacroArgsToken {
         } else if let Ok(x) = input.parse::<CssIdent>() {
             if input.peek(Token![!]) {
                 let args = ParseWithVars::parse_with_vars(input, vars, scope)?;
-                Self::write_macro_ref(ret, Some(refs), &x, &args, vars)?;
+                Self::write_macro_ref(ret, refs, &x, &args, vars)?;
             } else if input.peek(token::Paren) {
                 Self::write_function(ret, refs, x, input, |ret, refs, input| {
                     Self::parse_all_input_and_write(ret, refs, input, vars, scope)
@@ -849,6 +883,65 @@ impl MacroArgsToken {
             ret.push(x);
         } else {
             return Err(input.error("unexpected token"));
+        }
+        Ok(())
+    }
+
+    fn write_self(
+        self,
+        ret: &mut Vec<CssToken>,
+        refs: &mut impl Extend<CssIdent>,
+        vars: &StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<()> {
+        match self {
+            Self::Ref { var_name, .. } => Self::write_ref(ret, refs, var_name, vars)?,
+            Self::MacroRef { name, args } => Self::write_macro_ref(ret, refs, &name, &args, vars)?,
+            Self::Function(x) => {
+                let mut list = vec![];
+                for item in x.block.into_vec().drain(..) {
+                    item.write_self(&mut list, refs, vars, scope)?;
+                }
+                ret.push(CssToken::Function(CssFunction {
+                    span: x.span,
+                    formal_name: x.formal_name,
+                    paren_token: x.paren_token,
+                    block: Repeat::from_vec(list),
+                }));
+            }
+            Self::Paren(x) => {
+                let mut list = vec![];
+                for item in x.block.into_vec().drain(..) {
+                    item.write_self(&mut list, refs, vars, scope)?;
+                }
+                ret.push(CssToken::Paren(CssParen {
+                    paren_token: x.paren_token,
+                    block: Repeat::from_vec(list),
+                }));
+            }
+            Self::Bracket(x) => {
+                let mut list = vec![];
+                for item in x.block.into_vec().drain(..) {
+                    item.write_self(&mut list, refs, vars, scope)?;
+                }
+                ret.push(CssToken::Bracket(CssBracket {
+                    bracket_token: x.bracket_token,
+                    block: Repeat::from_vec(list),
+                }));
+            }
+            Self::Brace(x) => {
+                let mut list = vec![];
+                for item in x.block.into_vec().drain(..) {
+                    item.write_self(&mut list, refs, vars, scope)?;
+                }
+                ret.push(CssToken::Brace(CssBrace {
+                    brace_token: x.brace_token,
+                    block: Repeat::from_vec(list),
+                }));
+            }
+            Self::Token(x) => {
+                ret.push(x.clone());
+            }
         }
         Ok(())
     }
