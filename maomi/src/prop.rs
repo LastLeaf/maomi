@@ -85,7 +85,9 @@ pub trait ListPropertyInit {
     type UpdateContext;
 
     /// The initiator with item count provided
-    fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext) where Self: Sized;
+    fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext)
+    where
+        Self: Sized;
 }
 
 /// The list property updater
@@ -113,7 +115,12 @@ pub trait ListPropertyItem<L: ListPropertyUpdate<S>, S: ?Sized> {
     type Value: ?Sized;
 
     /// Generate the item value
-    fn item_value<'a>(dest: &mut L, index: usize, s: &'a S, ctx: &mut L::UpdateContext) -> &'a Self::Value;
+    fn item_value<'a>(
+        dest: &mut L,
+        index: usize,
+        s: &'a S,
+        ctx: &mut L::UpdateContext,
+    ) -> &'a Self::Value;
 }
 
 /// A list property that can be used in templates
@@ -183,7 +190,12 @@ impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyItem<ListProp
     type Value = ();
 
     #[inline]
-    fn item_value<'a>(dest: &mut Self, index: usize, src: &'a S, ctx: &mut bool) -> &'a Self::Value {
+    fn item_value<'a>(
+        dest: &mut Self,
+        index: usize,
+        src: &'a S,
+        ctx: &mut bool,
+    ) -> &'a Self::Value {
         if dest.inner[index].property_as_ref() == src {
             return &();
         }

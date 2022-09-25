@@ -6,7 +6,9 @@ use syn::*;
 use syn::{ext::IdentExt, parse::*};
 
 use super::mac::MacroArgsToken;
-use super::{write_css::CssWriter, ParseWithVars, WriteCss, WriteCssSepCond, StyleSheetVars, ScopeVars};
+use super::{
+    write_css::CssWriter, ParseWithVars, ScopeVars, StyleSheetVars, WriteCss, WriteCssSepCond,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Number {
@@ -905,34 +907,74 @@ impl CssToken {
     pub(crate) fn content_eq(&self, other: &Self) -> bool {
         match self {
             Self::Ident(x) => {
-                if let Self::Ident(y) = other { x.formal_name == y.formal_name } else { false }
+                if let Self::Ident(y) = other {
+                    x.formal_name == y.formal_name
+                } else {
+                    false
+                }
             }
             Self::AtKeyword(x) => {
-                if let Self::AtKeyword(y) = other { x.formal_name == y.formal_name } else { false }
+                if let Self::AtKeyword(y) = other {
+                    x.formal_name == y.formal_name
+                } else {
+                    false
+                }
             }
             Self::String(x) => {
-                if let Self::String(y) = other { x.s.value() == y.s.value() } else { false }
+                if let Self::String(y) = other {
+                    x.s.value() == y.s.value()
+                } else {
+                    false
+                }
             }
             Self::Colon(_) => {
-                if let Self::Colon(_) = other { true } else { false }
+                if let Self::Colon(_) = other {
+                    true
+                } else {
+                    false
+                }
             }
             Self::Semi(_) => {
-                if let Self::Semi(_) = other { true } else { false }
+                if let Self::Semi(_) = other {
+                    true
+                } else {
+                    false
+                }
             }
             Self::Comma(_) => {
-                if let Self::Comma(_) = other { true } else { false }
+                if let Self::Comma(_) = other {
+                    true
+                } else {
+                    false
+                }
             }
             Self::Delim(x) => {
-                if let Self::Delim(y) = other { x.s == y.s } else { false }
+                if let Self::Delim(y) = other {
+                    x.s == y.s
+                } else {
+                    false
+                }
             }
             Self::Number(x) => {
-                if let Self::Number(y) = other { x.num == y.num } else { false }
+                if let Self::Number(y) = other {
+                    x.num == y.num
+                } else {
+                    false
+                }
             }
             Self::Percentage(x) => {
-                if let Self::Percentage(y) = other { x.num == y.num } else { false }
+                if let Self::Percentage(y) = other {
+                    x.num == y.num
+                } else {
+                    false
+                }
             }
             Self::Dimension(x) => {
-                if let Self::Dimension(y) = other { x.num == y.num && x.unit == y.unit } else { false }
+                if let Self::Dimension(y) = other {
+                    x.num == y.num && x.unit == y.unit
+                } else {
+                    false
+                }
             }
             Self::Function(x) => {
                 if let Self::Function(y) = other {
@@ -1126,13 +1168,7 @@ pub(crate) fn parse_token(
     vars: &StyleSheetVars,
     scope: &mut ScopeVars,
 ) -> Result<()> {
-    MacroArgsToken::parse_input_and_write(
-        ret,
-        refs,
-        input,
-        vars,
-        scope,
-    )
+    MacroArgsToken::parse_input_and_write(ret, refs, input, vars, scope)
 }
 
 pub(crate) struct ParseTokenUntilSemi {

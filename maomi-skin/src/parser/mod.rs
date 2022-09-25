@@ -117,7 +117,9 @@ pub struct ScopeVars<'a> {
 
 impl<'a> ScopeVars<'a> {
     fn new() -> Self {
-        Self { macro_pat_vars: None }
+        Self {
+            macro_pat_vars: None,
+        }
     }
 }
 
@@ -343,14 +345,16 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
         let la = input.lookahead1();
         let ret = if la.peek(kw::not) {
             let _: kw::not = input.parse()?;
-            let item: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars, scope)?;
+            let item: CssParen<SupportsQuery<V>> =
+                ParseWithVars::parse_with_vars(input, vars, scope)?;
             if let Self::Sub(item) = item.block {
                 Self::Not(item)
             } else {
                 Self::Not(Box::new(item))
             }
         } else if la.peek(token::Paren) {
-            let first: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, vars, scope)?;
+            let first: CssParen<SupportsQuery<V>> =
+                ParseWithVars::parse_with_vars(input, vars, scope)?;
             let la = input.lookahead1();
             let is_and = la.peek(kw::and);
             let is_or = la.peek(kw::or);
@@ -558,7 +562,8 @@ pub enum AtBlock<T: StyleSheetConstructor> {
     },
 }
 
-pub struct PseudoClass<T: StyleSheetConstructor> { // TODO recognize each pseudo classes
+pub struct PseudoClass<T: StyleSheetConstructor> {
+    // TODO recognize each pseudo classes
     pub colon_token: CssColon,
     pub ident: CssIdent,
     pub content: CssBrace<PseudoClassContent<T>>,
@@ -637,7 +642,13 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                     let call = ParseWithVars::parse_with_vars(input, vars, scope)?;
                     let mut tokens = vec![];
                     let mut refs = vec![]; // TODO use this refs
-                    mac::MacroArgsToken::write_macro_ref(&mut tokens, &mut refs, &ident, &call, vars)?;
+                    mac::MacroArgsToken::write_macro_ref(
+                        &mut tokens,
+                        &mut refs,
+                        &ident,
+                        &call,
+                        vars,
+                    )?;
                     let mut stream = CssTokenStream::new(ident.span, tokens);
                     while stream.peek().is_ok() {
                         let name = stream.expect_ident()?;
@@ -646,12 +657,13 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                         loop {
                             match stream.next() {
                                 Err(_) => {
-                                    let span = value_tokens.last().map(|x| x.span()).unwrap_or(colon_token.span);
+                                    let span = value_tokens
+                                        .last()
+                                        .map(|x| x.span())
+                                        .unwrap_or(colon_token.span);
                                     return Err(Error::new(span, "expected `;`"));
                                 }
-                                Ok(CssToken::Semi(_)) => {
-                                    break
-                                }
+                                Ok(CssToken::Semi(_)) => break,
                                 Ok(x) => {
                                     value_tokens.push(x);
                                 }
@@ -841,11 +853,25 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         items.append(&mut ss.items);
                     }
                     "macro" => {
-                        let item = StyleSheetMacroItem::parse_with_vars(input, vars, &mut ScopeVars::new())?;
+                        let item = StyleSheetMacroItem::parse_with_vars(
+                            input,
+                            vars,
+                            &mut ScopeVars::new(),
+                        )?;
                         let mut refs = vec![];
                         item.for_each_ref(&mut |x| refs.push(x.clone()));
-                        if vars.macros.insert(item.name.formal_name.clone(), item.mac.block).is_some() {
-                            return Err(Error::new(item.name.span, format!("macro named `{}` has already defined", item.name.formal_name)));
+                        if vars
+                            .macros
+                            .insert(item.name.formal_name.clone(), item.mac.block)
+                            .is_some()
+                        {
+                            return Err(Error::new(
+                                item.name.span,
+                                format!(
+                                    "macro named `{}` has already defined",
+                                    item.name.formal_name
+                                ),
+                            ));
                         }
                         items.push(StyleSheetItem::MacroDefinition {
                             at_keyword,
@@ -854,10 +880,24 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                         })
                     }
                     "const" => {
-                        let item = StyleSheetConstItem::parse_with_vars(&input, vars, &mut ScopeVars::new())?;
+                        let item = StyleSheetConstItem::parse_with_vars(
+                            &input,
+                            vars,
+                            &mut ScopeVars::new(),
+                        )?;
                         let (tokens, refs) = item.content.get();
-                        if vars.consts.insert(item.name.formal_name.clone(), tokens).is_some() {
-                            return Err(Error::new(item.name.span, format!("const named `{}` has already defined", item.name.formal_name)));
+                        if vars
+                            .consts
+                            .insert(item.name.formal_name.clone(), tokens)
+                            .is_some()
+                        {
+                            return Err(Error::new(
+                                item.name.span,
+                                format!(
+                                    "const named `{}` has already defined",
+                                    item.name.formal_name
+                                ),
+                            ));
                         }
                         items.push(StyleSheetItem::ConstDefinition {
                             at_keyword,
@@ -868,8 +908,12 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                     "config" => {
                         let name: CssIdent = input.parse()?;
                         let _: CssColon = input.parse()?;
-                        let (tokens, _refs) =
-                            ParseTokenUntilSemi::parse_with_vars(input, vars, &mut ScopeVars::new())?.get();
+                        let (tokens, _refs) = ParseTokenUntilSemi::parse_with_vars(
+                            input,
+                            vars,
+                            &mut ScopeVars::new(),
+                        )?
+                        .get();
                         let mut stream = CssTokenStream::new(input.span(), tokens);
                         ssc.set_config(&name, &mut stream)?;
                         stream.expect_ended()?;
@@ -902,7 +946,11 @@ impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
                             } else {
                                 return Err(la.error());
                             };
-                            let props = ParseWithVars::parse_with_vars(&input, vars, &mut ScopeVars::new())?;
+                            let props = ParseWithVars::parse_with_vars(
+                                &input,
+                                vars,
+                                &mut ScopeVars::new(),
+                            )?;
                             content.push((percentage, props));
                         }
                         let def = ssc.define_key_frames(&name, &content);

@@ -656,10 +656,7 @@ mod test {
                     }
                 "#,
             );
-            assert_eq!(
-                env.read_output(),
-                r#".c{padding:1px;margin:2px}"#,
-            );
+            assert_eq!(env.read_output(), r#".c{padding:1px;margin:2px}"#,);
         });
     }
 
@@ -681,10 +678,7 @@ mod test {
                     }
                 "#,
             );
-            assert_eq!(
-                env.read_output(),
-                r#".c{padding:1px 2px 3px}"#,
-            );
+            assert_eq!(env.read_output(), r#".c{padding:1px 2px 3px}"#,);
         });
     }
 

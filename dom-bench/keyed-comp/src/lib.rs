@@ -1,9 +1,9 @@
-use wasm_bindgen::prelude::*;
 use maomi::{prelude::*, BackendContext};
 use maomi_dom::{async_task, event::*, prelude::dom_css, DomBackend};
+use wasm_bindgen::prelude::*;
 
-mod data;
 mod comp;
+mod data;
 use comp::*;
 
 dom_css! {
@@ -173,7 +173,9 @@ impl HelloWorld {
         async_task(async move {
             this.update(|this| {
                 this.rows.append(&mut data::build(1000));
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -183,7 +185,9 @@ impl HelloWorld {
             this.update(move |this| {
                 let index = this.rows.iter().position(|x| x.id == id).unwrap();
                 this.rows.remove(index);
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -192,7 +196,9 @@ impl HelloWorld {
         async_task(async move {
             this.update(move |this| {
                 this.selected = id;
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -201,7 +207,9 @@ impl HelloWorld {
             this.update(|this| {
                 this.rows = data::build(1000);
                 this.selected = usize::MAX;
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -213,7 +221,9 @@ impl HelloWorld {
                     this.rows[i].label += " !!!";
                     i += 10;
                 }
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -222,7 +232,9 @@ impl HelloWorld {
             this.update(|this| {
                 this.rows = data::build(10000);
                 this.selected = usize::MAX;
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -231,7 +243,9 @@ impl HelloWorld {
             this.update(|this| {
                 this.rows = Vec::with_capacity(0);
                 this.selected = usize::MAX;
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 
@@ -243,7 +257,9 @@ impl HelloWorld {
                     let r998 = rows[998].clone();
                     rows[998] = std::mem::replace(&mut rows[1], r998);
                 }
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         });
     }
 }

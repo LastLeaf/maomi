@@ -1,5 +1,5 @@
+use maomi::prop::{ListPropertyInit, ListPropertyItem, ListPropertyUpdate};
 use std::rc::Rc;
-use maomi::prop::{ListPropertyUpdate, ListPropertyInit, ListPropertyItem};
 use web_sys::DomTokenList;
 
 use crate::{base_element::DomElement, DomState};
@@ -116,7 +116,9 @@ impl ListPropertyUpdate<DomExternalClasses> for DomClassList {
         let old_v = dest.enabled.get_mut(index).unwrap();
         let class_list = &mut dest.class_list;
         if let DomClassItem::External(x) = old_v {
-            src.diff_list(x, &mut |c, enabled| toggle_class_name(class_list, c, enabled));
+            src.diff_list(x, &mut |c, enabled| {
+                toggle_class_name(class_list, c, enabled)
+            });
         } else {
             let x = src.init_list(&mut |c, enabled| toggle_class_name(class_list, c, enabled));
             *old_v = DomClassItem::External(x);
@@ -163,8 +165,10 @@ impl DomExternalClasses {
     }
 
     fn init_list(&self, update_fn: &mut impl FnMut(&str, bool)) -> Self {
-        let items = self.items.iter().map(|item| {
-            match item {
+        let items = self
+            .items
+            .iter()
+            .map(|item| match item {
                 DomExternalClassItem::Enabled(enabled, class_name) => {
                     if *enabled {
                         update_fn(class_name, true);
@@ -174,9 +178,12 @@ impl DomExternalClasses {
                 DomExternalClassItem::External(x) => {
                     DomExternalClassItem::External(x.init_list(update_fn))
                 }
-            }
-        }).collect();
-        Self { id: self.id.clone(), items }
+            })
+            .collect();
+        Self {
+            id: self.id.clone(),
+            items,
+        }
     }
 
     fn deinit_list(&self, update_fn: &mut impl FnMut(&str, bool)) {

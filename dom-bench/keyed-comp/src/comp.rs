@@ -1,6 +1,6 @@
 use maomi::prelude::*;
-use maomi_dom::{async_task, event::*, DomBackend, element::*};
 use maomi_dom::class_list::DomExternalClasses;
+use maomi_dom::{async_task, element::*, event::*, DomBackend};
 
 #[component(Backend = DomBackend)]
 pub(crate) struct Div {
@@ -52,7 +52,8 @@ impl Span {
         async_task(async move {
             this.get(move |this| {
                 this.click.trigger(&mut detail);
-            }).await;
+            })
+            .await;
         });
     }
 }
@@ -110,7 +111,8 @@ impl Button {
         async_task(async move {
             this.get(move |this| {
                 this.tap.trigger(&mut detail);
-            }).await;
+            })
+            .await;
         });
     }
 }
@@ -143,7 +145,8 @@ impl A {
         async_task(async move {
             this.get(move |this| {
                 this.tap.trigger(&mut detail);
-            }).await;
+            })
+            .await;
         });
     }
 }

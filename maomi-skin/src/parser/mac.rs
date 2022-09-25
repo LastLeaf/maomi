@@ -3,7 +3,7 @@ use syn::parse::*;
 use syn::spanned::Spanned;
 use syn::*;
 
-use super::{css_token::*, ParseWithVars, StyleSheetVars, ScopeVars};
+use super::{css_token::*, ParseWithVars, ScopeVars, StyleSheetVars};
 
 struct DroppedRefs();
 
@@ -71,8 +71,17 @@ impl MacroBranch {
             map: FxHashMap::default(),
             sub: Vec::with_capacity(0),
         };
-        MacroPat::try_match(self.pattern.block.as_slice(), &mut call.tokens.iter(), &mut pat_vars)?;
-        Some(MacroContent::expand(ret, self.body.block.as_slice(), &pat_vars, vars))
+        MacroPat::try_match(
+            self.pattern.block.as_slice(),
+            &mut call.tokens.iter(),
+            &mut pat_vars,
+        )?;
+        Some(MacroContent::expand(
+            ret,
+            self.body.block.as_slice(),
+            &pat_vars,
+            vars,
+        ))
     }
 }
 
@@ -89,7 +98,9 @@ impl ParseWithVars for MacroBranch {
             for x in pattern.block.as_slice() {
                 x.collect_vars(&mut pat_vars)?;
             }
-            let mut scope = ScopeVars { macro_pat_vars: Some(&mut pat_vars) };
+            let mut scope = ScopeVars {
+                macro_pat_vars: Some(&mut pat_vars),
+            };
             ParseWithVars::parse_with_vars(input, vars, &mut scope)?
         };
         let semi_token = input.parse()?;
@@ -168,41 +179,46 @@ impl MacroPat {
     ) -> Option<()> {
         for pat_item in self_list {
             match pat_item {
-                MacroPat::Var { var_name, ty, .. } => {
-                    match ty {
-                        MacroPatTy::Tt => {
-                            let v = call.next()?;
-                            ret.map.insert(var_name.formal_name.clone(), PatVarValueTokens::Single(v.clone()));
-                        }
-                        MacroPatTy::Ident => {
-                            let v = call.next()?;
-                            let matched = match v {
-                                MacroArgsToken::Token(CssToken::Ident(_)) => true,
-                                _ => false,
-                            };
-                            if matched {
-                                ret.map.insert(var_name.formal_name.clone(), PatVarValueTokens::Single(v.clone()));
-                            }
-                        }
-                        MacroPatTy::Value => {
-                            let mut list = vec![];
-                            while let Some(v) = call.next() {
-                                let matched = match v {
-                                    MacroArgsToken::Token(CssToken::Semi(_)) => false,
-                                    _ => true,
-                                };
-                                if !matched {
-                                    break
-                                }
-                                list.push(v.clone());
-                            }
-                            if list.len() == 0 {
-                                return None;
-                            }
-                            ret.map.insert(var_name.formal_name.clone(), PatVarValueTokens::Multi(list));
+                MacroPat::Var { var_name, ty, .. } => match ty {
+                    MacroPatTy::Tt => {
+                        let v = call.next()?;
+                        ret.map.insert(
+                            var_name.formal_name.clone(),
+                            PatVarValueTokens::Single(v.clone()),
+                        );
+                    }
+                    MacroPatTy::Ident => {
+                        let v = call.next()?;
+                        let matched = match v {
+                            MacroArgsToken::Token(CssToken::Ident(_)) => true,
+                            _ => false,
+                        };
+                        if matched {
+                            ret.map.insert(
+                                var_name.formal_name.clone(),
+                                PatVarValueTokens::Single(v.clone()),
+                            );
                         }
                     }
-                }
+                    MacroPatTy::Value => {
+                        let mut list = vec![];
+                        while let Some(v) = call.next() {
+                            let matched = match v {
+                                MacroArgsToken::Token(CssToken::Semi(_)) => false,
+                                _ => true,
+                            };
+                            if !matched {
+                                break;
+                            }
+                            list.push(v.clone());
+                        }
+                        if list.len() == 0 {
+                            return None;
+                        }
+                        ret.map
+                            .insert(var_name.formal_name.clone(), PatVarValueTokens::Multi(list));
+                    }
+                },
                 MacroPat::ListScope { inner, sep, .. } => {
                     let mut sub_vars = PatVarValues {
                         map: FxHashMap::default(),
@@ -212,9 +228,7 @@ impl MacroPat {
                     ret.sub.push(sub_vars);
                     if let Some(sep) = sep.as_ref() {
                         let matched = match call.next() {
-                            Some(MacroArgsToken::Token(x)) => {
-                                x.content_eq(sep)
-                            }
+                            Some(MacroArgsToken::Token(x)) => x.content_eq(sep),
                             _ => false,
                         };
                         if !matched {
@@ -227,28 +241,44 @@ impl MacroPat {
                         if v.formal_name != x.formal_name {
                             return None;
                         }
-                        Self::try_match(x.block.as_slice(), &mut v.block.as_slice().into_iter(), ret)?;
+                        Self::try_match(
+                            x.block.as_slice(),
+                            &mut v.block.as_slice().into_iter(),
+                            ret,
+                        )?;
                     } else {
                         return None;
                     }
                 }
                 MacroPat::Paren(x) => {
                     if let MacroArgsToken::Paren(v) = call.next()? {
-                        Self::try_match(x.block.as_slice(), &mut v.block.as_slice().into_iter(), ret)?;
+                        Self::try_match(
+                            x.block.as_slice(),
+                            &mut v.block.as_slice().into_iter(),
+                            ret,
+                        )?;
                     } else {
                         return None;
                     }
                 }
                 MacroPat::Bracket(x) => {
                     if let MacroArgsToken::Bracket(v) = call.next()? {
-                        Self::try_match(x.block.as_slice(), &mut v.block.as_slice().into_iter(), ret)?;
+                        Self::try_match(
+                            x.block.as_slice(),
+                            &mut v.block.as_slice().into_iter(),
+                            ret,
+                        )?;
                     } else {
                         return None;
                     }
                 }
                 MacroPat::Brace(x) => {
                     if let MacroArgsToken::Brace(v) = call.next()? {
-                        Self::try_match(x.block.as_slice(), &mut v.block.as_slice().into_iter(), ret)?;
+                        Self::try_match(
+                            x.block.as_slice(),
+                            &mut v.block.as_slice().into_iter(),
+                            ret,
+                        )?;
                     } else {
                         return None;
                     }
@@ -271,7 +301,10 @@ impl MacroPat {
         match self {
             Self::Var { var_name, .. } => {
                 if let Some(_) = vars.self_scope.insert(var_name.formal_name.clone(), ()) {
-                    return Err(Error::new(var_name.span, format!("Duplicated `${}`", var_name.formal_name)))
+                    return Err(Error::new(
+                        var_name.span,
+                        format!("Duplicated `${}`", var_name.formal_name),
+                    ));
                 }
             }
             Self::ListScope { inner, .. } => {
@@ -284,7 +317,7 @@ impl MacroPat {
                         vars.list_scope = Some(x);
                     }
                 }
-            },
+            }
             Self::Function(x) => {
                 for x in x.block.as_slice() {
                     x.collect_vars(vars)?;
@@ -344,7 +377,12 @@ impl Parse for MacroPat {
                 } else {
                     (Some(input.parse()?), input.parse()?)
                 };
-                MacroPat::ListScope { dollar_token, inner, sep, star_token }
+                MacroPat::ListScope {
+                    dollar_token,
+                    inner,
+                    sep,
+                    star_token,
+                }
             } else if la.peek(token::Dollar) {
                 MacroPat::Token(CssToken::Delim(input.parse()?))
             } else {
@@ -458,10 +496,18 @@ impl MacroContent {
                 }
                 Self::MacroRef { name, args } => {
                     let mut expanded: Vec<MacroArgsToken> = vec![];
-                    MacroContent::shallow_expand(&mut expanded, args.tokens.as_slice(), pat_vars, vars)?;
+                    MacroContent::shallow_expand(
+                        &mut expanded,
+                        args.tokens.as_slice(),
+                        pat_vars,
+                        vars,
+                    )?;
                     ret.push(MacroArgsToken::MacroRef {
                         name: name.clone(),
-                        args: MacroCall { tokens: Repeat::from_vec(expanded), is_braced: args.is_braced }
+                        args: MacroCall {
+                            tokens: Repeat::from_vec(expanded),
+                            is_braced: args.is_braced,
+                        },
                     })
                 }
                 Self::Function(x) => {
@@ -538,8 +584,15 @@ impl ParseWithVars for MacroContent {
             let la = input.lookahead1();
             if la.peek(Ident) || la.peek(token::Sub) {
                 let var_name: CssIdent = input.parse()?;
-                if let Some(_) = scope.macro_pat_vars.as_ref().and_then(|x| x.self_scope.get(&var_name.formal_name)) {
-                    MacroContent::VarRef { dollar_token, var_name }
+                if let Some(_) = scope
+                    .macro_pat_vars
+                    .as_ref()
+                    .and_then(|x| x.self_scope.get(&var_name.formal_name))
+                {
+                    MacroContent::VarRef {
+                        dollar_token,
+                        var_name,
+                    }
                 } else if let Some(items) = vars.consts.get(&var_name.formal_name) {
                     MacroContent::ConstRef {
                         dollar_token,
@@ -563,7 +616,8 @@ impl ParseWithVars for MacroContent {
                 }
             } else if la.peek(token::Paren) {
                 let mut scope = ScopeVars {
-                    macro_pat_vars: scope.macro_pat_vars
+                    macro_pat_vars: scope
+                        .macro_pat_vars
                         .as_mut()
                         .and_then(|x| x.list_scope.as_mut().map(|x| &mut **x)),
                 };
@@ -573,7 +627,12 @@ impl ParseWithVars for MacroContent {
                 } else {
                     (Some(input.parse()?), input.parse()?)
                 };
-                MacroContent::ListScope { dollar_token, inner, sep, star_token }
+                MacroContent::ListScope {
+                    dollar_token,
+                    inner,
+                    sep,
+                    star_token,
+                }
             } else if la.peek(token::Dollar) {
                 MacroContent::Token(CssToken::Delim(input.parse()?))
             } else {
@@ -749,13 +808,13 @@ impl MacroArgsToken {
         vars: &StyleSheetVars,
     ) -> Result<()> {
         let mac = vars.macros.get(&name.formal_name).ok_or_else(|| {
-            Error::new(name.span(), format!("no macro named {:?}", name.formal_name))
+            Error::new(
+                name.span(),
+                format!("no macro named {:?}", name.formal_name),
+            )
         })?;
         if mac.expand_recursive(ret, args, vars).is_none() {
-            return Err(Error::new(
-                name.span(),
-                "no macro rule matched",
-            ));
+            return Err(Error::new(name.span(), "no macro rule matched"));
         }
         args.for_each_ref(&mut |x| refs.extend(Some(x.clone())));
         Ok(())
@@ -959,17 +1018,11 @@ impl ParseWithVars for MacroArgsToken {
                 var_name: input.parse()?,
             }
         } else if input.peek(token::Paren) {
-            Self::Paren(ParseWithVars::parse_with_vars(
-                &input, vars, scope,
-            )?)
+            Self::Paren(ParseWithVars::parse_with_vars(&input, vars, scope)?)
         } else if input.peek(token::Bracket) {
-            Self::Bracket(ParseWithVars::parse_with_vars(
-                &input, vars, scope,
-            )?)
+            Self::Bracket(ParseWithVars::parse_with_vars(&input, vars, scope)?)
         } else if input.peek(token::Brace) {
-            Self::Brace(ParseWithVars::parse_with_vars(
-                &input, vars, scope,
-            )?)
+            Self::Brace(ParseWithVars::parse_with_vars(&input, vars, scope)?)
         } else if let Ok(x) = input.parse::<CssIdent>() {
             if input.peek(Token![!]) {
                 Self::MacroRef {

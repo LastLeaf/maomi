@@ -49,38 +49,23 @@ pub(crate) fn build(count: usize) -> Vec<TableRow> {
         "fancy",
     ];
     let colours = [
-        "red",
-        "yellow",
-        "blue",
-        "green",
-        "pink",
-        "brown",
-        "purple",
-        "brown",
-        "white",
-        "black",
+        "red", "yellow", "blue", "green", "pink", "brown", "purple", "brown", "white", "black",
         "orange",
     ];
     let nouns = [
-        "table",
-        "chair",
-        "house",
-        "bbq",
-        "desk",
-        "car",
-        "pony",
-        "cookie",
-        "sandwich",
-        "burger",
-        "pizza",
-        "mouse",
-        "keyboard",
+        "table", "chair", "house", "bbq", "desk", "car", "pony", "cookie", "sandwich", "burger",
+        "pizza", "mouse", "keyboard",
     ];
     let mut ret = Vec::with_capacity(count);
     for _ in 0..count {
         ret.push(TableRow {
             id: gen_id(),
-            label: format!("{} {} {}", random_member(&adjectives), random_member(&colours), random_member(&nouns)),
+            label: format!(
+                "{} {} {}",
+                random_member(&adjectives),
+                random_member(&colours),
+                random_member(&nouns)
+            ),
         });
     }
     ret
