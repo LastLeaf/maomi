@@ -220,19 +220,23 @@ impl MacroPat {
                     }
                 },
                 MacroPat::ListScope { inner, sep, .. } => {
-                    let mut sub_vars = PatVarValues {
-                        map: FxHashMap::default(),
-                        sub: Vec::with_capacity(0),
-                    };
-                    Self::try_match(inner.block.as_slice(), call, &mut sub_vars)?;
-                    ret.sub.push(sub_vars);
-                    if let Some(sep) = sep.as_ref() {
-                        let matched = match call.next() {
-                            Some(MacroArgsToken::Token(x)) => x.content_eq(sep),
-                            _ => false,
+                    loop {
+                        let mut sub_vars = PatVarValues {
+                            map: FxHashMap::default(),
+                            sub: Vec::with_capacity(0),
                         };
-                        if !matched {
-                            return None;
+                        Self::try_match(inner.block.as_slice(), call, &mut sub_vars)?;
+                        ret.sub.push(sub_vars);
+                        if let Some(sep) = sep.as_ref() {
+                            let matched = match call.next() {
+                                Some(MacroArgsToken::Token(x)) => x.content_eq(sep),
+                                _ => false,
+                            };
+                            if !matched {
+                                break;
+                            }
+                        } else {
+                            todo!(); // TODO
                         }
                     }
                 }
@@ -293,6 +297,9 @@ impl MacroPat {
                     }
                 }
             }
+        }
+        if call.next().is_some() {
+            return None;
         }
         Some({})
     }

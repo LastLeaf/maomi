@@ -548,7 +548,7 @@ mod test {
                 r#"
                     @macro ma {
                         () => {
-                            2px;
+                            2px
                         };
                     }
                     @const $a: 1px;                

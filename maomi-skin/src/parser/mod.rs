@@ -16,8 +16,6 @@ use mac::MacroDefinition;
 pub mod write_css;
 use write_css::*;
 
-use self::mac::MacroCall;
-
 mod kw {
     syn::custom_keyword!(only);
     syn::custom_keyword!(not);
@@ -675,6 +673,9 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                         let mut stream = CssTokenStream::new(first.span(), value_tokens);
                         T::PropertyValue::parse_value(&name, &mut stream)?;
                         let _ = stream.expect_semi()?;
+                    }
+                    if !call.is_braced() {
+                        input.parse::<token::Semi>()?;
                     }
                 } else if la.peek(token::Colon) {
                     props.push(Property::parse_property_with_name(ident, input, vars)?);
