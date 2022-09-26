@@ -73,7 +73,8 @@ impl MacroBranch {
         };
         MacroPat::try_match(
             self.pattern.block.as_slice(),
-            &mut call.tokens.iter(),
+            &mut call.tokens.iter().peekable(),
+            true,
             &mut pat_vars,
         )?;
         Some(MacroContent::expand(
@@ -174,7 +175,8 @@ enum PatVarValueTokens {
 impl MacroPat {
     fn try_match<'a>(
         self_list: &[Self],
-        call: &mut impl Iterator<Item = &'a MacroArgsToken>,
+        call: &mut std::iter::Peekable<impl Iterator<Item = &'a MacroArgsToken>>,
+        expect_ended: bool,
         ret: &mut PatVarValues,
     ) -> Option<()> {
         for pat_item in self_list {
@@ -202,7 +204,7 @@ impl MacroPat {
                     }
                     MacroPatTy::Value => {
                         let mut list = vec![];
-                        while let Some(v) = call.next() {
+                        while let Some(v) = call.peek() {
                             let matched = match v {
                                 MacroArgsToken::Token(CssToken::Semi(_)) => false,
                                 _ => true,
@@ -210,7 +212,7 @@ impl MacroPat {
                             if !matched {
                                 break;
                             }
-                            list.push(v.clone());
+                            list.push(call.next()?.clone());
                         }
                         if list.len() == 0 {
                             return None;
@@ -225,7 +227,7 @@ impl MacroPat {
                             map: FxHashMap::default(),
                             sub: Vec::with_capacity(0),
                         };
-                        Self::try_match(inner.block.as_slice(), call, &mut sub_vars)?;
+                        Self::try_match(inner.block.as_slice(), call, false, &mut sub_vars)?;
                         ret.sub.push(sub_vars);
                         if let Some(sep) = sep.as_ref() {
                             let matched = match call.next() {
@@ -235,8 +237,8 @@ impl MacroPat {
                             if !matched {
                                 break;
                             }
-                        } else {
-                            todo!(); // TODO
+                        } else if call.peek().is_none() {
+                            break;
                         }
                     }
                 }
@@ -247,7 +249,8 @@ impl MacroPat {
                         }
                         Self::try_match(
                             x.block.as_slice(),
-                            &mut v.block.as_slice().into_iter(),
+                            &mut v.block.as_slice().into_iter().peekable(),
+                            true,
                             ret,
                         )?;
                     } else {
@@ -258,7 +261,8 @@ impl MacroPat {
                     if let MacroArgsToken::Paren(v) = call.next()? {
                         Self::try_match(
                             x.block.as_slice(),
-                            &mut v.block.as_slice().into_iter(),
+                            &mut v.block.as_slice().into_iter().peekable(),
+                            true,
                             ret,
                         )?;
                     } else {
@@ -269,7 +273,8 @@ impl MacroPat {
                     if let MacroArgsToken::Bracket(v) = call.next()? {
                         Self::try_match(
                             x.block.as_slice(),
-                            &mut v.block.as_slice().into_iter(),
+                            &mut v.block.as_slice().into_iter().peekable(),
+                            true,
                             ret,
                         )?;
                     } else {
@@ -280,7 +285,8 @@ impl MacroPat {
                     if let MacroArgsToken::Brace(v) = call.next()? {
                         Self::try_match(
                             x.block.as_slice(),
-                            &mut v.block.as_slice().into_iter(),
+                            &mut v.block.as_slice().into_iter().peekable(),
+                            true,
                             ret,
                         )?;
                     } else {
@@ -298,7 +304,7 @@ impl MacroPat {
                 }
             }
         }
-        if call.next().is_some() {
+        if expect_ended && call.next().is_some() {
             return None;
         }
         Some({})
@@ -586,7 +592,7 @@ impl ParseWithVars for MacroContent {
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self> {
-        let t = if input.peek(Token![$]) {
+        let t = if input.peek(token::Dollar) {
             let dollar_token = input.parse()?;
             let la = input.lookahead1();
             if la.peek(Ident) || la.peek(token::Sub) {
@@ -918,10 +924,14 @@ impl MacroArgsToken {
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<()> {
-        if input.peek(Token![$]) {
-            let _: Token![$] = input.parse()?;
-            let var_name: CssIdent = input.parse()?;
-            Self::write_ref(ret, refs, var_name, vars)?;
+        if input.peek(token::Dollar) {
+            let _: token::Dollar = input.parse()?;
+            if input.peek(token::Dollar) {
+                ret.push(CssToken::Delim(input.parse()?));
+            } else {
+                let var_name: CssIdent = input.parse()?;
+                Self::write_ref(ret, refs, var_name, vars)?;
+            }
         } else if input.peek(token::Paren) {
             Self::write_paren(ret, refs, input, |ret, refs, input| {
                 Self::parse_all_input_and_write(ret, refs, input, vars, scope)
@@ -1019,10 +1029,15 @@ impl ParseWithVars for MacroArgsToken {
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self> {
-        let ret = if input.peek(Token![$]) {
-            Self::Ref {
-                dollar_token: input.parse()?,
-                var_name: input.parse()?,
+        let ret = if input.peek(token::Dollar) {
+            let dollar_token = input.parse()?;
+            if input.peek(token::Dollar) {
+                Self::Token(CssToken::Delim(input.parse()?))
+            } else {
+                Self::Ref {
+                    dollar_token,
+                    var_name: input.parse()?,
+                }
             }
         } else if input.peek(token::Paren) {
             Self::Paren(ParseWithVars::parse_with_vars(&input, vars, scope)?)

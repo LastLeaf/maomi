@@ -341,6 +341,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                             at_keyword,
                                             expr,
                                             items,
+                                            ..
                                         } => {
                                             if items.block.as_slice().len() > 0 {
                                                 at_keyword.write_css(cssw)?;
@@ -359,6 +360,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                             at_keyword,
                                             expr,
                                             items,
+                                            ..
                                         } => {
                                             if items.block.as_slice().len() > 0 {
                                                 at_keyword.write_css(cssw)?;
@@ -587,7 +589,7 @@ mod test {
                         ($$ $t:tt) => { $ok $t };
                         ($($t:tt),*) => { $($t)* };
                     }
-                    @const $p: ma!($ 1px);
+                    @const $p: ma!($$ 1px);
                     .c {
                         padding: $p;
                         margin: ma!(1px, 2px, 3px);
@@ -616,15 +618,15 @@ mod test {
                     @macro mb {
                         ($($i:value);*) => {
                             $(
-                                ma!($i);
-                            );*
+                                ma!($i)
+                            )*
                         };
                     }
                     .c {
-                        ma![padding: 1px];
+                        ma![padding = 1px];
                         margin: 2px;
                         :hover {
-                            mb!{ padding = 3px; margin = 4px }
+                            mb! { padding = 3px; margin = 4px }
                         }
                     }
                 "#,
@@ -644,10 +646,9 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     @macro ma {
-                        ({ $a:tt }) => { $a; };
-                        ({ $a:tt } $($b:tt)*) => { $a; ma!($(b)*) };
+                        ({ $a:value }) => { $a; };
+                        ({ $a:value } $($b:tt)*) => { $a; ma!($($b)*) };
                     }
-                    @const $p: ma!($ 1px);
                     .c {
                         ma! {
                             { padding: 1px }

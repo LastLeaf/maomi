@@ -506,7 +506,7 @@ impl ParseWithVars for StyleSheetMacroItem {
 
 struct StyleSheetConstItem {
     #[allow(dead_code)]
-    dollar_token: Token![$],
+    dollar_token: token::Dollar,
     name: CssIdent,
     #[allow(dead_code)]
     colon_token: CssColon,
@@ -540,11 +540,13 @@ pub struct RuleContent<T: StyleSheetConstructor> {
     pub at_blocks: Vec<AtBlock<T>>,
     pub pseudo_classes: Vec<PseudoClass<T>>,
     pub sub_classes: Vec<SubClass<T>>,
+    pub refs: Vec<CssIdent>,
 }
 
 pub struct PseudoClassContent<T: StyleSheetConstructor> {
     pub props: Vec<Property<T::PropertyValue>>,
     pub at_blocks: Vec<AtBlock<T>>,
+    pub refs: Vec<CssIdent>,
 }
 
 pub enum AtBlock<T: StyleSheetConstructor> {
@@ -552,11 +554,13 @@ pub enum AtBlock<T: StyleSheetConstructor> {
         at_keyword: CssAtKeyword,
         expr: Vec<MediaQuery<T::MediaCondValue>>,
         items: CssBrace<Repeat<Property<T::PropertyValue>>>,
+        refs: Vec<CssIdent>,
     },
     Supports {
         at_keyword: CssAtKeyword,
         expr: SupportsQuery<T::PropertyValue>,
         items: CssBrace<Repeat<Property<T::PropertyValue>>>,
+        refs: Vec<CssIdent>,
     },
 }
 
@@ -584,6 +588,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
             at_blocks,
             pseudo_classes,
             sub_classes,
+            refs,
         } = content;
         if let Some(x) = pseudo_classes.get(0) {
             return Err(Error::new(
@@ -597,7 +602,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
                 "sub classes are not allowed inside pseudo classes",
             ));
         }
-        Ok(Self { props, at_blocks })
+        Ok(Self { props, at_blocks, refs })
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
@@ -618,6 +623,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
                 }
             }
         }
+        self.refs.iter().for_each(f);
     }
 }
 
@@ -631,6 +637,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
         let mut at_blocks = vec![];
         let mut pseudo_classes = vec![];
         let mut sub_classes = vec![];
+        let mut refs = vec![];
         while !input.is_empty() {
             let la = input.lookahead1();
             if la.peek(Ident) || la.peek(token::Sub) {
@@ -639,7 +646,6 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                 if la.peek(Token![!]) {
                     let call = ParseWithVars::parse_with_vars(input, vars, scope)?;
                     let mut tokens = vec![];
-                    let mut refs = vec![]; // TODO use this refs
                     mac::MacroArgsToken::write_macro_ref(
                         &mut tokens,
                         &mut refs,
@@ -649,11 +655,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                     )?;
                     let mut stream = CssTokenStream::new(ident.span, tokens);
                     while stream.peek().is_ok() {
+                        // TODO support mixin blocks (need overall CssTokenStream parsing?)
                         let name = stream.expect_ident()?;
                         let colon_token = stream.expect_colon()?;
                         let mut value_tokens: Vec<CssToken> = vec![];
                         loop {
-                            match stream.next() {
+                            match stream.peek() {
                                 Err(_) => {
                                     let span = value_tokens
                                         .last()
@@ -662,17 +669,23 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                                     return Err(Error::new(span, "expected `;`"));
                                 }
                                 Ok(CssToken::Semi(_)) => break,
-                                Ok(x) => {
-                                    value_tokens.push(x);
-                                }
+                                Ok(_) => {}
                             }
+                            value_tokens.push(stream.next()?);
                         }
                         let first = value_tokens.first().ok_or_else(|| {
                             Error::new(colon_token.span, "expected property value")
                         })?;
-                        let mut stream = CssTokenStream::new(first.span(), value_tokens);
-                        T::PropertyValue::parse_value(&name, &mut stream)?;
-                        let _ = stream.expect_semi()?;
+                        let mut sub_stream = CssTokenStream::new(first.span(), value_tokens);
+                        let value = T::PropertyValue::parse_value(&name, &mut sub_stream)?;
+                        let semi_token = stream.expect_semi()?;
+                        props.push(Property {
+                            name,
+                            colon_token,
+                            value,
+                            semi_token,
+                            refs: Vec::with_capacity(0),
+                        });
                     }
                     if !call.is_braced() {
                         input.parse::<token::Semi>()?;
@@ -705,10 +718,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                             }
                             input.parse::<Token![,]>()?;
                         }
+                        // TODO support macro
                         at_blocks.push(AtBlock::Media {
                             at_keyword,
                             expr,
                             items: ParseWithVars::parse_with_vars(input, vars, scope)?,
+                            refs: Vec::with_capacity(0),
                         });
                     }
                     "supports" => {
@@ -718,10 +733,12 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                         } else {
                             return Err(la.error());
                         }
+                        // TODO support macro
                         at_blocks.push(AtBlock::Supports {
                             at_keyword,
                             expr: ParseWithVars::parse_with_vars(input, vars, scope)?,
                             items: ParseWithVars::parse_with_vars(input, vars, scope)?,
+                            refs: Vec::with_capacity(0),
                         });
                     }
                     _ => {
@@ -745,6 +762,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
             at_blocks,
             pseudo_classes,
             sub_classes,
+            refs,
         })
     }
 

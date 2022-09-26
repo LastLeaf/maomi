@@ -105,6 +105,15 @@ impl CssAtKeyword {
     }
 }
 
+impl std::fmt::Debug for CssAtKeyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssAtKeyword")
+            .field(&"span", &self.span)
+            .field(&"formal_name", &self.formal_name)
+            .finish()
+    }
+}
+
 impl Spanned for CssAtKeyword {
     fn span(&self) -> Span {
         self.span
@@ -151,6 +160,15 @@ pub struct CssString {
 impl CssString {
     pub fn value(&self) -> String {
         self.s.value()
+    }
+}
+
+impl std::fmt::Debug for CssString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssString")
+            .field(&"span", &self.s.span())
+            .field(&"value", &self.s.value())
+            .finish()
     }
 }
 
@@ -395,6 +413,15 @@ impl CssNumber {
     }
 }
 
+impl std::fmt::Debug for CssNumber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssNumber")
+            .field(&"span", &self.span)
+            .field(&"num", &self.num)
+            .finish()
+    }
+}
+
 impl Spanned for CssNumber {
     fn span(&self) -> Span {
         self.span
@@ -594,6 +621,16 @@ impl<T> CssFunction<T> {
     }
 }
 
+impl<T: std::fmt::Debug> std::fmt::Debug for CssFunction<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssFunction")
+            .field(&"span", &self.span)
+            .field(&"formal_name", &self.formal_name)
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
 impl<T> Spanned for CssFunction<T> {
     fn span(&self) -> Span {
         self.span
@@ -644,6 +681,14 @@ impl<T> Spanned for CssParen<T> {
     }
 }
 
+impl<T: std::fmt::Debug> std::fmt::Debug for CssParen<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssParen")
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
 impl<T: Parse> Parse for CssParen<T> {
     fn parse(input: ParseStream) -> Result<Self> {
         let content;
@@ -683,6 +728,14 @@ impl<T: WriteCss> WriteCss for CssParen<T> {
 pub struct CssBracket<T> {
     pub bracket_token: token::Bracket,
     pub block: T,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssBracket<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssBracket")
+            .field(&"block", &self.block)
+            .finish()
+    }
 }
 
 impl<T> Spanned for CssBracket<T> {
@@ -736,6 +789,14 @@ impl<T: WriteCss> WriteCss for CssBracket<T> {
 pub struct CssBrace<T> {
     pub brace_token: token::Brace,
     pub block: T,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssBrace<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssBrace")
+            .field(&"block", &self.block)
+            .finish()
+    }
 }
 
 impl<T> Spanned for CssBrace<T> {
@@ -885,7 +946,7 @@ impl<'a, T> IntoIterator for &'a Repeat<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum CssToken {
     Ident(CssIdent),
     AtKeyword(CssAtKeyword),
