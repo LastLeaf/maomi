@@ -171,7 +171,7 @@ fn set_id(elem: &web_sys::HtmlElement, s: &str) {
     web_sys::Element::set_id(&elem, s)
 }
 
-// TODO add common elements and attributes
+// FIXME add common elements and attributes
 
 fn set_aria_hidden(elem: &web_sys::HtmlElement, s: &str) {
     elem.set_attribute("aria-hidden", s).ok();

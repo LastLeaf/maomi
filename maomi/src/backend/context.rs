@@ -79,7 +79,7 @@ impl<B: Backend> Clone for BackendContext<B> {
     }
 }
 
-// TODO impl better entering with backend-provided async task
+// FIXME impl better entering with backend-provided async task
 
 impl<B: Backend> BackendContext<B> {
     /// Create a new backend context

@@ -6,24 +6,24 @@ use crate::{base_element::DomElement, DomState};
 
 type DomClassListTy = dom_state_ty!(DomTokenList, (), ());
 
-fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &str, v: bool) {
+fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &'static str, v: bool, _ctx: &mut DomElement) {
     match class_list {
         DomState::Normal(x) => {
-            // TODO fix multi-ref classes handling
+            // TODO if a class is used multiple times in a single element (may through external), this breaks
             x.toggle_with_force(class_name, v).unwrap();
         }
         #[cfg(feature = "prerendering")]
         DomState::Prerendering(_) => {
-            if let DomState::Prerendering(x) = &mut ctx.elem {
+            if let DomState::Prerendering(x) = &mut _ctx.elem {
                 if v {
-                    x.set_class(index, class_name); // TODO fix external in prerendering
+                    x.add_class(class_name);
                 } else {
-                    x.set_class(index, "");
+                    x.remove_class(class_name);
                 }
             }
         }
         #[cfg(feature = "prerendering-apply")]
-        class_list => match &ctx.elem {
+        class_list => match &_ctx.elem {
             DomState::Normal(x) => {
                 let cl = x.class_list();
                 cl.toggle_with_force(class_name, v).unwrap();
@@ -64,10 +64,6 @@ impl ListPropertyInit for DomClassList {
         let mut v = Vec::with_capacity(count);
         v.resize_with(count, || DomClassItem::Enabled(false));
         dest.enabled = v.into_boxed_slice();
-        #[cfg(feature = "prerendering")]
-        if let DomState::Prerendering(x) = &mut _ctx.elem {
-            x.set_class_count(count);
-        }
     }
 }
 
@@ -93,7 +89,7 @@ impl ListPropertyUpdate<bool> for DomClassList {
                 return;
             }
         }
-        toggle_class_name(&mut dest.class_list, class_name, v);
+        toggle_class_name(&mut dest.class_list, class_name, v, ctx);
         *old_v = DomClassItem::Enabled(v);
     }
 }
@@ -117,10 +113,10 @@ impl ListPropertyUpdate<DomExternalClasses> for DomClassList {
         let class_list = &mut dest.class_list;
         if let DomClassItem::External(x) = old_v {
             src.diff_list(x, &mut |c, enabled| {
-                toggle_class_name(class_list, c, enabled)
+                toggle_class_name(class_list, c, enabled, ctx)
             });
         } else {
-            let x = src.init_list(&mut |c, enabled| toggle_class_name(class_list, c, enabled));
+            let x = src.init_list(&mut |c, enabled| toggle_class_name(class_list, c, enabled, ctx));
             *old_v = DomClassItem::External(x);
         }
     }
@@ -164,7 +160,7 @@ impl DomExternalClasses {
         }
     }
 
-    fn init_list(&self, update_fn: &mut impl FnMut(&str, bool)) -> Self {
+    fn init_list(&self, update_fn: &mut impl FnMut(&'static str, bool)) -> Self {
         let items = self
             .items
             .iter()
@@ -186,7 +182,7 @@ impl DomExternalClasses {
         }
     }
 
-    fn deinit_list(&self, update_fn: &mut impl FnMut(&str, bool)) {
+    fn deinit_list(&self, update_fn: &mut impl FnMut(&'static str, bool)) {
         for item in self.items.iter() {
             match item {
                 DomExternalClassItem::Enabled(enabled, class_name) => {
@@ -201,7 +197,7 @@ impl DomExternalClasses {
         }
     }
 
-    fn diff_list(&self, old: &mut Self, update_fn: &mut impl FnMut(&str, bool)) {
+    fn diff_list(&self, old: &mut Self, update_fn: &mut impl FnMut(&'static str, bool)) {
         if Rc::ptr_eq(&self.id, &old.id) {
             for (new, old) in self.items.iter().zip(old.items.iter_mut()) {
                 match new {

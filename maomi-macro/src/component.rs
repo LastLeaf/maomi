@@ -7,7 +7,7 @@ use syn::*;
 
 use super::template::Template;
 
-// TODO support i18n
+// FIXME support i18n
 
 struct ComponentAttr {
     items: Punctuated<ComponentAttrItem, token::Comma>,

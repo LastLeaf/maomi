@@ -55,12 +55,16 @@ impl PrerenderingElement {
         }
     }
 
-    pub(crate) fn set_class_count(&mut self, count: usize) {
-        self.classes.resize(count, "");
+    pub(crate) fn add_class(&mut self, class_name: &'static str) {
+        if !self.classes.contains(&class_name) {
+            self.classes.push(class_name);
+        }
     }
 
-    pub(crate) fn set_class(&mut self, index: usize, class_name: &'static str) {
-        self.classes[index] = class_name;
+    pub(crate) fn remove_class(&mut self, class_name: &'static str) {
+        if let Some(index) = self.classes.iter().position(|x| *x == class_name) {
+            self.classes.swap_remove(index);
+        }
     }
 
     #[cfg(feature = "prerendering")]

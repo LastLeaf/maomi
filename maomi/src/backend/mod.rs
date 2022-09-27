@@ -140,6 +140,8 @@ pub trait BackendTextNode {
     fn set_text(&mut self, content: &str);
 }
 
+// FIXME consider using `dyn` to control the generated bin size
+
 /// A trait that indicates a component or a backend-implemented element for the backend
 pub trait BackendComponent<B: Backend> {
     type SlotData;
