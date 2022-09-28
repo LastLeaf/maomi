@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, ops::Deref};
+use std::{borrow::Borrow, ops::Deref, fmt::Display};
 
 /// The property updater
 pub trait PropertyUpdate<S: ?Sized> {
@@ -40,6 +40,12 @@ impl<T> AsRef<T> for Prop<T> {
 impl<T> Borrow<T> for Prop<T> {
     fn borrow(&self) -> &T {
         &self.inner
+    }
+}
+
+impl<T: Display> Display for Prop<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
     }
 }
 

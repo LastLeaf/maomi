@@ -1,6 +1,6 @@
 use crate::{
     backend::{tree, Backend, BackendGeneralElement, BackendTextNode},
-    error::Error,
+    error::Error, locale_string::ToLocaleStr,
 };
 
 /// A text node
@@ -13,12 +13,12 @@ impl TextNode {
     #[inline]
     pub fn create<B: Backend>(
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
-        content: &str,
+        content: impl ToLocaleStr,
     ) -> Result<(Self, tree::ForestNodeRc<B::GeneralElement>), Error>
     where
         Self: Sized,
     {
-        let elem = B::GeneralElement::create_text_node(owner, content)?;
+        let elem = B::GeneralElement::create_text_node(owner, content.to_locale_str())?;
         let this = Self {
             backend_element_token: elem.token(),
         };
@@ -41,12 +41,12 @@ impl TextNode {
     pub fn set_text<B: Backend>(
         &mut self,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
-        text: &str,
+        content: impl ToLocaleStr,
     ) -> Result<(), Error> {
         if let Some(mut text_node) = owner.borrow_mut_token(&self.backend_element_token) {
             let mut text_node = B::GeneralElement::as_text_node_mut(&mut text_node)
                 .ok_or(Error::TreeNodeTypeWrong)?;
-            text_node.set_text(text);
+            text_node.set_text(content.to_locale_str());
         }
         Ok(())
     }

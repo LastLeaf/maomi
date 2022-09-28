@@ -8,6 +8,7 @@ pub mod node;
 pub mod prop;
 pub mod template;
 pub mod text_node;
+pub mod locale_string;
 #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 pub use backend::context::PrerenderingData;
 pub use backend::context::{AsyncCallback, BackendContext};

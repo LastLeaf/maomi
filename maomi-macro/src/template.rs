@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-
 use proc_macro2::TokenStream;
 use quote::*;
 use syn::parse::*;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::*;
+
+use crate::i18n::{LocaleGroup, TransRes};
 
 fn get_branch_ty(len: usize) -> Ident {
     Ident::new(&format!("Branch{}", len), proc_macro2::Span::call_site())
@@ -31,17 +32,19 @@ impl Template {
         parse_quote_spanned!(span=> (#(#children,)*) )
     }
 
-    pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateCreate<'a> {
+    pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream, locale_group: &'a LocaleGroup) -> TemplateCreate<'a> {
         TemplateCreate {
             template: self,
             backend_param,
+            locale_group,
         }
     }
 
-    pub(super) fn to_update<'a>(&'a self, backend_param: &'a TokenStream) -> TemplateUpdate<'a> {
+    pub(super) fn to_update<'a>(&'a self, backend_param: &'a TokenStream, locale_group: &'a LocaleGroup) -> TemplateUpdate<'a> {
         TemplateUpdate {
             template: self,
             backend_param,
+            locale_group,
         }
     }
 }
@@ -616,6 +619,7 @@ impl Parse for TemplateAttribute {
 pub(super) struct TemplateCreate<'a> {
     template: &'a Template,
     backend_param: &'a TokenStream,
+    locale_group: &'a LocaleGroup,
 }
 
 impl<'a> ToTokens for TemplateCreate<'a> {
@@ -623,12 +627,14 @@ impl<'a> ToTokens for TemplateCreate<'a> {
         let Self {
             template,
             backend_param,
+            locale_group,
         } = self;
         let Template { children } = template;
         let children = children.into_iter().map(|x| TemplateNodeCreate {
             inside_update: false,
             template_node: x,
             backend_param,
+            locale_group,
         });
         quote! {
             (#({#children},)*)
@@ -641,6 +647,7 @@ struct TemplateNodeCreate<'a> {
     inside_update: bool,
     template_node: &'a TemplateNode,
     backend_param: &'a TokenStream,
+    locale_group: &'a LocaleGroup,
 }
 
 impl<'a> ToTokens for TemplateNodeCreate<'a> {
@@ -649,16 +656,25 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             inside_update,
             template_node,
             backend_param,
+            locale_group,
         } = self;
         let inside_update = *inside_update;
         match template_node {
             TemplateNode::StaticText { content } => {
                 let span = content.span();
+                let translated = match locale_group.trans(&content.value()) {
+                    TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
+                    TransRes::Done(x) => {
+                        let s = LitStr::new(x, span);
+                        quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }
+                    }
+                    TransRes::NotNeeded => quote_spanned! {span=> maomi::locale_string::LocaleStaticStr::translated(#content) },
+                };
                 quote_spanned! {span=>
                     let (__m_child, __m_backend_element) =
                         maomi::text_node::TextNode::create::<#backend_param>(
                             __m_parent_element,
-                            #content,
+                            #translated,
                         )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     __m_child
@@ -666,11 +682,15 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
+                let translated = match locale_group.need_trans() {
+                    true => quote_spanned! {span=> #expr },
+                    false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
+                };
                 quote_spanned! {span=>
                     let (__m_child, __m_backend_element) =
                         maomi::text_node::TextNode::create::<#backend_param>(
                             __m_parent_element,
-                            #expr,
+                            #translated,
                         )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     __m_child
@@ -746,7 +766,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         );
                     )*
                 };
-                let children = children.into_iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
+                let children = children.into_iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                 let slot_var_name = match slot_var_name {
                     Some(x) => quote! { #x },
                     None => quote! { __m_slot_data },
@@ -789,7 +809,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
+                    let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                     quote_spanned! {span=>
                         #else_token #if_cond {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
@@ -819,7 +839,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
+                    let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                     quote! {
                         #pat #guard #fat_arrow_token {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
@@ -845,7 +865,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
                 let span = for_token.span();
-                let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param });
+                let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                 let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
                     (
                         quote!(maomi::diff::key::KeyList::<#backend_param, #key_ty, _>),
@@ -895,6 +915,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
 pub(super) struct TemplateUpdate<'a> {
     template: &'a Template,
     backend_param: &'a TokenStream,
+    locale_group: &'a LocaleGroup,
 }
 
 impl<'a> ToTokens for TemplateUpdate<'a> {
@@ -902,6 +923,7 @@ impl<'a> ToTokens for TemplateUpdate<'a> {
         let Self {
             template,
             backend_param,
+            locale_group,
         } = self;
         let Template { children } = template;
         let children = children
@@ -911,6 +933,7 @@ impl<'a> ToTokens for TemplateUpdate<'a> {
                 child_index: Index::from(index),
                 template_node: x,
                 backend_param,
+                locale_group,
             });
         quote! {
             #({#children})*
@@ -923,6 +946,7 @@ struct TemplateNodeUpdate<'a> {
     child_index: Index,
     template_node: &'a TemplateNode,
     backend_param: &'a TokenStream,
+    locale_group: &'a LocaleGroup,
 }
 
 impl<'a> ToTokens for TemplateNodeUpdate<'a> {
@@ -931,6 +955,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             child_index,
             template_node,
             backend_param,
+            locale_group,
         } = self;
         match template_node {
             TemplateNode::StaticText { .. } => {
@@ -938,9 +963,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
+                let translated = match locale_group.need_trans() {
+                    true => quote_spanned! {span=> #expr },
+                    false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
+                };
                 quote_spanned! {span=>
                     let __m_child = &mut __m_children.#child_index;
-                    __m_child.set_text::<#backend_param>(__m_parent_element, #expr)?;
+                    __m_child.set_text::<#backend_param>(__m_parent_element, #translated)?;
                 }
             }
             TemplateNode::Slot { tag_lt_token, data, .. } => {
@@ -1007,6 +1036,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         inside_update: true,
                         template_node: x,
                         backend_param,
+                        locale_group,
                     });
                 let update_children = children.into_iter()
                     .enumerate()
@@ -1014,6 +1044,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         child_index: Index::from(index),
                         template_node: x,
                         backend_param,
+                        locale_group,
                     });
                 let slot_var_name = match slot_var_name {
                     Some(x) => quote! { #x },
@@ -1065,13 +1096,14 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param });
+                    let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param, locale_group });
                     let update_children = children.iter()
                         .enumerate()
                         .map(|(index, x)| TemplateNodeUpdate {
                             child_index: Index::from(index),
                             template_node: x,
                             backend_param,
+                            locale_group,
                         });
                     quote! {
                         #else_token #if_cond {
@@ -1113,13 +1145,14 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         Some((if_token, cond)) => quote! { #if_token #cond },
                         None => quote! {},
                     };
-                    let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param });
+                    let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param, locale_group });
                     let update_children = children.iter()
                         .enumerate()
                         .map(|(index, x)| TemplateNodeUpdate {
                             child_index: Index::from(index),
                             template_node: x,
                             backend_param,
+                            locale_group,
                         });
                     quote! {
                         #pat #guard #fat_arrow_token {
@@ -1161,6 +1194,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         inside_update: true,
                         template_node: x,
                         backend_param,
+                        locale_group,
                     });
                 let update_children = children.into_iter()
                     .enumerate()
@@ -1168,6 +1202,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         child_index: Index::from(index),
                         template_node: x,
                         backend_param,
+                        locale_group,
                     });
                 let next_arg = if let Some((_, _, key_expr, _)) = key.as_ref() {
                     quote!(#key_expr,)

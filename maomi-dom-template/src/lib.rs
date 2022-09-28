@@ -1,7 +1,7 @@
 // import WASM support
 use wasm_bindgen::prelude::*;
 // import maomi core module
-use maomi::{prelude::*, BackendContext};
+use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleStr}};
 // using DOM backend
 use maomi_dom::{async_task, element::*, event::*, prelude::dom_css, DomBackend};
 
@@ -25,7 +25,7 @@ struct HelloWorld {
             "Hello world!"
         </div>
         // use { ... } bindings in the template
-        <div title={ &self.hello }>
+        <div title={ self.hello.to_locale_str() }>
             { &self.hello }
         </div>
         // use classes in `class:xxx` form
@@ -35,7 +35,7 @@ struct HelloWorld {
             <div long_tap=@handle_tap()> "Click me!" </div>
         }
     },
-    hello: String,
+    hello: LocaleString,
     r: bool,
 }
 
@@ -44,7 +44,7 @@ impl Component for HelloWorld {
     fn new() -> Self {
         Self {
             template: Default::default(),
-            hello: "Hello world again!".to_string(),
+            hello: i18n!("Hello world again!").to_locale_string(),
             r: false,
         }
     }

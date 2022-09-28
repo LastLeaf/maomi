@@ -6,8 +6,7 @@ use syn::spanned::Spanned;
 use syn::*;
 
 use super::template::Template;
-
-// FIXME support i18n
+use super::i18n::LocaleGroup;
 
 struct ComponentAttr {
     items: Punctuated<ComponentAttrItem, token::Comma>,
@@ -34,6 +33,12 @@ enum ComponentAttrItem {
         equal_token: token::Eq,
         path: Path,
     },
+    Translation {
+        attr_name: Ident,
+        #[allow(dead_code)]
+        equal_token: token::Eq,
+        name: Ident,
+    },
 }
 
 impl Parse for ComponentAttrItem {
@@ -50,6 +55,11 @@ impl Parse for ComponentAttrItem {
                 attr_name,
                 equal_token: input.parse()?,
                 path: input.parse()?,
+            },
+            "Translation" => Self::Translation {
+                attr_name,
+                equal_token: input.parse()?,
+                name: input.parse()?,
             },
             _ => {
                 return Err(Error::new(attr_name.span(), "Unknown attribute parameter"));
@@ -68,6 +78,7 @@ struct ComponentBody {
     template: Result<Template>,
     template_field: Ident,
     template_ty: Type,
+    locale_group: LocaleGroup,
 }
 
 impl ComponentBody {
@@ -75,6 +86,7 @@ impl ComponentBody {
         // generate backend type params and slot params
         let mut backend_attr = None;
         let mut slot_data_attr = None;
+        let mut locale_group_name = None;
         for item in attr.items {
             match item {
                 ComponentAttrItem::Backend {
@@ -102,6 +114,15 @@ impl ComponentBody {
                     }
                     slot_data_attr = Some(path);
                 }
+                ComponentAttrItem::Translation { attr_name, name, .. } => {
+                    if locale_group_name.is_some() {
+                        return Err(Error::new(
+                            attr_name.span(),
+                            "Duplicated attribute parameter",
+                        ));
+                    }
+                    locale_group_name = Some(name);
+                }
             }
         }
         let backend_param = match &backend_attr {
@@ -128,6 +149,18 @@ impl ComponentBody {
             Some(path) => {
                 let span = path.span();
                 quote_spanned! {span=> #path }
+            }
+        };
+        let locale_group = {
+            let r = match locale_group_name {
+                None => LocaleGroup::get_default(),
+                Some(x) => LocaleGroup::get(&x.to_string()),
+            };
+            match r {
+                Err(x) => {
+                    return Err(Error::new(inner.span(), x));
+                }
+                Ok(x) => x,
             }
         };
 
@@ -221,6 +254,7 @@ impl ComponentBody {
             template,
             template_field: template_field.unwrap(),
             template_ty: template_ty.unwrap(),
+            locale_group,
         })
     }
 }
@@ -236,6 +270,7 @@ impl ToTokens for ComponentBody {
             template,
             template_field,
             template_ty,
+            locale_group,
         } = self;
 
         // find generics for impl
@@ -253,8 +288,8 @@ impl ToTokens for ComponentBody {
         // impl the component template
         let impl_component_template = match template.as_ref() {
             Ok(template) => {
-                let template_create = template.to_create(&backend_param);
-                let template_update = template.to_update(&backend_param);
+                let template_create = template.to_create(backend_param, locale_group);
+                let template_update = template.to_update(backend_param, locale_group);
                 quote! {
                     impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
                         type TemplateField = maomi::template::Template<Self, Self::TemplateStructure, Self::SlotData>;

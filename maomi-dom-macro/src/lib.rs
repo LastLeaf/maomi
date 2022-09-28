@@ -486,7 +486,6 @@ pub fn dom_css(item: TokenStream) -> TokenStream {
 mod test {
     use std::io::Seek;
     use std::path::Path;
-
     use serial_test::serial;
 
     use super::*;
