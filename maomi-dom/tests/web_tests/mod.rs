@@ -157,12 +157,10 @@ fn generate_fake_touch(
     client_x: i32,
     client_y: i32,
 ) -> JsValue {
-    let v = JsValue::from_serde(&FakeTouch {
-        identifier,
-        client_x,
-        client_y,
-    })
-    .unwrap();
+    let v = js_sys::Object::new();
+    Reflect::set(&v, &JsValue::from_str("identifier"), &JsValue::from_f64(identifier as f64)).unwrap();
+    Reflect::set(&v, &JsValue::from_str("clientX"), &JsValue::from_f64(client_x as f64)).unwrap();
+    Reflect::set(&v, &JsValue::from_str("clientY"), &JsValue::from_f64(client_y as f64)).unwrap();
     Reflect::set(&v, &JsValue::from_str("target"), target).unwrap();
     let arr = js_sys::Array::new();
     arr.push(&v);
