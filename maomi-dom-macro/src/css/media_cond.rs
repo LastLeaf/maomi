@@ -125,8 +125,8 @@ impl WriteCss for DomMediaCondValue {
 
 #[cfg(test)]
 mod test {
-    use crate::test::{parse_str, setup_env};
-    use crate::*;
+    use super::super::test::{parse_str, setup_env};
+    use super::super::*;
     use serial_test::serial;
 
     #[test]

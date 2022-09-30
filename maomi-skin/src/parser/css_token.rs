@@ -665,7 +665,7 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_function_block(&self.css_name(), |cssw| self.block.write_css(cssw))
+        cssw.write_function_block(true, &self.css_name(), |cssw| self.block.write_css(cssw))
     }
 }
 

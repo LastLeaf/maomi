@@ -148,6 +148,7 @@ impl<'a, W: Write> CssWriter<'a, W> {
 
     pub fn write_function_block(
         &mut self,
+        prefer_sep_before: bool,
         name: &str,
         f: impl FnOnce(&mut Self) -> Result,
     ) -> Result {
@@ -159,7 +160,7 @@ impl<'a, W: Write> CssWriter<'a, W> {
                 debug_mode,
                 ..
             } = self;
-            if *debug_mode {
+            if *debug_mode && prefer_sep_before {
                 match sc {
                     WriteCssSepCond::Whitespace => {}
                     _ => {

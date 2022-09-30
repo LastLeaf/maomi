@@ -218,6 +218,8 @@ macro_rules! define_element_with_shared_props {
 
 pub mod content_sectioning;
 pub use content_sectioning::*;
+pub mod inline_text;
+pub use inline_text::*;
 
 define_element_with_shared_props!(div, {}, {});
 define_element_with_shared_props!(span, {}, {});
@@ -227,14 +229,6 @@ define_element_with_shared_props!(tbody, {}, {});
 define_element_with_shared_props!(tfoot, {}, {});
 define_element_with_shared_props!(tr, {}, {});
 define_element_with_shared_props!(td, {}, {});
-
-fn set_a_href(elem: &web_sys::HtmlElement, s: &str) {
-    web_sys::HtmlAnchorElement::set_href(elem.unchecked_ref(), s)
-}
-
-define_element_with_shared_props!(a, {
-    href: DomStrAttr: set_a_href,
-}, {});
 
 fn set_button_type(elem: &web_sys::HtmlElement, s: &str) {
     web_sys::HtmlButtonElement::set_type(elem.unchecked_ref(), s)

@@ -15,6 +15,7 @@ mod mac;
 use mac::MacroDefinition;
 pub mod write_css;
 use write_css::*;
+pub mod pseudo;
 
 mod kw {
     syn::custom_keyword!(only);
@@ -565,9 +566,8 @@ pub enum AtBlock<T: StyleSheetConstructor> {
 }
 
 pub struct PseudoClass<T: StyleSheetConstructor> {
-    // FIXME recognize each pseudo classes
     pub colon_token: CssColon,
-    pub ident: CssIdent,
+    pub pseudo: pseudo::Pseudo,
     pub content: CssBrace<PseudoClassContent<T>>,
 }
 
@@ -592,7 +592,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
         } = content;
         if let Some(x) = pseudo_classes.get(0) {
             return Err(Error::new(
-                x.ident.span,
+                x.colon_token.span,
                 "pseudo classes are not allowed inside pseudo classes",
             ));
         }
@@ -747,10 +747,10 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                 }
             } else if la.peek(token::Colon) {
                 let colon_token = input.parse()?;
-                let ident = input.parse()?;
+                let pseudo = input.parse()?;
                 pseudo_classes.push(PseudoClass {
                     colon_token,
-                    ident,
+                    pseudo,
                     content: ParseWithVars::parse_with_vars(input, vars, scope)?,
                 });
             } else {
