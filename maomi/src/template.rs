@@ -175,7 +175,7 @@ pub trait ComponentTemplate<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(
+        slot_fn: &mut dyn FnMut(
             &mut ForestNodeMut<B::GeneralElement>,
             &ForestToken,
             &Self::SlotData,
@@ -189,7 +189,7 @@ pub trait ComponentTemplate<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: impl FnMut(
+        slot_fn: &mut dyn FnMut(
             SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error>
@@ -207,7 +207,7 @@ pub trait ComponentTemplate<B: Backend> {
         Self: Sized,
     {
         let mut slot_changes: Vec<SlotChange<(), ForestToken, ()>> = Vec::with_capacity(0);
-        self.template_update(backend_context, backend_element, |slot_change| {
+        self.template_update(backend_context, backend_element, &mut |slot_change| {
             match slot_change {
                 SlotChange::Unchanged(..) => {}
                 SlotChange::DataChanged(_, n, _) => {
@@ -235,7 +235,7 @@ pub trait ComponentTemplate<B: Backend> {
     fn for_each_slot_scope<'b>(
         &'b mut self,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        mut slot_fn: impl FnMut(
+        slot_fn: &mut dyn FnMut(
             SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {

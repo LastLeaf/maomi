@@ -552,7 +552,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<<B as Backend>::GeneralElement>,
         update_fn: impl FnOnce(&mut C, &mut bool),
-        slot_fn: impl FnMut(
+        mut slot_fn: impl FnMut(
             &mut ForestNodeMut<B::GeneralElement>,
             &ForestToken,
             &Self::SlotData,
@@ -567,7 +567,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                 &mut comp,
                 backend_context,
                 &mut backend_element,
-                slot_fn,
+                &mut slot_fn,
             )?;
             #[cfg(not(feature = "prerendering"))]
             <C as Component>::created(&comp);
@@ -603,7 +603,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     &mut comp,
                     backend_context,
                     &mut backend_element,
-                    slot_fn,
+                    &mut slot_fn,
                 )
             } else {
                 let changes = <C as ComponentTemplate<B>>::template_mut(&mut comp)
@@ -653,7 +653,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     <C as ComponentTemplate<B>>::for_each_slot_scope(
                         &mut comp,
                         &mut backend_element,
-                        slot_fn,
+                        &mut slot_fn,
                     )
                 }
             }

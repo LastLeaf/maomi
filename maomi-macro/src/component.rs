@@ -318,7 +318,7 @@ impl ToTokens for ComponentBody {
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
                             >,
-                            mut __m_slot_fn: impl FnMut(
+                            __m_slot_fn: &mut dyn FnMut(
                                 &mut maomi::backend::tree::ForestNodeMut<
                                     <#backend_param as maomi::backend::Backend>::GeneralElement,
                                 >,
@@ -346,7 +346,7 @@ impl ToTokens for ComponentBody {
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
                                 <#backend_param as maomi::backend::Backend>::GeneralElement,
                             >,
-                            mut __m_slot_fn: impl FnMut(
+                            __m_slot_fn: &mut dyn FnMut(
                                 maomi::node::SlotChange<
                                     &mut maomi::backend::tree::ForestNodeMut<
                                         <#backend_param as maomi::backend::Backend>::GeneralElement,
