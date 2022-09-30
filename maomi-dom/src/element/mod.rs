@@ -1,3 +1,7 @@
+//! The element definition
+//!
+//! The element list is found in [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element) .
+
 use maomi::{
     backend::{BackendComponent, SupportBackend},
     error::Error,
@@ -171,8 +175,6 @@ fn set_id(elem: &web_sys::HtmlElement, s: &str) {
     web_sys::Element::set_id(&elem, s)
 }
 
-// FIXME add common elements and attributes
-
 fn set_aria_hidden(elem: &web_sys::HtmlElement, s: &str) {
     elem.set_attribute("aria-hidden", s).ok();
 }
@@ -212,14 +214,13 @@ macro_rules! define_element_with_shared_props {
     };
 }
 
+// FIXME add common elements and attributes
+
+pub mod content_sectioning;
+pub use content_sectioning::*;
+
 define_element_with_shared_props!(div, {}, {});
 define_element_with_shared_props!(span, {}, {});
-define_element_with_shared_props!(h1, {}, {});
-define_element_with_shared_props!(h2, {}, {});
-define_element_with_shared_props!(h3, {}, {});
-define_element_with_shared_props!(h4, {}, {});
-define_element_with_shared_props!(h5, {}, {});
-define_element_with_shared_props!(h6, {}, {});
 define_element_with_shared_props!(table, {}, {});
 define_element_with_shared_props!(thead, {}, {});
 define_element_with_shared_props!(tbody, {}, {});

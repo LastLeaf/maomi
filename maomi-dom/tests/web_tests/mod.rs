@@ -142,15 +142,6 @@ fn simulate_event(
     });
 }
 
-#[derive(serde::Serialize)]
-struct FakeTouch {
-    identifier: u32,
-    #[serde(rename = "clientX")]
-    client_x: i32,
-    #[serde(rename = "clientY")]
-    client_y: i32,
-}
-
 fn generate_fake_touch(
     target: &web_sys::Element,
     identifier: u32,
