@@ -79,8 +79,6 @@ impl<B: Backend> Clone for BackendContext<B> {
     }
 }
 
-// FIXME impl better entering with backend-provided async task
-
 impl<B: Backend> BackendContext<B> {
     /// Create a new backend context
     pub fn new(backend: B) -> Self {
@@ -101,38 +99,39 @@ impl<B: Backend> BackendContext<B> {
         self.inner.initial_backend_stage.get()
     }
 
-    fn exec_queue(&self, entered: &mut EnteredBackendContext<B>) {
-        while let Some(ev) = self.inner.event_queue.borrow_mut().pop_front() {
-            match ev {
-                BackendContextEvent::General(f) => {
-                    f(entered);
-                }
-            }
-        }
-    }
-
     /// Enter the backend context
     ///
     /// If the backend context has already entered,
-    /// it will wait until exits,
-    /// so the `f` is required to be `'static` .
+    /// it will wait until exits.
+    /// Generate an async task otherwise.
+    /// The `f` is required to be `'static` .
     #[inline]
     pub fn enter<T: 'static, F>(&self, f: F) -> AsyncCallback<T>
     where
         F: 'static + FnOnce(&mut EnteredBackendContext<B>) -> T,
     {
         let (fut, cb) = AsyncCallback::new();
-        if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
-            let ret = f(&mut entered);
-            self.exec_queue(&mut entered);
-            cb(ret);
-        } else {
-            self.inner
-                .event_queue
-                .borrow_mut()
-                .push_back(BackendContextEvent::General(Box::new(move |x| {
-                    cb(f(x));
-                })));
+        let need_task = {
+            let event_queue = &mut self.inner.event_queue.borrow_mut();
+            event_queue.push_back(BackendContextEvent::General(Box::new(move |x| {
+                cb(f(x));
+            })));
+            event_queue.len() == 1
+        };
+        if need_task {
+            if let Ok(entered) = self.inner.entered.try_borrow_mut() {
+                let inner = self.inner.clone();
+                entered.async_task(async move {
+                    let entered = &mut inner.entered.borrow_mut();
+                    while let Some(ev) = inner.event_queue.borrow_mut().pop_front() {
+                        match ev {
+                            BackendContextEvent::General(f) => {
+                                f(entered);
+                            }
+                        }
+                    }
+                });
+            }
         }
         fut
     }
@@ -147,7 +146,6 @@ impl<B: Backend> BackendContext<B> {
     {
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
             let ret = f(&mut entered);
-            self.exec_queue(&mut entered);
             Ok(ret)
         } else {
             Err(f)

@@ -25,6 +25,9 @@ pub trait Backend: 'static {
     type VirtualElement: BackendVirtualElement<BaseBackend = Self>;
     type TextNode: BackendTextNode<BaseBackend = Self>;
 
+    /// Generate an async task
+    fn async_task(&self, fut: impl 'static + std::future::Future<Output = ()>);
+
     /// Whether the backend is in prerendering stage
     fn backend_stage(&self) -> BackendStage;
 
