@@ -99,6 +99,20 @@ impl<B: Backend> BackendContext<B> {
         self.inner.initial_backend_stage.get()
     }
 
+    fn generate_async_task(&self) {
+        let inner = self.inner.clone();
+        B::async_task(async move {
+            let entered = &mut inner.entered.borrow_mut();
+            while let Some(ev) = inner.event_queue.borrow_mut().pop_front() {
+                match ev {
+                    BackendContextEvent::General(f) => {
+                        f(entered);
+                    }
+                }
+            }
+        });
+    }
+
     /// Enter the backend context
     ///
     /// If the backend context has already entered,
@@ -118,20 +132,8 @@ impl<B: Backend> BackendContext<B> {
             })));
             event_queue.len() == 1
         };
-        if need_task {
-            if let Ok(entered) = self.inner.entered.try_borrow_mut() {
-                let inner = self.inner.clone();
-                entered.async_task(async move {
-                    let entered = &mut inner.entered.borrow_mut();
-                    while let Some(ev) = inner.event_queue.borrow_mut().pop_front() {
-                        match ev {
-                            BackendContextEvent::General(f) => {
-                                f(entered);
-                            }
-                        }
-                    }
-                });
-            }
+        if need_task && self.inner.entered.try_borrow_mut().is_ok() {
+            self.generate_async_task();
         }
         fut
     }
@@ -145,7 +147,11 @@ impl<B: Backend> BackendContext<B> {
         F: FnOnce(&mut EnteredBackendContext<B>) -> T,
     {
         if let Ok(mut entered) = self.inner.entered.try_borrow_mut() {
+            let need_task = self.inner.event_queue.borrow().is_empty();
             let ret = f(&mut entered);
+            if need_task && !self.inner.event_queue.borrow().is_empty() {
+                self.generate_async_task();
+            }
             Ok(ret)
         } else {
             Err(f)

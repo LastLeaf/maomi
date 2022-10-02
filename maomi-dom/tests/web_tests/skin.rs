@@ -1,7 +1,7 @@
 use wasm_bindgen_test::*;
 
 use maomi::prelude::*;
-use maomi_dom::{async_task, element::*, prelude::*};
+use maomi_dom::{element::*, prelude::*};
 
 use super::*;
 
@@ -38,23 +38,18 @@ async fn skin_const() {
         }
 
         fn created(&self) {
-            let this = self.rc();
-            async_task(async move {
-                this.get_mut(|this, _| {
-                    assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
-                            .outer_html(),
-                        r#"<div class="a-class"></div>"#,
-                    );
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap();
-            })
+            self.rc().task_with(|this, _| {
+                assert_eq!(
+                    this.template_structure()
+                        .unwrap()
+                        .0
+                        .tag
+                        .dom_element()
+                        .outer_html(),
+                    r#"<div class="a-class"></div>"#,
+                );
+                (this.callback.take().unwrap())();
+            });
         }
     }
 

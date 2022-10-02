@@ -359,7 +359,7 @@ impl Backend for DomBackend {
     type VirtualElement = DomVirtualElement;
     type TextNode = DomTextNode;
 
-    fn async_task(&self, fut: impl 'static + std::future::Future<Output = ()>) {
+    fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
         async_task(fut)
     }
 

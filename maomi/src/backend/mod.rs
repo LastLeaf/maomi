@@ -26,7 +26,7 @@ pub trait Backend: 'static {
     type TextNode: BackendTextNode<BaseBackend = Self>;
 
     /// Generate an async task
-    fn async_task(&self, fut: impl 'static + std::future::Future<Output = ()>);
+    fn async_task(fut: impl 'static + std::future::Future<Output = ()>) where Self: Sized;
 
     /// Whether the backend is in prerendering stage
     fn backend_stage(&self) -> BackendStage;

@@ -39,10 +39,42 @@ impl<C: 'static> ComponentRc<C> {
         }
     }
 
-    /// Schedule an update task, getting the component mutable reference
+    /// Schedule an update in another task, getting the component mutable reference
     ///
-    /// The `f` may not be called immediately.
-    /// If any other component is still in a visiting or updating task, the `f` will be delayed.
+    /// The `f` will be called asynchously.
+    /// The template is always updated after `f` being called.
+    /// Panics if any error accurred during update.
+    pub fn task<R: 'static>(
+        &self,
+        f: impl 'static + FnOnce(&mut C) -> R,
+    ) {
+        self.inner
+            .enter_mut_detached(Box::new(move |c| {
+                f(c);
+                true
+            }));
+    }
+
+    /// Schedule an update in another task, getting the component mutable reference
+    ///
+    /// The `f` will be called asynchously.
+    /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
+    /// Panics if any error accurred during update.
+    pub fn task_with<R: 'static>(
+        &self,
+        f: impl 'static + FnOnce(&mut C, &mut ComponentMutCtx) -> R,
+    ) {
+        self.inner
+            .enter_mut_detached(Box::new(move |c| {
+                let mut ctx = ComponentMutCtx { need_update: false };
+                f(c, &mut ctx);
+                ctx.need_update
+            }));
+    }
+
+    /// Schedule an update, getting the component mutable reference
+    ///
+    /// The `f` will be called asynchously.
     /// The template is always updated after `f` being called.
     pub async fn update<R: 'static>(
         &self,
@@ -64,32 +96,11 @@ impl<C: 'static> ComponentRc<C> {
             .unwrap())
     }
 
-    /// Schedule a visiting task, getting the component reference
-    ///
-    /// The `f` may not be called immediately.
-    /// If any other component is still in a visiting or updating task, the `f` will be delayed.
-    pub async fn get<R: 'static>(&self, f: impl 'static + FnOnce(&C) -> R) -> R {
-        let ret = Rc::new(Cell::<Option<R>>::new(None));
-        let ret2 = ret.clone();
-        self.inner
-            .enter(Box::new(move |c| {
-                let r = f(c);
-                ret2.set(Some(r));
-            }))
-            .await;
-        Rc::try_unwrap(ret)
-            .map_err(|_| "Enter callback failed")
-            .unwrap()
-            .into_inner()
-            .unwrap()
-    }
-
     /// Schedule a visiting task, getting the component mutable reference
     ///
-    /// The `f` may not be called immediately.
-    /// If any other component is still in a visiting or updating task, the `f` will be delayed.
+    /// The `f` will be called asynchously.
     /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
-    pub async fn get_mut<R: 'static>(
+    pub async fn update_with<R: 'static>(
         &self,
         f: impl 'static + FnOnce(&mut C, &mut ComponentMutCtx) -> R,
     ) -> Result<R, Error> {
@@ -108,6 +119,25 @@ impl<C: 'static> ComponentRc<C> {
             .unwrap()
             .into_inner()
             .unwrap())
+    }
+
+    /// Schedule a visiting task, getting the component reference
+    ///
+    /// The `f` will be called asynchously.
+    pub async fn get<R: 'static>(&self, f: impl 'static + FnOnce(&C) -> R) -> R {
+        let ret = Rc::new(Cell::<Option<R>>::new(None));
+        let ret2 = ret.clone();
+        self.inner
+            .enter(Box::new(move |c| {
+                let r = f(c);
+                ret2.set(Some(r));
+            }))
+            .await;
+        Rc::try_unwrap(ret)
+            .map_err(|_| "Enter callback failed")
+            .unwrap()
+            .into_inner()
+            .unwrap()
     }
 }
 
@@ -310,12 +340,15 @@ pub trait PrerenderableComponent: Component {
 
 pub(crate) trait UpdateScheduler: 'static {
     type EnterType;
-    // fn clone_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
     fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()>;
     fn enter_mut(
         &self,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>>;
+    fn enter_mut_detached(
+        &self,
+        f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
+    );
     fn sync_update(&self) -> Result<(), Error>;
 }
 
@@ -327,12 +360,14 @@ pub(crate) trait UpdateSchedulerWeak: 'static {
 
 /// A node that wraps a component instance
 pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component> {
-    inner: Rc<(
-        RefCell<C>,
-        BackendContext<B>,
-        ForestNodeRc<B::GeneralElement>,
-        Box<dyn OwnerWeak>,
-    )>,
+    inner: Rc<ComponentNodeInner<B, C>>,
+}
+
+struct ComponentNodeInner<B: Backend, C: ComponentTemplate<B> + Component> {
+    c: RefCell<C>,
+    backend_context: BackendContext<B>,
+    forest_node_rc: ForestNodeRc<B::GeneralElement>,
+    owner_weak: Box<dyn OwnerWeak>,
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B, C> {
@@ -345,15 +380,15 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B,
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
     pub(crate) fn component(&self) -> &RefCell<C> {
-        &self.inner.0
+        &self.inner.c
     }
 
     fn backend_context(&self) -> &BackendContext<B> {
-        &self.inner.1
+        &self.inner.backend_context
     }
 
     fn backend_element(&self) -> &ForestNodeRc<B::GeneralElement> {
-        &self.inner.2
+        &self.inner.forest_node_rc
     }
 
     /// Get a ref-counted token `ComponentRc` for the component
@@ -383,6 +418,35 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
             inner: Rc::downgrade(&self.inner),
         }
     }
+
+    fn prepare_inner_changes(
+        inner: Rc<ComponentNodeInner<B, C>>,
+        f: Box<dyn FnOnce(&mut C) -> bool>,
+    ) -> Result<(), Error> {
+        let has_slot_changes = {
+            let mut comp = inner.c.borrow_mut();
+            let force_schdule_update = f(&mut comp);
+            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
+                || force_schdule_update
+            {
+                let mut backend_element = inner.forest_node_rc.borrow_mut();
+                <C as Component>::before_template_apply(&mut comp);
+                let has_slot_changes =
+                    <C as ComponentTemplate<B>>::template_update_store_slot_changes(
+                        &mut comp,
+                        &inner.backend_context,
+                        &mut backend_element,
+                    )?;
+                has_slot_changes
+            } else {
+                false
+            }
+        };
+        if has_slot_changes {
+            inner.owner_weak.apply_updates()?;
+        }
+        Ok(())
+    }
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for ComponentNode<B, C> {
@@ -391,7 +455,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
     #[inline]
     fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()> {
         let inner = self.inner.clone();
-        self.backend_context().enter(move |_| f(&inner.0.borrow()))
+        self.backend_context().enter(move |_| f(&inner.c.borrow()))
     }
 
     #[inline]
@@ -400,51 +464,42 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>> {
         let inner = self.inner.clone();
-        self.backend_context()
-            .enter::<Result<(), Error>, _>(move |_| {
-                let has_slot_changes = {
-                    let mut comp = inner.0.borrow_mut();
-                    let force_schdule_update = f(&mut comp);
-                    if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
-                        || force_schdule_update
-                    {
-                        let mut backend_element = inner.2.borrow_mut();
-                        <C as Component>::before_template_apply(&mut comp);
-                        let has_slot_changes =
-                            <C as ComponentTemplate<B>>::template_update_store_slot_changes(
-                                &mut comp,
-                                &inner.1,
-                                &mut backend_element,
-                            )?;
-                        has_slot_changes
-                    } else {
-                        false
-                    }
-                };
-                if has_slot_changes {
-                    inner.3.apply_updates()?;
-                }
-                Ok(())
-            })
+        self.backend_context().enter::<Result<(), Error>, _>(move |_| {
+            Self::prepare_inner_changes(inner, f)
+        })
+    }
+
+    #[inline]
+    fn enter_mut_detached(
+        &self,
+        f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
+    ) {
+        let inner = self.inner.clone();
+        // the sync part of `f` is always executed, so it does not require to poll
+        let _ = self.backend_context().enter::<(), _>(move |_| {
+            if let Err(err) = Self::prepare_inner_changes(inner, f) {
+                panic!("{}", err);
+            }
+        });
     }
 
     #[inline]
     fn sync_update(&self) -> Result<(), Error> {
         let inner = &self.inner;
         let has_slot_changes = {
-            let mut comp = inner.0.borrow_mut();
+            let mut comp = inner.c.borrow_mut();
             <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty();
-            let mut backend_element = inner.2.borrow_mut();
+            let mut backend_element = inner.forest_node_rc.borrow_mut();
             <C as Component>::before_template_apply(&mut comp);
             let has_slot_changes = <C as ComponentTemplate<B>>::template_update_store_slot_changes(
                 &mut comp,
-                &inner.1,
+                &inner.backend_context,
                 &mut backend_element,
             )?;
             has_slot_changes
         };
         if has_slot_changes {
-            inner.3.apply_updates()?;
+            inner.owner_weak.apply_updates()?;
         }
         Ok(())
     }
@@ -452,12 +507,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
 
 /// A node that wraps a component instance
 pub struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component> {
-    inner: Weak<(
-        RefCell<C>,
-        BackendContext<B>,
-        ForestNodeRc<B::GeneralElement>,
-        Box<dyn OwnerWeak>,
-    )>,
+    inner: Weak<ComponentNodeInner<B, C>>,
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeWeak<B, C> {
@@ -529,12 +579,12 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
     {
         let backend_element = B::GeneralElement::create_virtual_element(owner)?;
         let this = ComponentNode {
-            inner: Rc::new((
-                RefCell::new(<C as Component>::new()),
-                backend_context.clone(),
-                backend_element.clone(),
-                owner_weak.clone_owner_weak(),
-            )),
+            inner: Rc::new(ComponentNodeInner {
+                c: RefCell::new(<C as Component>::new()),
+                backend_context: backend_context.clone(),
+                forest_node_rc: backend_element.clone(),
+                owner_weak: owner_weak.clone_owner_weak(),
+            }),
         };
         let init = TemplateInit {
             updater: ComponentWeak::new(Rc::new(this.downgrade())),

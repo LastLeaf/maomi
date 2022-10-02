@@ -72,7 +72,7 @@ async fn single_static_slot() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -224,7 +224,7 @@ async fn single_dynamic_slot() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -376,7 +376,7 @@ async fn multiple_slots() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -544,7 +544,7 @@ async fn multiple_slots_with_data() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -677,7 +677,7 @@ async fn self_update_slot_data() {
                     })
                     .await;
                 child.get(|c| c.update_data()).await.await;
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()

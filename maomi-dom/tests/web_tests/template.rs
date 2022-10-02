@@ -50,7 +50,7 @@ async fn template_if_else() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, ctx| {
+                this.update_with(|this, ctx| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -65,7 +65,7 @@ async fn template_if_else() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -147,7 +147,7 @@ async fn template_lonely_if() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -223,7 +223,7 @@ async fn template_match() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, ctx| {
+                this.update_with(|this, ctx| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -238,7 +238,7 @@ async fn template_match() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -332,7 +332,7 @@ async fn template_for_keyless() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -516,7 +516,7 @@ async fn template_for() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -608,7 +608,7 @@ async fn class_attr() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()
@@ -672,7 +672,7 @@ async fn style_attr() {
                 })
                 .await
                 .unwrap();
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     assert_eq!(
                         this.template_structure()
                             .unwrap()

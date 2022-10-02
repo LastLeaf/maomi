@@ -118,7 +118,7 @@ async fn animation_event() {
                     .await
                 }
                 _ => this
-                    .get_mut(|this, _| {
+                    .update_with(|this, _| {
                         let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
                         assert_eq!(dom_elem.outer_html(), r#"<div>4</div>"#,);
                         (this.callback.take().unwrap())();
@@ -251,7 +251,7 @@ async fn transition_event() {
                     .await
                 }
                 _ => this
-                    .get_mut(|this, _| {
+                    .update_with(|this, _| {
                         let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
                         assert_eq!(dom_elem.outer_html(), r#"<div>4</div>"#,);
                         (this.callback.take().unwrap())();
@@ -304,7 +304,7 @@ async fn scroll_event() {
     impl MyComp {
         fn scroll_fn(this: ComponentRc<Self>, _ev: &mut ScrollEvent) {
             async_task(async move {
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     (this.callback.take().unwrap())();
                 })
                 .await
@@ -364,7 +364,7 @@ macro_rules! test_touch_events {
                     assert_eq!(ev.client_x(), 12);
                     assert_eq!(ev.client_y(), 34);
                     async_task(async move {
-                        this.get_mut(|this, _| {
+                        this.update_with(|this, _| {
                             (this.callback.take().unwrap())();
                         })
                         .await
@@ -436,7 +436,7 @@ macro_rules! test_mouse_events {
                     assert_eq!(ev.client_x(), 56);
                     assert_eq!(ev.client_y(), 78);
                     async_task(async move {
-                        this.get_mut(|this, _| {
+                        this.update_with(|this, _| {
                             (this.callback.take().unwrap())();
                         })
                         .await
@@ -516,7 +516,7 @@ async fn tap() {
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
             async_task(async move {
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     (this.callback.take().unwrap())();
                 })
                 .await
@@ -588,7 +588,7 @@ async fn cancel_tap() {
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
             async_task(async move {
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     (this.callback.take().unwrap())();
                 })
                 .await
@@ -662,7 +662,7 @@ async fn long_tap() {
                     ],
                 );
                 async_task(async move {
-                    this.get_mut(|this, _| {
+                    this.update_with(|this, _| {
                         (this.callback.take().unwrap())();
                     })
                     .await
