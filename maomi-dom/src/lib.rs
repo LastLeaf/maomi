@@ -5,6 +5,7 @@ use maomi::{
 use wasm_bindgen::{JsCast, JsValue};
 
 #[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
+#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t>
@@ -12,6 +13,7 @@ macro_rules! dom_state_ty {
 }
 
 #[cfg(all(not(feature = "prerendering"), feature = "prerendering-apply"))]
+#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $v>
@@ -19,6 +21,7 @@ macro_rules! dom_state_ty {
 }
 
 #[cfg(all(feature = "prerendering", not(feature = "prerendering-apply")))]
+#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $u>
@@ -26,6 +29,7 @@ macro_rules! dom_state_ty {
 }
 
 #[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
+#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $u, $v>
@@ -49,8 +53,9 @@ pub mod event;
 use event::DomListeners;
 
 pub mod prelude {
-    pub use crate::DomBackend;
     pub use maomi_dom_macro::dom_css;
+    pub use crate::DomBackend;
+    pub use crate::base_element::DomElementExt;
 }
 
 thread_local! {
@@ -78,27 +83,27 @@ pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
 
 #[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DomState<T> {
+pub enum DomState<T> {
     Normal(T),
 }
 
 #[cfg(all(not(feature = "prerendering"), feature = "prerendering-apply"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DomState<T, V> {
+pub enum DomState<T, V> {
     Normal(T),
     PrerenderingApply(V),
 }
 
 #[cfg(all(feature = "prerendering", not(feature = "prerendering-apply")))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DomState<T, U> {
+pub enum DomState<T, U> {
     Normal(T),
     Prerendering(U),
 }
 
 #[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DomState<T, U, V> {
+pub enum DomState<T, U, V> {
     Normal(T),
     Prerendering(U),
     PrerenderingApply(V),
@@ -402,7 +407,20 @@ impl DomGeneralElement {
         }
     }
 
-    fn create_dom_element<'b>(
+    pub(crate) fn create_dom_element_by_tag_name(
+        &self,
+        _tag_name: &str,
+    ) -> dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem) {
+        match self.is_prerendering() {
+            DomState::Normal(_) => DomState::Normal(crate::DOCUMENT.with(|document| document.create_element(_tag_name).unwrap())),
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(_tag_name)),
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => DomState::PrerenderingApply(RematchedDomElem::new()),
+        }
+    }
+
+    pub(crate) fn wrap_dom_element<'b>(
         this: &'b mut ForestNodeMut<Self>,
         elem: &'b dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem),
     ) -> ForestNodeRc<Self> {
@@ -414,6 +432,18 @@ impl DomGeneralElement {
             unreachable!()
         }
         ret
+    }
+
+    pub(crate) fn to_lazy(
+        elem: dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem),
+    ) -> dom_state_ty!(web_sys::Element, (), RematchedDomElem) {
+        match elem {
+            DomState::Normal(x) => DomState::Normal(x),
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(_) => DomState::Prerendering(()),
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(x) => DomState::PrerenderingApply(x.clone()),
+        }
     }
 
     pub(crate) fn as_dom_element_mut<'b>(

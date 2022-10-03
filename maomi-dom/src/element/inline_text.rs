@@ -1,16 +1,43 @@
+use maomi_dom_macro::dom_element_definition;
+use web_sys::HtmlAnchorElement;
+
 use super::*;
 
-fn set_a_download(elem: &web_sys::HtmlElement, s: &str) {
-    web_sys::HtmlAnchorElement::set_download(elem.unchecked_ref(), s)
+#[dom_element_definition]
+pub struct a {
+    pub href: attribute!(&str in HtmlAnchorElement),
 }
 
-fn set_a_href(elem: &web_sys::HtmlElement, s: &str) {
-    web_sys::HtmlAnchorElement::set_href(elem.unchecked_ref(), s)
+// TODO
+
+#[dom_element_definition]
+pub struct div {}
+
+#[dom_element_definition]
+pub struct span {}
+
+#[dom_element_definition]
+pub struct button {
+    pub r#type: attribute!(&str in HtmlAnchorElement),
 }
 
-define_element_with_shared_props!(a, {
-    download: DomStrAttr: set_a_download,
-    href: DomStrAttr: set_a_href,
-}, {});
+#[dom_element_definition]
+pub struct table {}
 
-define_element_with_shared_props!(abbr, {}, {});
+#[dom_element_definition]
+pub struct thead {}
+
+#[dom_element_definition]
+pub struct tbody {}
+
+#[dom_element_definition]
+pub struct tfoot {}
+
+#[dom_element_definition]
+pub struct th {}
+
+#[dom_element_definition]
+pub struct tr {}
+
+#[dom_element_definition]
+pub struct td {}

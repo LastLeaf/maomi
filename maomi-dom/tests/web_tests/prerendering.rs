@@ -152,12 +152,9 @@ async fn cold_event_in_prerendered() {
 
         fn created(&self) {
             let this = self.rc();
-            async_task(async move {
-                this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
-                    simulate_event(dom_elem, "scroll", false, []);
-                })
-                .await;
+            this.task_with(|this, _| {
+                let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                simulate_event(dom_elem, "scroll", false, []);
             });
         }
     }
@@ -237,12 +234,8 @@ async fn hot_event_in_prerendered() {
         fn handler(this: ComponentRc<Self>, ev: &mut TouchEvent) {
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
-            async_task(async move {
-                this.get_mut(|this, _| {
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap();
+            this.task_with(|this, _| {
+                (this.callback.take().unwrap())();
             });
         }
     }

@@ -1,16 +1,45 @@
+use maomi_dom_macro::dom_element_definition;
+
 use super::*;
 
-define_element_with_shared_props!(address, {}, {});
-define_element_with_shared_props!(article, {}, {});
-define_element_with_shared_props!(aside, {}, {});
-define_element_with_shared_props!(footer, {}, {});
-define_element_with_shared_props!(header, {}, {});
-define_element_with_shared_props!(h1, {}, {});
-define_element_with_shared_props!(h2, {}, {});
-define_element_with_shared_props!(h3, {}, {});
-define_element_with_shared_props!(h4, {}, {});
-define_element_with_shared_props!(h5, {}, {});
-define_element_with_shared_props!(h6, {}, {});
-define_element_with_shared_props!(main, {}, {});
-define_element_with_shared_props!(nav, {}, {});
-define_element_with_shared_props!(section, {}, {});
+#[dom_element_definition]
+pub struct address {}
+
+#[dom_element_definition]
+pub struct article {}
+
+#[dom_element_definition]
+pub struct aside {}
+
+#[dom_element_definition]
+pub struct footer {}
+
+#[dom_element_definition]
+pub struct header {}
+
+#[dom_element_definition]
+pub struct h1 {}
+
+#[dom_element_definition]
+pub struct h2 {}
+
+#[dom_element_definition]
+pub struct h3 {}
+
+#[dom_element_definition]
+pub struct h4 {}
+
+#[dom_element_definition]
+pub struct h5 {}
+
+#[dom_element_definition]
+pub struct h6 {}
+
+#[dom_element_definition]
+pub struct main {}
+
+#[dom_element_definition]
+pub struct nav {}
+
+#[dom_element_definition]
+pub struct section {}

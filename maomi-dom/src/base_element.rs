@@ -1,5 +1,5 @@
 use maomi::{
-    backend::tree::{ForestNode, ForestNodeRc, ForestToken, ForestTokenAddr},
+    backend::tree::*,
     prop::PropertyUpdate,
 };
 use std::{
@@ -345,6 +345,45 @@ impl DomElement {
     pub(crate) fn cold_event_list(&self) -> Option<&ColdEventList> {
         self.cold_event_list.as_ref().map(|x| &**x)
     }
+}
+
+pub trait DomElementBase {
+    fn dom_element_lazy(&self) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)>;
+}
+
+pub trait DomElementExt {
+    fn dom_element(&self) -> &web_sys::Element;
+}
+
+impl<T: DomElementBase> DomElementExt for T {
+    #[inline]
+    fn dom_element(&self) -> &web_sys::Element {
+        let ptr = self.dom_element_lazy().get();
+        #[cfg(feature = "prerendering-apply")]
+        if let DomState::PrerenderingApply(x) = unsafe { &*ptr } {
+            // it is safe
+            // because there cannot be another one that takes refs in DomState::PrerenderingApply state
+            if let Some(e) = x.take() {
+                unsafe { *ptr = DomState::Normal(e); }
+            }
+        }
+        match unsafe { &*ptr } {
+            DomState::Normal(x) => x,
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(_) => {
+                panic!("Cannot get DOM element in prerendering stage")
+            }
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => {
+                panic!("Cannot get DOM element in prerendering-apply stage")
+            }
+        }
+    }
+}
+
+#[inline]
+pub fn set_style(elem: &web_sys::HtmlElement, s: &str) {
+    elem.style().set_css_text(s)
 }
 
 pub struct DomStrAttr {
