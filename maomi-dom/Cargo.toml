@@ -50,6 +50,9 @@ features = [
   "TransitionEvent",
   "HtmlButtonElement",
   "HtmlAnchorElement",
+  "HtmlDataElement",
+  "HtmlQuoteElement",
+  "HtmlTimeElement",
 ]
 
 [dev-dependencies]

@@ -142,8 +142,8 @@ impl Parse for DomElementDefinitionAttribute {
 
 pub(crate) struct DomElementDefinition {
     s: ItemStruct,
-    attrs: Vec<(Ident, Attr)>,
-    events: Vec<Ident>,
+    attrs: Vec<(Ident, Ident, Attr)>,
+    events: Vec<(Ident, Ident)>,
 }
 
 impl Parse for DomElementDefinition {
@@ -156,11 +156,13 @@ impl Parse for DomElementDefinition {
             for field in &mut fields.named {
                 if let Type::Macro(m) = field.ty.clone() {
                     let field_name = field.ident.clone().unwrap();
+                    let attr_name = field_name.clone();
+                    field.ident = Some(attr_name.clone());
                     if m.mac.path.is_ident("attribute") {
                         let tokens = m.mac.tokens.clone();
                         let attr = Attr::parse.parse2(tokens)?;
                         field.ty = Type::Path(TypePath { qself: None, path: attr.ty() });
-                        attrs.push((field_name, attr));
+                        attrs.push((field_name, attr_name, attr));
                     } else if m.mac.path.is_ident("event") {
                         let span = m.mac.span();
                         let tokens = m.mac.tokens.clone();
@@ -169,7 +171,9 @@ impl Parse for DomElementDefinition {
                             DomEvent<#p>
                         };
                         field.ty = Type::Path(ty);
-                        events.push(field_name);
+                        events.push((field_name, attr_name));
+                    } else {
+                        return Err(Error::new(m.mac.span(), "unknown macro"))
                     }
                 }
             }
@@ -218,11 +222,11 @@ impl ToTokens for DomElementDefinition {
         let s = &self.s;
         let tag_name = &s.ident;
         let tag_name_str = tag_name.to_string();
-        let attrs_init = self.attrs.iter().map(|(field_name, attr)| {
+        let attrs_init = self.attrs.iter().map(|(field_name, attr_name, attr)| {
             let dom_setter_name = attr.generate_dom_setter(tag_name, field_name, tokens);
             let ty = attr.ty();
             quote! {
-                #field_name: #ty {
+                #attr_name: #ty {
                     inner: Default::default(),
                     f: #dom_setter_name,
                     #[cfg(feature = "prerendering")]
@@ -230,7 +234,7 @@ impl ToTokens for DomElementDefinition {
                 },
             }
         }).collect::<Box<_>>();
-        let events_init = self.events.iter().map(|ev| {
+        let events_init = self.events.iter().map(|(_, ev)| {
             quote! { #ev: Default::default(), }
         });
         tokens.append_all(quote! {
