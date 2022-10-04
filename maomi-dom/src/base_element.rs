@@ -473,3 +473,129 @@ where
         }
     }
 }
+
+pub struct DomU32Attr {
+    pub(crate) inner: u32,
+    pub(crate) f: fn(&web_sys::HtmlElement, u32),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl Deref for DomU32Attr {
+    type Target = u32;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = u32>> PropertyUpdate<S> for DomU32Attr
+where
+    u32: Borrow<S>,
+{
+    type UpdateContext = DomElement;
+
+    #[inline]
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
+        if dest.inner.borrow() == src {
+            return;
+        }
+        dest.inner = src.to_owned();
+        match &mut ctx.elem {
+            DomState::Normal(x) => {
+                (dest.f)(x.unchecked_ref(), dest.inner);
+            }
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(x) => {
+                x.set_attribute(dest.attr_name, &dest.inner.to_string());
+            }
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => {}
+        }
+    }
+}
+
+pub struct DomI32Attr {
+    pub(crate) inner: i32,
+    pub(crate) f: fn(&web_sys::HtmlElement, i32),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl Deref for DomI32Attr {
+    type Target = i32;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = i32>> PropertyUpdate<S> for DomI32Attr
+where
+    i32: Borrow<S>,
+{
+    type UpdateContext = DomElement;
+
+    #[inline]
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
+        if dest.inner.borrow() == src {
+            return;
+        }
+        dest.inner = src.to_owned();
+        match &mut ctx.elem {
+            DomState::Normal(x) => {
+                (dest.f)(x.unchecked_ref(), dest.inner);
+            }
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(x) => {
+                x.set_attribute(dest.attr_name, &dest.inner.to_string());
+            }
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => {}
+        }
+    }
+}
+
+pub struct DomF64Attr {
+    pub(crate) inner: f64,
+    pub(crate) f: fn(&web_sys::HtmlElement, f64),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl Deref for DomF64Attr {
+    type Target = f64;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = f64>> PropertyUpdate<S> for DomF64Attr
+where
+    f64: Borrow<S>,
+{
+    type UpdateContext = DomElement;
+
+    #[inline]
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
+        if dest.inner.borrow() == src {
+            return;
+        }
+        dest.inner = src.to_owned();
+        match &mut ctx.elem {
+            DomState::Normal(x) => {
+                (dest.f)(x.unchecked_ref(), dest.inner);
+            }
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(x) => {
+                x.set_attribute(dest.attr_name, &dest.inner.to_string());
+            }
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => {}
+        }
+    }
+}

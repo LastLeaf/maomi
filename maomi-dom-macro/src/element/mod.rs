@@ -67,6 +67,9 @@ impl Parse for Attr {
         let ty = match s.as_str() {
             "& str" => parse_quote_spanned! {span=> DomStrAttr },
             "bool" => parse_quote_spanned! {span=> DomBoolAttr },
+            "u32" => parse_quote_spanned! {span=> DomU32Attr },
+            "i32" => parse_quote_spanned! {span=> DomI32Attr },
+            "f64" => parse_quote_spanned! {span=> DomF64Attr },
             _ => {
                 return Err(Error::new(span, "unknown attribute type"))
             }
