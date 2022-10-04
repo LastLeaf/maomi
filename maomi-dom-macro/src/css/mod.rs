@@ -1,8 +1,8 @@
-use nanoid::nanoid;
 use once_cell::sync::Lazy;
 use quote::{quote, quote_spanned, TokenStreamExt};
 use std::cell::Cell;
 use std::fs::File;
+use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
 use syn::Error;
@@ -15,8 +15,8 @@ use media_cond::*;
 mod property;
 use property::*;
 
-const CLASS_CHARS: [char; 64] = [
-    '_', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
+const CLASS_CHARS: [char; 63] = [
+    '_', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
     'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
     'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
@@ -28,6 +28,9 @@ const CLASS_START_CHARS: [char; 52] = [
 ];
 
 thread_local! {
+    static CARGO_PKG_NAME: String = {
+        std::env::var("CARGO_PKG_NAME").unwrap_or_default()
+    };
     static CSS_OUT_DIR: Option<PathBuf> = {
         std::env::var("MAOMI_CSS_OUT_DIR").ok().map(|x| {
             let p = PathBuf::from(x);
@@ -67,15 +70,31 @@ enum CssOutMode {
     Release,
 }
 
+fn generate_span_hash(span: proc_macro2::Span) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    CARGO_PKG_NAME.with(|x| {
+        hasher.write(x.as_bytes());
+    });
+    hasher.write(format!("{:?}", span).as_bytes());
+    let mut h = hasher.finish();
+    let mut ret = String::with_capacity(16);
+    ret.push(CLASS_START_CHARS[(h % CLASS_START_CHARS.len() as u64) as usize]);
+    h /= CLASS_START_CHARS.len() as u64;
+    while h > 0 {
+        ret.push(CLASS_CHARS[(h % CLASS_CHARS.len() as u64) as usize]);
+        h /= CLASS_CHARS.len() as u64;
+    }
+    ret
+}
+
 fn generate_css_name(full_ident: &CssIdent, name_mangling: bool, debug_mode: bool) -> String {
-    let class_id_start = nanoid!(1, &CLASS_START_CHARS);
-    let class_id = nanoid!(10, &CLASS_CHARS);
+    let class_id = generate_span_hash(full_ident.span);
     if !name_mangling {
         full_ident.css_name()
     } else if debug_mode {
-        full_ident.css_name() + "_" + &class_id_start + &class_id
+        full_ident.css_name() + "_" + &class_id
     } else {
-        class_id_start + &class_id
+        class_id
     }
 }
 
@@ -96,7 +115,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         Self: Sized,
     {
         Self {
-            name_mangling: false,
+            name_mangling: true,
         }
     }
 
@@ -459,7 +478,7 @@ impl StyleSheetConstructor for DomStyleSheet {
 
         // write extra tokens
         let fn_name = syn::Ident::new(
-            &nanoid!(16, &CLASS_START_CHARS),
+            &generate_span_hash(proc_macro2::Span::call_site()),
             proc_macro2::Span::call_site(),
         );
         tokens.append_all(quote! {
