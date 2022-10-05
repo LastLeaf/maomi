@@ -145,8 +145,8 @@ impl Parse for DomElementDefinitionAttribute {
 
 pub(crate) struct DomElementDefinition {
     s: ItemStruct,
-    attrs: Vec<(Ident, Ident, Attr)>,
-    events: Vec<(Ident, Ident)>,
+    attrs: Vec<(Ident, String, Attr)>,
+    events: Vec<(Ident, String)>,
 }
 
 impl Parse for DomElementDefinition {
@@ -159,8 +159,8 @@ impl Parse for DomElementDefinition {
             for field in &mut fields.named {
                 if let Type::Macro(m) = field.ty.clone() {
                     let field_name = field.ident.clone().unwrap();
-                    let attr_name = field_name.clone();
-                    field.ident = Some(attr_name.clone());
+                    let attr_name = field_name.to_string().trim_start_matches("r#").to_string();
+                    field.ident = Some(field_name.clone());
                     if m.mac.path.is_ident("attribute") {
                         let tokens = m.mac.tokens.clone();
                         let attr = Attr::parse.parse2(tokens)?;
@@ -229,15 +229,15 @@ impl ToTokens for DomElementDefinition {
             let dom_setter_name = attr.generate_dom_setter(tag_name, field_name, tokens);
             let ty = attr.ty();
             quote! {
-                #attr_name: #ty {
+                #field_name: #ty {
                     inner: Default::default(),
                     f: #dom_setter_name,
                     #[cfg(feature = "prerendering")]
-                    attr_name: stringify!($prop),
+                    attr_name: #attr_name,
                 },
             }
         }).collect::<Box<_>>();
-        let events_init = self.events.iter().map(|(_, ev)| {
+        let events_init = self.events.iter().map(|(ev, _)| {
             quote! { #ev: Default::default(), }
         });
         tokens.append_all(quote! {

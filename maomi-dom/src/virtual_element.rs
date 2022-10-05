@@ -20,6 +20,13 @@ impl DomVirtualElement {
         Self { dom_elem }
     }
 
+    #[cfg(feature = "prerendering-apply")]
+    pub(crate) fn rematch_dom(&mut self) {
+        if self.dom_elem == DomState::PrerenderingApply(()) {
+            self.dom_elem = DomState::Normal(());
+        }
+    }
+
     pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), (), ()) {
         match &self.dom_elem {
             DomState::Normal(_) => DomState::Normal(()),

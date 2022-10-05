@@ -12,7 +12,7 @@ use crate::component::Component;
 #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 use crate::component::PrerenderableComponent;
 use crate::error::Error;
-use crate::mount_point::MountPoint;
+use crate::mount_point::{MountPoint, DynMountPoint};
 use crate::template::ComponentTemplate;
 
 /// A future that can be resolved with a callback function
@@ -163,7 +163,6 @@ impl<B: Backend> BackendContext<B> {
     /// The `QueryData` should be provided to the `PrerenderableComponent` .
     #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
     pub async fn prerendering_data<C: PrerenderableComponent>(
-        &self,
         query_data: &C::QueryData,
     ) -> PrerenderingData<C> {
         PrerenderingData::new(C::prerendering_data(query_data).await)
@@ -212,6 +211,24 @@ impl<B: Backend> EnteredBackendContext<B> {
         )
     }
 
+    /// Detach a mount point
+    pub fn detach<C: Component + ComponentTemplate<B> + 'static>(
+        &mut self,
+        mount_point: &mut MountPoint<B, C>,
+    ) {
+        let mut root = self.backend.root_mut();
+        mount_point.detach(&mut root);
+    }
+
+    /// Detach a mount point with its `dyn` form
+    pub fn detach_dyn(
+        &mut self,
+        mount_point: &mut DynMountPoint<B>
+    ) {
+        let mut root = self.backend.root_mut();
+        mount_point.detach(&mut root);
+    }
+
     /// Get the root backend element
     #[inline]
     pub fn root(&self) -> tree::ForestNode<B::GeneralElement> {
@@ -255,5 +272,10 @@ impl<C: PrerenderableComponent> PrerenderingData<C> {
     /// Get the underlying prerendering data
     pub fn get(&self) -> &C::PrerenderingData {
         &self.data
+    }
+
+    /// Unwrap to the bare data
+    pub fn unwrap(self) -> C::PrerenderingData {
+        self.data
     }
 }

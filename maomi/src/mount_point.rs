@@ -53,14 +53,35 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
         Ok(this)
     }
 
-    /// Detach the mount point
-    pub fn detach(&mut self, owner: &mut tree::ForestNodeMut<B::GeneralElement>) {
-        let elem = owner.borrow_mut(&self.backend_element);
+    pub(crate) fn detach(&mut self, parent: &mut tree::ForestNodeMut<B::GeneralElement>) {
+        let elem = parent.borrow_mut(&self.backend_element);
         <B::GeneralElement as BackendGeneralElement>::detach(elem);
     }
 
     /// Get the root component
     pub fn root_component(&self) -> &ComponentNode<B, C> {
         &self.component_node
+    }
+
+    /// Get the `dyn` form of the mount point
+    ///
+    /// This is useful for storing a mount point without its exact component type.
+    pub fn into_dyn(self) -> DynMountPoint<B> {
+        DynMountPoint {
+            _component_node: Box::new(self.component_node),
+            backend_element: self.backend_element,
+        }
+    }
+}
+
+pub struct DynMountPoint<B: Backend> {
+    _component_node: Box<dyn std::any::Any>,
+    backend_element: tree::ForestNodeRc<B::GeneralElement>,
+}
+
+impl<B: Backend> DynMountPoint<B> {
+    pub(crate) fn detach(&mut self, parent: &mut tree::ForestNodeMut<B::GeneralElement>) {
+        let elem = parent.borrow_mut(&self.backend_element);
+        <B::GeneralElement as BackendGeneralElement>::detach(elem);
     }
 }

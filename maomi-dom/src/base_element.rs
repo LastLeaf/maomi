@@ -347,7 +347,7 @@ impl DomElement {
     }
 }
 
-pub trait DomElementBase {
+pub(crate) trait DomElementBase {
     fn dom_element_lazy(&self) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)>;
 }
 
@@ -508,7 +508,7 @@ where
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
-                x.set_attribute(dest.attr_name, &dest.inner.to_string());
+                x.set_attribute(dest.attr_name, dest.inner.to_string());
             }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => {}
@@ -550,7 +550,7 @@ where
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
-                x.set_attribute(dest.attr_name, &dest.inner.to_string());
+                x.set_attribute(dest.attr_name, dest.inner.to_string());
             }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => {}
@@ -592,7 +592,7 @@ where
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
-                x.set_attribute(dest.attr_name, &dest.inner.to_string());
+                x.set_attribute(dest.attr_name, dest.inner.to_string());
             }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => {}

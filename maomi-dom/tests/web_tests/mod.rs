@@ -71,7 +71,7 @@ where
     init();
     let dom_backend = DomBackend::prerendering();
     let backend_context = maomi::BackendContext::new(dom_backend);
-    let prerendering_data = backend_context.prerendering_data::<T>(query_data).await;
+    let prerendering_data = maomi::BackendContext::<DomBackend>::prerendering_data::<T>(query_data).await;
     let prerendering_data_cloned = prerendering_data.get().clone();
     let (_mount_point, ret) = backend_context
         .enter_sync(move |ctx| {

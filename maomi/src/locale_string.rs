@@ -42,7 +42,7 @@ pub struct LocaleString(String);
 
 impl LocaleString {
     /// Wraps a translated string
-    pub fn translated(s: &impl ToString) -> Self {
+    pub fn translated(s: impl ToString) -> Self {
         Self(s.to_string())
     }
 }

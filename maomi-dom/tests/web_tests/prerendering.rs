@@ -84,7 +84,7 @@ async fn generate_prerendering_html() {
                 .await
                 .unwrap();
                 async_task(async move {
-                    this.get_mut(|this, _| {
+                    this.update_with(|this, _| {
                         assert_eq!(
                             this.template_structure()
                                 .unwrap()
@@ -162,7 +162,7 @@ async fn cold_event_in_prerendered() {
     impl MyComp {
         fn scroll_fn(this: ComponentRc<Self>, _ev: &mut ScrollEvent) {
             async_task(async move {
-                this.get_mut(|this, _| {
+                this.update_with(|this, _| {
                     (this.callback.take().unwrap())();
                 })
                 .await

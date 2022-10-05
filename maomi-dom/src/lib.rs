@@ -307,7 +307,10 @@ impl DomBackend {
                         x.rematch_dom(e);
                         return Ok(ret);
                     }
-                    DomGeneralElement::Virtual(_) => ChildMatchKind::Virtual(next_dom_elem),
+                    DomGeneralElement::Virtual(x) => {
+                        x.rematch_dom();
+                        ChildMatchKind::Virtual(next_dom_elem)
+                    },
                     DomGeneralElement::Element(x) => {
                         let e = next_dom_elem.ok_or(Error::BackendError {
                             msg: "Failed to apply a prerendered node".to_string(),
@@ -409,7 +412,7 @@ impl DomGeneralElement {
 
     pub(crate) fn create_dom_element_by_tag_name(
         &self,
-        _tag_name: &str,
+        _tag_name: &'static str,
     ) -> dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem) {
         match self.is_prerendering() {
             DomState::Normal(_) => DomState::Normal(crate::DOCUMENT.with(|document| document.create_element(_tag_name).unwrap())),

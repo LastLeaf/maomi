@@ -32,7 +32,7 @@ struct HelloWorld {
         <div class:warn> "WARN" </div>
         // bind event with `@xxx()`
         if !self.r {
-            <div long_tap=@handle_tap()> "Click me!" </div>
+            <div tap=@handle_tap()> "Click me!" </div>
         }
     },
     hello: LocaleString,
