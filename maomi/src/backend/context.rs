@@ -179,7 +179,7 @@ impl<B: Backend> EnteredBackendContext<B> {
     /// Create a mount point
     ///
     /// The `init` provides a way to do some updates before the component `created` lifetime.
-    pub fn attach<C: Component + ComponentTemplate<B> + 'static>(
+    pub fn attach<C: Component + ComponentTemplate<B>>(
         &mut self,
         init: impl FnOnce(&mut C),
     ) -> Result<MountPoint<B, C>, Error> {
@@ -212,7 +212,7 @@ impl<B: Backend> EnteredBackendContext<B> {
     }
 
     /// Detach a mount point
-    pub fn detach<C: Component + ComponentTemplate<B> + 'static>(
+    pub fn detach<C: Component + ComponentTemplate<B>>(
         &mut self,
         mount_point: &mut MountPoint<B, C>,
     ) {
@@ -227,6 +227,16 @@ impl<B: Backend> EnteredBackendContext<B> {
     ) {
         let mut root = self.backend.root_mut();
         mount_point.detach(&mut root);
+    }
+
+    /// Get the root component of a mount point
+    pub fn root_component_with<C: Component + ComponentTemplate<B>, R>(
+        &mut self,
+        mount_point: &MountPoint<B, C>,
+        f: impl FnOnce(&mut C) -> R,
+    ) -> R {
+        let n = mount_point.root_component();
+        f(&mut n.component().borrow_mut())
     }
 
     /// Get the root backend element

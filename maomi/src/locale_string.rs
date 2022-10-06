@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
 
 /// Marker for a type that is i18n friendly
 ///
@@ -62,5 +62,13 @@ impl<T: ?Sized + ToLocaleStr> ToLocaleStr for &T {
 impl Display for LocaleString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl Deref for LocaleString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_str()
     }
 }

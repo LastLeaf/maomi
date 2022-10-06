@@ -46,7 +46,6 @@ impl DomTextNode {
     }
 
     pub(crate) fn is_prerendering(&self) -> dom_state_ty!((), (), ()) {
-        log::info!("!!! is_prerendering 2?");
         match &self.dom_elem {
             DomState::Normal(_) => DomState::Normal(()),
             #[cfg(feature = "prerendering")]
