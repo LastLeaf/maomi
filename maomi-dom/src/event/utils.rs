@@ -47,12 +47,18 @@ macro_rules! cold_event {
                         return;
                     }
                 }
+                #[cfg(feature = "prerendering")]
+                if let crate::DomState::Prerendering(_) = &target.elem {
+                    return;
+                }
                 let cb = $listen;
                 let item = ColdEventItem::$arm(f, cb);
                 match &target.elem {
-                    crate::DomState::Normal(x) => item.apply(x),
+                    crate::DomState::Normal(x) => {
+                        item.apply(x)
+                    }
                     #[cfg(feature = "prerendering")]
-                    crate::DomState::Prerendering(_) => {}
+                    crate::DomState::Prerendering(_) => unreachable!(),
                     #[cfg(feature = "prerendering-apply")]
                     crate::DomState::PrerenderingApply(_) => {}
                 }

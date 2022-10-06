@@ -15,7 +15,7 @@ async fn skin_const() {
         @keyframes $kw {}
 
         .a_class {
-            padding: $a 2px;
+            padding: $a 2em;
             animation-name: $kw;
         }
     }

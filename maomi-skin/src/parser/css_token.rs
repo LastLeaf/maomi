@@ -551,6 +551,7 @@ impl Spanned for CssDimension {
 impl Parse for CssDimension {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
+        // FIXME 2em mistake
         if la.peek(LitInt) {
             let n: LitInt = input.parse()?;
             if n.suffix().len() == 0 {

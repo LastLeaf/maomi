@@ -26,6 +26,11 @@ impl DomTextNode {
     #[cfg(feature = "prerendering-apply")]
     pub(crate) fn rematch_dom(&mut self, e: web_sys::Node) {
         use wasm_bindgen::JsCast;
+        let mut e = e;
+        if self.content.len() == 0 {
+            let text_node = crate::DOCUMENT.with(|document| document.create_text_node(""));
+            e = e.parent_node().unwrap().replace_child(&text_node, &e).unwrap();
+        }
         self.dom_elem = DomState::Normal(e.unchecked_into());
     }
 
@@ -72,7 +77,14 @@ impl DomTextNode {
                 } else {
                     _state.prev_is_text_node = true;
                 }
-                html_escape::encode_text_minimal_to_writer(&self.content, w)?;
+                match self.content.as_str() {
+                    "" => {
+                        write!(w, "<!---->")?;
+                    }
+                    x => {
+                        html_escape::encode_text_minimal_to_writer(x, w)?;
+                    }
+                }
             }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => {}

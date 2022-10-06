@@ -7,7 +7,7 @@ pub struct canvas {
 }
 
 #[dom_element_definition]
-pub struct image {
+pub struct img {
     pub alt: attribute!(&str in web_sys::HtmlImageElement),
     pub decoding: attribute!(&str in web_sys::HtmlImageElement),
     pub height: attribute!(u32 in web_sys::HtmlImageElement),
