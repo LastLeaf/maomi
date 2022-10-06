@@ -448,7 +448,7 @@ impl Parse for CssNumber {
             }
             return Ok(Self {
                 span: n.span(),
-                num: Number::Int(n.base10_parse()?),
+                num: Number::Float(n.base10_parse()?),
             });
         }
         Err(la.error())
@@ -551,7 +551,6 @@ impl Spanned for CssDimension {
 impl Parse for CssDimension {
     fn parse(input: ParseStream) -> Result<Self> {
         let la = input.lookahead1();
-        // FIXME 2em mistake
         if la.peek(LitInt) {
             let n: LitInt = input.parse()?;
             if n.suffix().len() == 0 {
@@ -570,7 +569,7 @@ impl Parse for CssDimension {
             }
             return Ok(Self {
                 span: n.span(),
-                num: Number::Int(n.base10_parse()?),
+                num: Number::Float(n.base10_parse()?),
                 unit: n.suffix().to_string(),
             });
         }
