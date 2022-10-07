@@ -188,9 +188,10 @@ impl DomElement {
     pub(crate) unsafe fn new(
         elem: dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem),
     ) -> Self {
+        let x = MaybeUninit::uninit();
         Self {
             elem,
-            forest_token: ManuallyDrop::new(MaybeUninit::uninit().assume_init()),
+            forest_token: ManuallyDrop::new(x.assume_init()),
             hot_event_list: None,
             cold_event_list: None,
         }
