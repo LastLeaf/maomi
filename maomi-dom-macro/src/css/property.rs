@@ -1,5 +1,7 @@
-use maomi_skin::parser::write_css::WriteCss;
-use maomi_skin::parser::{CssIdent, CssToken, CssTokenStream, ParseStyleSheetValue, Repeat};
+use maomi_skin::ParseError;
+use maomi_skin::write_css::*;
+use maomi_skin::css_token::*;
+use maomi_skin::style_sheet::*;
 
 pub(crate) struct DomCssProperty {
     // TODO really parse the value
@@ -7,7 +9,7 @@ pub(crate) struct DomCssProperty {
 }
 
 impl ParseStyleSheetValue for DomCssProperty {
-    fn parse_value(_: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<Self> {
+    fn parse_value(_: &CssIdent, tokens: &mut CssTokenStream) -> Result<Self, ParseError> {
         let mut v = vec![];
         while tokens.peek().is_ok() {
             v.push(tokens.next().unwrap())
@@ -21,7 +23,7 @@ impl ParseStyleSheetValue for DomCssProperty {
 impl WriteCss for DomCssProperty {
     fn write_css<W: std::fmt::Write>(
         &self,
-        cssw: &mut maomi_skin::parser::write_css::CssWriter<W>,
+        cssw: &mut CssWriter<W>,
     ) -> std::fmt::Result {
         self.inner.write_css(cssw)
     }

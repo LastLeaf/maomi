@@ -5,10 +5,10 @@ use std::fs::File;
 use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
-use syn::Error;
 
-use maomi_skin::parser::write_css::{CssWriter, WriteCss};
-use maomi_skin::parser::*;
+use maomi_skin::write_css::{CssWriter, WriteCss};
+use maomi_skin::{css_token::*, ParseError};
+use maomi_skin::style_sheet::*;
 
 mod media_cond;
 use media_cond::*;
@@ -119,7 +119,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         }
     }
 
-    fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<()> {
+    fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> Result<(), ParseError> {
         match name.formal_name.as_str() {
             "name_mangling" => {
                 let v = tokens.expect_ident()?;
@@ -131,12 +131,12 @@ impl StyleSheetConstructor for DomStyleSheet {
                         self.name_mangling = true;
                     }
                     _ => {
-                        return Err(Error::new(name.span, "Unsupported config value"));
+                        return Err(ParseError::new(name.span, "unsupported config value"));
                     }
                 }
             }
             _ => {
-                return Err(Error::new(name.span, "Unknown config item"));
+                return Err(ParseError::new(name.span, "unknown config item"));
             }
         }
         Ok(())
@@ -230,59 +230,59 @@ impl StyleSheetConstructor for DomStyleSheet {
         for item in ss.items.iter() {
             match item {
                 // generate macro def
-                StyleSheetItem::MacroDefinition { name, .. } => {
-                    write_proc_macro_def(
-                        inner_tokens,
-                        name.span,
-                        &syn::Ident::new(&name.formal_name, name.span),
-                    );
-                }
+                // StyleSheetItem::MacroDefinition { name, .. } => {
+                //     write_proc_macro_def(
+                //         inner_tokens,
+                //         name.span,
+                //         &syn::Ident::new(&name.formal_name, name.span),
+                //     );
+                // }
 
                 // generate const def and ref
-                StyleSheetItem::ConstDefinition { name, refs, .. } => {
-                    write_proc_macro_def(
-                        inner_tokens,
-                        name.span,
-                        &syn::Ident::new(&name.formal_name, name.span),
-                    );
-                    for r in refs {
-                        write_proc_macro_ref(
-                            inner_tokens,
-                            r.span,
-                            &syn::Ident::new(&r.formal_name, r.span),
-                        );
-                    }
-                }
+                // StyleSheetItem::ConstDefinition { name, refs, .. } => {
+                //     write_proc_macro_def(
+                //         inner_tokens,
+                //         name.span,
+                //         &syn::Ident::new(&name.formal_name, name.span),
+                //     );
+                //     for r in refs {
+                //         write_proc_macro_ref(
+                //             inner_tokens,
+                //             r.span,
+                //             &syn::Ident::new(&r.formal_name, r.span),
+                //         );
+                //     }
+                // }
 
                 // generate @key-frames block
-                StyleSheetItem::KeyFramesDefinition {
-                    at_keyword,
-                    name,
-                    def,
-                    content,
-                    ..
-                } => {
-                    if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
-                        let mut s = String::new();
-                        let cssw = &mut CssWriter::new(&mut s, debug_mode);
-                        at_keyword.write_css(cssw).unwrap();
-                        def.write_css(cssw).unwrap();
-                        cssw.write_brace_block(|cssw| {
-                            for (p, item) in content.iter() {
-                                p.write_css(cssw)?;
-                                item.write_css(cssw)?;
-                            }
-                            Ok(())
-                        })
-                        .unwrap();
-                        css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
-                    }
-                    write_proc_macro_def(
-                        inner_tokens,
-                        name.span,
-                        &syn::Ident::new(&name.formal_name, name.span),
-                    );
-                }
+                // StyleSheetItem::KeyFramesDefinition {
+                //     at_keyword,
+                //     name,
+                //     def,
+                //     content,
+                //     ..
+                // } => {
+                //     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
+                //         let mut s = String::new();
+                //         let cssw = &mut CssWriter::new(&mut s, debug_mode);
+                //         at_keyword.write_css(cssw).unwrap();
+                //         def.write_css(cssw).unwrap();
+                //         cssw.write_brace_block(|cssw| {
+                //             for (p, item) in content.iter() {
+                //                 p.write_css(cssw)?;
+                //                 item.write_css(cssw)?;
+                //             }
+                //             Ok(())
+                //         })
+                //         .unwrap();
+                //         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
+                //     }
+                //     write_proc_macro_def(
+                //         inner_tokens,
+                //         name.span,
+                //         &syn::Ident::new(&name.formal_name, name.span),
+                //     );
+                // }
 
                 // generate common rule
                 StyleSheetItem::Rule { ident, content, .. } => {
@@ -305,13 +305,6 @@ impl StyleSheetConstructor for DomStyleSheet {
                             &syn::Ident::new(&full_ident.formal_name, full_ident.span),
                             &class_name,
                         );
-                        content.for_each_ref(&mut |r| {
-                            write_proc_macro_ref(
-                                inner_tokens,
-                                r.span,
-                                &syn::Ident::new(&r.formal_name, r.span),
-                            );
-                        });
 
                         // a helper for write css name
                         let write_selector = |cssw: &mut CssWriter<String>| {

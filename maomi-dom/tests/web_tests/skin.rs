@@ -8,14 +8,14 @@ use super::*;
 #[wasm_bindgen_test]
 async fn skin_const() {
     dom_css! {
-        @config name_mangling: off;
+        @config name_mangling off;
 
-        @const $a: 1px;
+        @const $a: 1.px;
 
         @keyframes $kw {}
 
         .a_class {
-            padding: $a 2px;
+            padding: $a 2.3.em;
             animation-name: $kw;
         }
     }

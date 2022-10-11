@@ -1,0 +1,1326 @@
+use std::num::NonZeroU32;
+use proc_macro2::Span;
+
+// use super::mac::MacroArgsToken;
+use super::{
+    write_css::{CssWriter, WriteCss, WriteCssSepCond},
+    ParseWithVars, ScopeVars, StyleSheetVars, ParseError
+};
+
+#[derive(Debug, Clone)]
+pub struct CssIdent {
+    pub span: Span,
+    pub formal_name: String,
+}
+
+impl CssIdent {
+    pub fn css_name(&self) -> String {
+        self.formal_name.replace('_', "-")
+    }
+}
+
+impl WriteCss for CssIdent {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_ident(&self.css_name(), true)
+    }
+}
+
+#[derive(Clone)]
+pub struct CssAtKeyword {
+    pub span: Span,
+    pub formal_name: String,
+}
+
+impl CssAtKeyword {
+    pub fn css_name(&self) -> String {
+        self.formal_name.replace('_', "-")
+    }
+}
+
+impl std::fmt::Debug for CssAtKeyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssAtKeyword")
+            .field(&"span", &self.span)
+            .field(&"formal_name", &self.formal_name)
+            .finish()
+    }
+}
+
+impl WriteCss for CssAtKeyword {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            }
+            write!(w, "@{}", self.css_name())?;
+            Ok(WriteCssSepCond::NonIdentAlpha)
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct CssString {
+    pub span: Span,
+    pub s: String,
+}
+
+impl CssString {
+    pub fn value(&self) -> String {
+        self.s.to_string()
+    }
+}
+
+impl std::fmt::Debug for CssString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssString")
+            .field(&"span", &self.span)
+            .field(&"value", &self.s)
+            .finish()
+    }
+}
+
+impl WriteCss for CssString {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            }
+            write!(w, "{:?}", self.s)?;
+            Ok(WriteCssSepCond::Other)
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssColon {
+    pub span: Span,
+}
+
+impl WriteCss for CssColon {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = cssw;
+        write!(w, ":")?;
+        *sc = WriteCssSepCond::Other;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssSemi {
+    pub span: Span,
+}
+
+impl WriteCss for CssSemi {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = cssw;
+        write!(w, ";")?;
+        *sc = WriteCssSepCond::Other;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssComma {
+    pub span: Span,
+}
+
+impl WriteCss for CssComma {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = cssw;
+        write!(w, ",")?;
+        *sc = WriteCssSepCond::Other;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssDelim {
+    pub span: Span,
+    pub s: &'static str,
+}
+
+impl CssDelim {
+    pub fn is(&self, expect: &str) -> bool {
+        self.s == expect
+    }
+}
+
+impl WriteCss for CssDelim {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_delim(&self.s, true)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssNumber {
+    pub span: Span,
+    pub value: f32,
+    pub int_value: Option<i32>,
+}
+
+impl CssNumber {
+    pub fn integer(&self) -> Option<i32> {
+        self.int_value
+    }
+
+    pub fn positive_integer(&self) -> Option<NonZeroU32> {
+        self.integer().and_then(|x| {
+            let x = x as u32;
+            if x <= 0 {
+                None
+            } else {
+                Some(unsafe { NonZeroU32::new_unchecked(x) })
+            }
+        })
+    }
+}
+
+impl WriteCss for CssNumber {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident
+                    | WriteCssSepCond::NonIdentAlpha
+                    | WriteCssSepCond::Digit
+                    | WriteCssSepCond::DotOrPlus => {
+                        write!(w, " ")?;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(x) = self.int_value {
+                write!(w, "{}", x)?;
+            } else {
+                write!(w, "{}", self.value)?;
+            }
+            Ok(WriteCssSepCond::Digit)
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssPercentage {
+    pub span: Span,
+    pub value: f32,
+    pub int_value: Option<i32>,
+}
+
+impl WriteCss for CssPercentage {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident
+                    | WriteCssSepCond::NonIdentAlpha
+                    | WriteCssSepCond::Digit
+                    | WriteCssSepCond::DotOrPlus => {
+                        write!(w, " ")?;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(x) = self.int_value {
+                write!(w, "{}", x)?;
+            } else {
+                write!(w, "{}", self.value)?;
+            }
+            Ok(WriteCssSepCond::Other)
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssDimension {
+    pub span: Span,
+    pub value: f32,
+    pub int_value: Option<i32>,
+    pub unit: String,
+}
+
+impl WriteCss for CssDimension {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.custom_write(|w, sc, debug_mode| {
+            if debug_mode {
+                match sc {
+                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
+                    _ => {
+                        write!(w, " ")?;
+                    }
+                }
+            } else {
+                match sc {
+                    WriteCssSepCond::Ident
+                    | WriteCssSepCond::NonIdentAlpha
+                    | WriteCssSepCond::Digit
+                    | WriteCssSepCond::DotOrPlus => {
+                        write!(w, " ")?;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(x) = self.int_value {
+                write!(w, "{}{}", x, self.unit)?;
+            } else {
+                write!(w, "{}{}", self.value, self.unit)?;
+            }
+            Ok(WriteCssSepCond::NonIdentAlpha)
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct CssFunction<T> {
+    pub span: Span,
+    pub formal_name: String,
+    pub block: T,
+}
+
+impl<T> CssFunction<T> {
+    pub fn css_name(&self) -> String {
+        self.formal_name.replace('_', "-")
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssFunction<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssFunction")
+            .field(&"span", &self.span)
+            .field(&"formal_name", &self.formal_name)
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
+impl<T: WriteCss> WriteCss for CssFunction<T> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_function_block(true, &self.css_name(), |cssw| self.block.write_css(cssw))
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssFunction<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let span = input.span();
+        let (formal_name, block) = input.parse_function(|formal_name, input| {
+            let block = T::parse_with_vars(input, vars, scope)?;
+            Ok((formal_name, block))
+        })?;
+        Ok(Self { span, formal_name, block })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
+}
+
+#[derive(Clone)]
+pub struct CssParen<T> {
+    pub span: Span,
+    pub block: T,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssParen<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssParen")
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
+impl<T: WriteCss> WriteCss for CssParen<T> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_paren_block(|cssw| self.block.write_css(cssw))
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssParen<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let span = input.span();
+        let block = input.parse_paren(|input| {
+            T::parse_with_vars(input, vars, scope)
+        })?;
+        Ok(Self { span, block })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
+}
+
+#[derive(Clone)]
+pub struct CssBracket<T> {
+    pub span: Span,
+    pub block: T,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssBracket<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssBracket")
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
+impl<T: WriteCss> WriteCss for CssBracket<T> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_bracket_block(|cssw| self.block.write_css(cssw))
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let span = input.span();
+        let block = input.parse_bracket(|input| {
+            T::parse_with_vars(input, vars, scope)
+        })?;
+        Ok(Self { span, block })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
+}
+
+#[derive(Clone)]
+pub struct CssBrace<T> {
+    pub span: Span,
+    pub block: T,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssBrace<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssBrace")
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
+impl<T: WriteCss> WriteCss for CssBrace<T> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        cssw.write_brace_block(|cssw| self.block.write_css(cssw))
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for CssBrace<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let span = input.span();
+        let block = input.parse_brace(|input| {
+            T::parse_with_vars(input, vars, scope)
+        })?;
+        Ok(Self { span, block })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        self.block.for_each_ref(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssVarRef {
+    pub ident: CssIdent,
+}
+
+#[derive(Clone)]
+pub struct CssMacroRef<T> {
+    pub span: Span,
+    pub formal_name: String,
+    pub block: T,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for CssMacroRef<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssMacroRef")
+            .field(&"span", &self.span)
+            .field(&"formal_name", &self.formal_name)
+            .field(&"block", &self.block)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Repeat<T> {
+    inner: Vec<T>,
+}
+
+impl<T> Repeat<T> {
+    pub fn into_vec(self) -> Vec<T> {
+        self.inner
+    }
+
+    pub fn from_vec(v: Vec<T>) -> Self {
+        Self {
+            inner: v,
+        }
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.inner
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.inner.iter()
+    }
+}
+
+impl<T: syn::parse::Parse> syn::parse::Parse for Repeat<T> {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut inner = vec![];
+        while input.is_empty() {
+            let v = input.parse()?;
+            inner.push(v);
+        }
+        Ok(Self { inner })
+    }
+}
+
+impl<T: WriteCss> WriteCss for Repeat<T> {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        for item in self.inner.iter() {
+            item.write_css(cssw)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Repeat<T> {
+    type IntoIter = std::slice::Iter<'a, T>;
+    type Item = &'a T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CssToken {
+    Ident(CssIdent),
+    AtKeyword(CssAtKeyword),
+    String(CssString),
+    Colon(CssColon),
+    Semi(CssSemi),
+    Comma(CssComma),
+    Delim(CssDelim),
+    Number(CssNumber),
+    Percentage(CssPercentage),
+    Dimension(CssDimension),
+    Function(CssFunction<CssTokenStream>),
+    Paren(CssParen<CssTokenStream>),
+    Bracket(CssBracket<CssTokenStream>),
+    Brace(CssBrace<CssTokenStream>),
+    VarRef(CssVarRef),
+    MacroRef(CssMacroRef<CssTokenStream>),
+}
+
+impl CssToken {
+    pub fn content_eq(&self, other: &Self) -> bool {
+        match self {
+            Self::Ident(x) => {
+                if let Self::Ident(y) = other {
+                    x.formal_name == y.formal_name
+                } else {
+                    false
+                }
+            }
+            Self::AtKeyword(x) => {
+                if let Self::AtKeyword(y) = other {
+                    x.formal_name == y.formal_name
+                } else {
+                    false
+                }
+            }
+            Self::String(x) => {
+                if let Self::String(y) = other {
+                    x.s == y.s
+                } else {
+                    false
+                }
+            }
+            Self::Colon(_) => {
+                if let Self::Colon(_) = other {
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::Semi(_) => {
+                if let Self::Semi(_) = other {
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::Comma(_) => {
+                if let Self::Comma(_) = other {
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::Delim(x) => {
+                if let Self::Delim(y) = other {
+                    x.s == y.s
+                } else {
+                    false
+                }
+            }
+            Self::Number(x) => {
+                if let Self::Number(y) = other {
+                    x.value == y.value
+                } else {
+                    false
+                }
+            }
+            Self::Percentage(x) => {
+                if let Self::Percentage(y) = other {
+                    x.value == y.value
+                } else {
+                    false
+                }
+            }
+            Self::Dimension(x) => {
+                if let Self::Dimension(y) = other {
+                    x.value == y.value && x.unit == y.unit
+                } else {
+                    false
+                }
+            }
+            Self::Function(x) => {
+                if let Self::Function(y) = other {
+                    let mut eq = x.formal_name == y.formal_name;
+                    if eq {
+                        for (x, y) in x.block.iter().zip(y.block.iter()) {
+                            if !x.content_eq(y) {
+                                eq = false;
+                                break;
+                            }
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::Paren(x) => {
+                if let Self::Paren(y) = other {
+                    let mut eq = true;
+                    for (x, y) in x.block.iter().zip(y.block.iter()) {
+                        if !x.content_eq(y) {
+                            eq = false;
+                            break;
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::Bracket(x) => {
+                if let Self::Bracket(y) = other {
+                    let mut eq = true;
+                    for (x, y) in x.block.iter().zip(y.block.iter()) {
+                        if !x.content_eq(y) {
+                            eq = false;
+                            break;
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::Brace(x) => {
+                if let Self::Brace(y) = other {
+                    let mut eq = true;
+                    for (x, y) in x.block.iter().zip(y.block.iter()) {
+                        if !x.content_eq(y) {
+                            eq = false;
+                            break;
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+            Self::VarRef(x) => {
+                if let Self::VarRef(y) = other {
+                    x.ident.formal_name == y.ident.formal_name
+                } else {
+                    false
+                }
+            }
+            Self::MacroRef(x) => {
+                if let Self::MacroRef(y) = other {
+                    let mut eq = x.formal_name == y.formal_name;
+                    if eq {
+                        for (x, y) in x.block.iter().zip(y.block.iter()) {
+                            if !x.content_eq(y) {
+                                eq = false;
+                                break;
+                            }
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Ident(x) => x.span,
+            Self::AtKeyword(x) => x.span,
+            Self::String(x) => x.span,
+            Self::Colon(x) => x.span,
+            Self::Semi(x) => x.span,
+            Self::Comma(x) => x.span,
+            Self::Delim(x) => x.span,
+            Self::Number(x) => x.span,
+            Self::Percentage(x) => x.span,
+            Self::Dimension(x) => x.span,
+            Self::Function(x) => x.span,
+            Self::Paren(x) => x.span,
+            Self::Bracket(x) => x.span,
+            Self::Brace(x) => x.span,
+            Self::VarRef(x) => x.ident.span,
+            Self::MacroRef(x) => x.span,
+        }
+    }
+}
+
+impl WriteCss for CssToken {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        let sc = match self {
+            Self::Ident(x) => x.write_css(cssw)?,
+            Self::AtKeyword(x) => x.write_css(cssw)?,
+            Self::String(x) => x.write_css(cssw)?,
+            Self::Colon(x) => x.write_css(cssw)?,
+            Self::Semi(x) => x.write_css(cssw)?,
+            Self::Comma(x) => x.write_css(cssw)?,
+            Self::Delim(x) => x.write_css(cssw)?,
+            Self::Number(x) => x.write_css(cssw)?,
+            Self::Percentage(x) => x.write_css(cssw)?,
+            Self::Dimension(x) => x.write_css(cssw)?,
+            Self::Function(x) => x.write_css(cssw)?,
+            Self::Paren(x) => x.write_css(cssw)?,
+            Self::Bracket(x) => x.write_css(cssw)?,
+            Self::Brace(x) => x.write_css(cssw)?,
+            Self::VarRef(_) | Self::MacroRef(_) => {
+                panic!("cannot write unresolved ref");
+            }
+        };
+        Ok(sc)
+    }
+}
+
+impl syn::parse::Parse for CssToken {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::{*, ext::IdentExt, spanned::Spanned};
+
+        fn parse_css_ident(input: syn::parse::ParseStream) -> Result<CssIdent> {
+            let mut formal_name = String::new();
+            let span;
+            if input.peek(Ident::peek_any) {
+                let s = Ident::parse_any(input)?.to_string();
+                formal_name += &s;
+                span = s.span();
+            } else if input.peek(Token![-]) && input.peek2(Ident::peek_any) {
+                let sub_token: Token![-] = input.parse()?;
+                formal_name.push('_');
+                span = sub_token.span();
+                let s = Ident::parse_any(input)?.to_string();
+                formal_name += &s;
+            } else {
+                return Err(input.error("expected CSS identifier"));
+            }
+            loop {
+                if input.peek(Token![-]) {
+                    let sub_token: Token![-] = input.parse()?;
+                    formal_name.push('_');
+                } else {
+                    break;
+                }
+                if input.peek(Ident::peek_any) {
+                    let s = Ident::parse_any(input)?.to_string();
+                    formal_name += &s;
+                } else {
+                    continue;
+                }
+            }
+            Ok(CssIdent {
+                span,
+                formal_name,
+            })
+        }
+
+        fn parse_css_delim(input: syn::parse::ParseStream) -> Result<CssDelim> {
+            let la = input.lookahead1();
+            macro_rules! parse_delim {
+                ($x:tt) => {
+                    if la.peek(Token![$x]) {
+                        let x: Token![$x] = input.parse()?;
+                        let span = x.span();
+                        return Ok(CssDelim {
+                            span,
+                            s: stringify!($x),
+                        });
+                    }
+                };
+            }
+            parse_delim!(+);
+            parse_delim!(+=);
+            parse_delim!(&);
+            parse_delim!(&&);
+            parse_delim!(&=);
+            parse_delim!(@);
+            parse_delim!(!);
+            parse_delim!(^);
+            parse_delim!(^=);
+            parse_delim!(/);
+            parse_delim!(/=);
+            parse_delim!($);
+            parse_delim!(.);
+            parse_delim!(..);
+            parse_delim!(...);
+            parse_delim!(..=);
+            parse_delim!(=);
+            parse_delim!(==);
+            parse_delim!(=>);
+            parse_delim!(>=);
+            parse_delim!(>);
+            parse_delim!(<-);
+            parse_delim!(<=);
+            parse_delim!(<);
+            parse_delim!(*=);
+            parse_delim!(!=);
+            parse_delim!(|);
+            parse_delim!(|=);
+            parse_delim!(||);
+            parse_delim!(#);
+            parse_delim!(?);
+            parse_delim!(->);
+            parse_delim!(%);
+            parse_delim!(%=);
+            parse_delim!(<<);
+            parse_delim!(<<=);
+            parse_delim!(>>);
+            parse_delim!(>>=);
+            parse_delim!(*);
+            parse_delim!(-);
+            parse_delim!(-=);
+            parse_delim!(~);
+            Err(la.error())
+        }
+
+        let css_token = if input.peek(Token![@]) {
+            let at_token: Token![@] = input.parse()?;
+            let span = at_token.span();
+            let css_ident = parse_css_ident(input)?;
+            CssToken::AtKeyword(CssAtKeyword {
+                span,
+                formal_name: css_ident.formal_name,
+            })
+        } else if input.peek(LitStr) {
+            let ls: LitStr = input.parse()?;
+            let s = ls.value();
+            CssToken::String(CssString {
+                span: ls.span(),
+                s,
+            })
+        } else if input.peek(Token![:]) {
+            let t: Token![:] = input.parse()?;
+            CssToken::Colon(CssColon {
+                span: t.span(),
+            })
+        } else if input.peek(Token![;]) {
+            let t: Token![;] = input.parse()?;
+            CssToken::Semi(CssSemi {
+                span: t.span(),
+            })
+        } else if input.peek(Token![,]) {
+            let t: Token![,] = input.parse()?;
+            CssToken::Comma(CssComma {
+                span: t.span(),
+            })
+        } else if input.peek(LitInt) || input.peek(LitFloat) {
+            let span;
+            let value;
+            let int_value;
+            let suffix;
+            let lit: Lit = input.parse()?;
+            match &lit {
+                Lit::Int(num) => {
+                    span = num.span();
+                    let v: i32 = num.base10_parse()?;
+                    value = v as f32;
+                    int_value = Some(v);
+                    suffix = num.suffix();
+                }
+                Lit::Float(num) => {
+                    span = num.span();
+                    value = num.base10_parse()?;
+                    int_value = None;
+                    suffix = num.suffix();
+                }
+                _ => unreachable!()
+            }
+            if suffix.len() > 0 {
+                return Err(Error::new(
+                    span,
+                    format!("a `.` should be added before units, i.e. `{}.{}`", value, suffix),
+                ));
+            }
+            if input.peek(Token![.]) {
+                let _: Token![.] = input.parse()?;
+                let unit = Ident::parse_any(input)?.to_string();
+                CssToken::Dimension(CssDimension { span, value, int_value, unit })
+            } else if input.peek(Token![%]) {
+                let _: Token![%] = input.parse()?;
+                CssToken::Percentage(CssPercentage { span, value, int_value })
+            } else {
+                CssToken::Number(CssNumber { span, value, int_value })
+            }
+        } else if input.peek(token::Paren) {
+            let content;
+            let t = parenthesized!(content in input);
+            CssToken::Paren(CssParen {
+                span: t.span,
+                block: content.parse()?,
+            })
+        } else if input.peek(token::Bracket) {
+            let content;
+            let t = bracketed!(content in input);
+            CssToken::Bracket(CssBracket {
+                span: t.span,
+                block: content.parse()?,
+            })
+        } else if input.peek(token::Brace) {
+            let content;
+            let t = braced!(content in input);
+            CssToken::Brace(CssBrace {
+                span: t.span,
+                block: content.parse()?,
+            })
+        } else if input.peek(Token![$]) {
+            let _: Token![$] = input.parse()?;
+            if input.peek(Token![$]) {
+                CssToken::Delim(parse_css_delim(input)?)
+            } else {
+                let ident = parse_css_ident(input)?;
+                CssToken::VarRef(CssVarRef {
+                    ident,
+                })
+            }
+        } else if let Ok(ident) = parse_css_ident(input) {
+            if input.peek(Token![!]) {
+                let _: Token![!] = input.parse()?;
+                let content;
+                parenthesized!(content in input);
+                CssToken::MacroRef(CssMacroRef {
+                    span: ident.span,
+                    formal_name: ident.formal_name,
+                    block: content.parse()?,
+                })
+            } else if input.peek(token::Paren) {
+                let content;
+                parenthesized!(content in input);
+                CssToken::Function(CssFunction {
+                    span: ident.span,
+                    formal_name: ident.formal_name,
+                    block: content.parse()?,
+                })
+            } else {
+                CssToken::Ident(ident)
+            }
+        } else if let Ok(delim) = parse_css_delim(input) {
+            CssToken::Delim(delim)
+        } else {
+            return Err(input.error("unexpected token"));
+        };
+
+        Ok(css_token)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssTokenStream {
+    span: Span,
+    rev_tokens: Vec<CssToken>,
+}
+
+impl CssTokenStream {
+    fn iter(&self) -> impl Iterator<Item = &CssToken> {
+        self.rev_tokens.iter().rev()
+    }
+
+    #[inline]
+    pub fn new(span: Span, mut tokens: Vec<CssToken>) -> Self {
+        tokens.reverse();
+        Self {
+            span,
+            rev_tokens: tokens,
+        }
+    }
+
+    #[inline]
+    pub fn is_ended(&self) -> bool {
+        self.rev_tokens.last().is_none()
+    }
+
+    #[inline]
+    pub fn expect_ended(&self) -> Result<(), ParseError> {
+        if let Some(x) = self.rev_tokens.last() {
+            Err(ParseError::new(x.span(), "expected end"))
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    pub fn span(&mut self) -> Span {
+        if let Some(x) = self.rev_tokens.last() {
+            x.span()
+        } else {
+            self.span
+        }
+    }
+
+    #[inline]
+    pub fn sub_until_semi(&mut self) -> Self {
+        if let Some((index, _)) = self.rev_tokens.iter().enumerate().rfind(|(_, t)| {
+            if let CssToken::Semi(_) = t {
+                return true;
+            }
+            false
+        }) {
+            let sub_rev_tokens = self.rev_tokens.drain(index..).collect();
+            Self {
+                span: self.span(),
+                rev_tokens: sub_rev_tokens,
+            }
+        } else {
+            let sub_rev_tokens = self.rev_tokens.drain(..).collect();
+            Self {
+                span: self.span(),
+                rev_tokens: sub_rev_tokens,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn next(&mut self) -> Result<CssToken, ParseError> {
+        if let Some(x) = self.rev_tokens.pop() {
+            Ok(x)
+        } else {
+            Err(ParseError::new(self.span, "unexpected end"))
+        }
+    }
+
+    #[inline]
+    pub fn peek(&self) -> Result<&CssToken, ParseError> {
+        if let Some(x) = self.rev_tokens.last() {
+            Ok(x)
+        } else {
+            Err(ParseError::new(self.span, "unexpected end"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_ident(&mut self) -> Result<CssIdent, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Ident(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected CSS identifier"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_at_keyword(&mut self) -> Result<CssAtKeyword, ParseError> {
+        let next = self.next()?;
+        if let CssToken::AtKeyword(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected CSS at-keyword"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_string(&mut self) -> Result<CssString, ParseError> {
+        let next = self.next()?;
+        if let CssToken::String(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected CSS string literal"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_colon(&mut self) -> Result<CssColon, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Colon(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected `:`"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_semi(&mut self) -> Result<CssSemi, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Semi(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected `;`"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_comma(&mut self) -> Result<CssComma, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Comma(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected `,`"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_delim(&mut self, s: &str) -> Result<CssDelim, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Delim(x) = &next {
+            if x.is(s) {
+                return Ok(x.clone());
+            }
+        }
+        self.rev_tokens.push(next);
+        Err(ParseError::new(self.span, format!("expected `{}`", s)))
+    }
+
+    #[inline]
+    pub fn expect_number(&mut self) -> Result<CssNumber, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Number(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected number"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_percentage(&mut self) -> Result<CssPercentage, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Percentage(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected percentage (number with `%`)"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_dimension(&mut self) -> Result<CssDimension, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Dimension(x) = next {
+            Ok(x)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected dimension (number with unit)"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_function<R>(
+        &mut self,
+        f: impl FnOnce(String, &mut CssTokenStream) -> Result<R, ParseError>,
+    ) -> Result<R, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Function(mut x) = next {
+            let r = f(x.formal_name, &mut x.block)?;
+            x.block.expect_ended()?;
+            Ok(r)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected CSS function"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_paren<R>(
+        &mut self,
+        f: impl FnOnce(&mut CssTokenStream) -> Result<R, ParseError>,
+    ) -> Result<R, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Paren(mut x) = next {
+            let r = f(&mut x.block)?;
+            x.block.expect_ended()?;
+            Ok(r)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected `(...)`"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_bracket<R>(
+        &mut self,
+        f: impl FnOnce(&mut CssTokenStream) -> Result<R, ParseError>,
+    ) -> Result<R, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Bracket(mut x) = next {
+            let r = f(&mut x.block)?;
+            x.block.expect_ended()?;
+            Ok(r)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected `[...]`"))
+        }
+    }
+
+    #[inline]
+    pub fn parse_brace<R>(
+        &mut self,
+        f: impl FnOnce(&mut CssTokenStream) -> Result<R, ParseError>,
+    ) -> Result<R, ParseError> {
+        let next = self.next()?;
+        if let CssToken::Bracket(mut x) = next {
+            let r = f(&mut x.block)?;
+            x.block.expect_ended()?;
+            Ok(r)
+        } else {
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span, "expected `{...}`"))
+        }
+    }
+}
+
+impl WriteCss for CssTokenStream {
+    fn write_css<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+    ) -> std::result::Result<(), std::fmt::Error> {
+        for token in self.rev_tokens.iter() {
+            token.write_css(cssw)?;
+        }
+        Ok(())
+    }
+}
+
+impl syn::parse::Parse for CssTokenStream {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut ret = vec![];
+        while !input.is_empty() {
+            ret.push(input.parse()?);
+        }
+        Ok(Self::new(input.span(), ret))
+    }
+}

@@ -1,6 +1,4 @@
-use syn::{spanned::Spanned, Error};
-
-use maomi_skin::parser::{write_css::WriteCss, *};
+use maomi_skin::{write_css::*, css_token::*, style_sheet::ParseStyleSheetValue, ParseError};
 
 pub(crate) enum DomMediaCondValue {
     AspectRatio(CssNumber, CssNumber),
@@ -22,78 +20,80 @@ pub(crate) enum DomMediaColorScheme {
 }
 
 fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(CssNumber, CssNumber)> {
-    let span = tokens.span();
-    let a = tokens.expect_number()?;
-    if a.positive_integer().is_none() {
-        return Err(Error::new(span, "Expected positive integer"));
-    }
-    let _ = tokens.expect_delim("/")?;
-    let span = tokens.span();
-    let b = tokens.expect_number()?;
-    if b.positive_integer().is_none() {
-        return Err(Error::new(span, "Expected positive integer"));
-    }
-    Ok((a, b))
+    todo!()
+    // let span = tokens.span();
+    // let a = tokens.expect_number()?;
+    // if a.positive_integer().is_none() {
+    //     return Err(Error::new(span, "Expected positive integer"));
+    // }
+    // let _ = tokens.expect_delim("/")?;
+    // let span = tokens.span();
+    // let b = tokens.expect_number()?;
+    // if b.positive_integer().is_none() {
+    //     return Err(Error::new(span, "Expected positive integer"));
+    // }
+    // Ok((a, b))
 }
 
 impl ParseStyleSheetValue for DomMediaCondValue {
-    fn parse_value(name: &CssIdent, tokens: &mut CssTokenStream) -> syn::Result<Self>
+    fn parse_value(name: &CssIdent, tokens: &mut CssTokenStream) -> Result<Self, ParseError>
     where
         Self: Sized,
     {
-        let ret = match name.formal_name.as_str() {
-            "aspect_ratio" | "min_aspect_ratio" | "max_aspect_ratio" => {
-                let (a, b) = parse_aspect_ratio(tokens)?;
-                Self::AspectRatio(a, b)
-            }
-            "orientation" => Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
-                "landscape" => DomMediaOrientation::Landscape,
-                "portrait" => DomMediaOrientation::Portrait,
-                _ => Err(Error::new(
-                    name.span(),
-                    "Expected `landscape` or `portrait`",
-                ))?,
-            }),
-            "prefers_color_scheme" => {
-                Self::PrefersColorScheme(match tokens.expect_ident()?.formal_name.as_str() {
-                    "light" => DomMediaColorScheme::Light,
-                    "dark" => DomMediaColorScheme::Dark,
-                    _ => Err(Error::new(name.span(), "Expected `light` or `dark`"))?,
-                })
-            }
-            "resolution" | "min_resolution" | "max_resolution" => {
-                let x = tokens.expect_dimension()?;
-                if x.unit.as_str() != "dpi" {
-                    return Err(Error::new(name.span(), "Expected `dpi` unit"));
-                }
-                Self::Resolution(x)
-            }
-            "width" | "min_width" | "max_width" => {
-                let x = tokens.expect_dimension()?;
-                if x.unit.as_str() != "px" {
-                    return Err(Error::new(name.span(), "Expected `px` unit"));
-                }
-                Self::Width(x)
-            }
-            "height" | "min_height" | "max_height" => {
-                let x = tokens.expect_dimension()?;
-                if x.unit.as_str() != "px" {
-                    return Err(Error::new(name.span(), "Expected `px` unit"));
-                }
-                Self::Height(x)
-            }
-            _ => {
-                return Err(Error::new(name.span(), "Unknown media feature"));
-            }
-        };
-        Ok(ret)
+        todo!()
+        // let ret = match name.formal_name.as_str() {
+        //     "aspect_ratio" | "min_aspect_ratio" | "max_aspect_ratio" => {
+        //         let (a, b) = parse_aspect_ratio(tokens)?;
+        //         Self::AspectRatio(a, b)
+        //     }
+        //     "orientation" => Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
+        //         "landscape" => DomMediaOrientation::Landscape,
+        //         "portrait" => DomMediaOrientation::Portrait,
+        //         _ => Err(Error::new(
+        //             name.span(),
+        //             "Expected `landscape` or `portrait`",
+        //         ))?,
+        //     }),
+        //     "prefers_color_scheme" => {
+        //         Self::PrefersColorScheme(match tokens.expect_ident()?.formal_name.as_str() {
+        //             "light" => DomMediaColorScheme::Light,
+        //             "dark" => DomMediaColorScheme::Dark,
+        //             _ => Err(Error::new(name.span(), "Expected `light` or `dark`"))?,
+        //         })
+        //     }
+        //     "resolution" | "min_resolution" | "max_resolution" => {
+        //         let x = tokens.expect_dimension()?;
+        //         if x.unit.as_str() != "dpi" {
+        //             return Err(Error::new(name.span(), "Expected `dpi` unit"));
+        //         }
+        //         Self::Resolution(x)
+        //     }
+        //     "width" | "min_width" | "max_width" => {
+        //         let x = tokens.expect_dimension()?;
+        //         if x.unit.as_str() != "px" {
+        //             return Err(Error::new(name.span(), "Expected `px` unit"));
+        //         }
+        //         Self::Width(x)
+        //     }
+        //     "height" | "min_height" | "max_height" => {
+        //         let x = tokens.expect_dimension()?;
+        //         if x.unit.as_str() != "px" {
+        //             return Err(Error::new(name.span(), "Expected `px` unit"));
+        //         }
+        //         Self::Height(x)
+        //     }
+        //     _ => {
+        //         return Err(Error::new(name.span(), "Unknown media feature"));
+        //     }
+        // };
+        // Ok(ret)
     }
 }
 
 impl WriteCss for DomMediaCondValue {
     fn write_css<W: std::fmt::Write>(
         &self,
-        cssw: &mut maomi_skin::parser::write_css::CssWriter<W>,
+        cssw: &mut CssWriter<W>,
     ) -> std::fmt::Result {
         match self {
             Self::AspectRatio(a, b) => {
@@ -138,7 +138,7 @@ mod test {
                     .c {
                         @media only (resolution: 1dpi) {}
                     }
-                "#
+                "#,
             )
             .is_err());
             parse_str(

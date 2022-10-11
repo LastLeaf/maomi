@@ -1,3 +1,37 @@
+use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*};
+
+/// Handlers for CSS details (varies between backends)
+pub trait StyleSheetConstructor {
+    type PropertyValue: ParseStyleSheetValue;
+    type FontFacePropertyValue: ParseStyleSheetValue;
+    type MediaCondValue: ParseStyleSheetValue;
+
+    fn new() -> Self
+    where
+        Self: Sized;
+
+    fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> Result<(), ParseError>;
+
+    fn define_key_frames(
+        &mut self,
+        name: &CssIdent,
+        content: &Vec<(
+            CssPercentage,
+            CssBrace<Repeat<Property<Self::PropertyValue>>>,
+        )>,
+    ) -> CssIdent;
+
+    fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
+    where
+        Self: Sized;
+}
+
+/// Parse value positions
+pub trait ParseStyleSheetValue {
+    fn parse_value(name: &CssIdent, tokens: &mut CssTokenStream) -> Result<Self, ParseError>
+    where
+        Self: Sized;
+}
 
 pub struct StyleSheet<T: StyleSheetConstructor> {
     ssc: T,
@@ -5,186 +39,164 @@ pub struct StyleSheet<T: StyleSheetConstructor> {
     vars: StyleSheetVars,
 }
 
-pub struct StyleSheetVars {
-    macros: FxHashMap<String, MacroDefinition>,
-    consts: FxHashMap<String, Vec<CssToken>>,
-    keyframes: FxHashMap<String, CssIdent>,
+pub enum StyleSheetItem<T: StyleSheetConstructor> {
+    // MacroDefinition {
+    //     at_keyword: CssAtKeyword,
+    //     name: CssIdent,
+    //     refs: Vec<CssIdent>,
+    // },
+    // ConstDefinition {
+    //     at_keyword: CssAtKeyword,
+    //     name: CssIdent,
+    //     refs: Vec<CssIdent>,
+    // },
+    // KeyFramesDefinition {
+    //     at_keyword: CssAtKeyword,
+    //     dollar_token: token::Dollar,
+    //     name: CssIdent,
+    //     brace_token: token::Brace,
+    //     content: Vec<(CssPercentage, CssBrace<Repeat<Property<T::PropertyValue>>>)>,
+    //     def: CssIdent,
+    // },
+    Rule {
+        dot_token: CssDelim,
+        ident: CssIdent,
+        content: CssBrace<RuleContent<T>>,
+    },
 }
 
-impl<T: StyleSheetConstructor> Parse for StyleSheet<T> {
-    fn parse(input: ParseStream) -> Result<Self> {
+impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
         let mut ssc = T::new();
         let mut items = vec![];
-        let mut vars = StyleSheetVars {
-            macros: FxHashMap::default(),
-            consts: FxHashMap::default(),
-            keyframes: FxHashMap::default(),
-        };
-
-        // parse items
-        while !input.is_empty() {
-            let vars = &mut vars;
-            let la = input.lookahead1();
-            if la.peek(token::At) {
-                let at_keyword: CssAtKeyword = input.parse()?;
+        let mut vars = StyleSheetVars {};
+        while !input.is_ended() {
+            if let Ok(dot_token) = input.expect_delim(".") {
+                let item = StyleSheetItem::Rule {
+                    dot_token,
+                    ident: input.expect_ident()?,
+                    content: ParseWithVars::parse_with_vars(input, &mut vars, scope)?,
+                };
+                items.push(item);
+            } else if let Ok(at_keyword) = input.expect_at_keyword() {
                 match at_keyword.formal_name.as_str() {
-                    "import" => {
-                        // IDEA considering a proper cache to avoid parsing during every import
-                        let item: StyleSheetImportItem = input.parse()?;
-                        let content = get_import_content(&item.src)?;
-                        let token_stream = proc_macro2::TokenStream::from_str(&content)?;
-                        let mut ss = parse2::<StyleSheet<T>>(token_stream).map_err(|err| {
-                            let original_span = err.span();
-                            let start = original_span.start();
-                            Error::new(
-                                at_keyword.span(),
-                                format_args!(
-                                    "when parsing {}:{}:{}: {}",
-                                    item.src.value(),
-                                    start.line,
-                                    start.column,
-                                    err
-                                ),
-                            )
-                        })?;
-                        vars.macros.extend(ss.vars.macros);
-                        vars.consts.extend(ss.vars.consts);
-                        items.append(&mut ss.items);
+                    "config" => {
+                        let name = input.expect_ident()?;
+                        let mut tokens = input.sub_until_semi();
+                        ssc.set_config(&name, &mut tokens);
+                        tokens.expect_ended()?;
+                        input.expect_semi()?;
                     }
                     "macro" => {
-                        let item = StyleSheetMacroItem::parse_with_vars(
-                            input,
-                            vars,
-                            &mut ScopeVars::new(),
-                        )?;
-                        let mut refs = vec![];
-                        item.for_each_ref(&mut |x| refs.push(x.clone()));
-                        if vars
-                            .macros
-                            .insert(item.name.formal_name.clone(), item.mac.block)
-                            .is_some()
-                        {
-                            return Err(Error::new(
-                                item.name.span,
-                                format!(
-                                    "macro named `{}` has already defined",
-                                    item.name.formal_name
-                                ),
-                            ));
-                        }
-                        items.push(StyleSheetItem::MacroDefinition {
-                            at_keyword,
-                            name: item.name,
-                            refs,
-                        })
+                        todo!() // TODO
                     }
                     "const" => {
-                        let item = StyleSheetConstItem::parse_with_vars(
-                            &input,
-                            vars,
-                            &mut ScopeVars::new(),
-                        )?;
-                        let (tokens, refs) = item.content.get();
-                        if vars
-                            .consts
-                            .insert(item.name.formal_name.clone(), tokens)
-                            .is_some()
-                        {
-                            return Err(Error::new(
-                                item.name.span,
-                                format!(
-                                    "const named `{}` has already defined",
-                                    item.name.formal_name
-                                ),
-                            ));
-                        }
-                        items.push(StyleSheetItem::ConstDefinition {
-                            at_keyword,
-                            name: item.name,
-                            refs,
-                        })
-                    }
-                    "config" => {
-                        let name: CssIdent = input.parse()?;
-                        let _: CssColon = input.parse()?;
-                        let (tokens, _refs) = ParseTokenUntilSemi::parse_with_vars(
-                            input,
-                            vars,
-                            &mut ScopeVars::new(),
-                        )?
-                        .get();
-                        let mut stream = CssTokenStream::new(input.span(), tokens);
-                        ssc.set_config(&name, &mut stream)?;
-                        stream.expect_ended()?;
-                        let _: CssSemi = input.parse()?;
+                        todo!() // TODO
                     }
                     "keyframes" => {
-                        let dollar_token = input.parse()?;
-                        let name: CssIdent = input.parse()?;
-                        let content;
-                        let brace_token = braced!(content in input);
-                        let input = content;
-                        let mut content = vec![];
-                        while !input.is_empty() {
-                            let la = input.lookahead1();
-                            let percentage = if la.peek(Ident) {
-                                let s: CssIdent = input.parse()?;
-                                match s.formal_name.as_str() {
-                                    "from" => CssPercentage {
-                                        span: s.span(),
-                                        num: Number::Int(0),
-                                    },
-                                    "to" => CssPercentage {
-                                        span: s.span(),
-                                        num: Number::Int(100),
-                                    },
-                                    _ => return Err(Error::new(s.span(), "illegal ident")),
-                                }
-                            } else if la.peek(Lit) {
-                                input.parse()?
-                            } else {
-                                return Err(la.error());
-                            };
-                            let props = ParseWithVars::parse_with_vars(
-                                &input,
-                                vars,
-                                &mut ScopeVars::new(),
-                            )?;
-                            content.push((percentage, props));
-                        }
-                        let def = ssc.define_key_frames(&name, &content);
-                        vars.keyframes.insert(name.formal_name.clone(), def.clone());
-                        items.push(StyleSheetItem::KeyFramesDefinition {
-                            at_keyword,
-                            dollar_token,
-                            name,
-                            brace_token,
-                            content,
-                            def,
-                        })
+                        todo!() // TODO
                     }
                     _ => {
-                        return Err(Error::new(at_keyword.span(), "unknown at-keyword"));
+                        return Err(ParseError::new(at_keyword.span, "unknown at-keyword"));
                     }
                 }
-            } else if la.peek(token::Dot) {
-                let dot_token = input.parse()?;
-                let ident = input.parse()?;
-                items.push(StyleSheetItem::Rule {
-                    dot_token,
-                    ident,
-                    content: ParseWithVars::parse_with_vars(input, vars, &mut ScopeVars::new())?,
-                })
             } else {
-                return Err(la.error());
+                return Err(ParseError::new(input.span(), "unexpected CSS token"));
             };
         }
-
         Ok(Self { ssc, items, vars })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        // TODO
+        for item in self.items.iter() {
+            match item {
+                StyleSheetItem::Rule { content, .. } => {
+                    content.block.for_each_ref(f);
+                }
+            }
+        }
     }
 }
 
-impl<T: StyleSheetConstructor> ToTokens for StyleSheet<T> {
+pub struct RuleContent<T: StyleSheetConstructor> {
+    pub props: Vec<Property<T::PropertyValue>>,
+    // pub at_blocks: Vec<AtBlock<T>>,
+    // pub pseudo_classes: Vec<PseudoClass<T>>,
+    // pub sub_classes: Vec<SubClass<T>>,
+    pub refs: Vec<CssIdent>,
+}
+
+/// A CSS property (name-value pair)
+pub struct Property<V> {
+    pub name: CssIdent,
+    pub colon_token: CssColon,
+    pub value: V,
+    pub semi_token: CssSemi,
+}
+
+impl<V: WriteCss> WriteCss for Property<V> {
+    fn write_css<W: std::fmt::Write>(&self, cssw: &mut CssWriter<W>) -> std::fmt::Result {
+        self.name.write_css(cssw)?;
+        self.colon_token.write_css(cssw)?;
+        self.value.write_css(cssw)?;
+        self.semi_token.write_css(cssw)?;
+        Ok(())
+    }
+}
+
+impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let mut props = vec![];
+        let mut refs = vec![];
+        while !input.is_ended() {
+            let next = input.next()?;
+            match next {
+                CssToken::Ident(name) => {
+                    let colon_token = input.expect_colon()?;
+                    let mut value_tokens = input.sub_until_semi(); // TODO resolve vars
+                    let value = T::PropertyValue::parse_value(&name, &mut value_tokens)?;
+                    value_tokens.expect_ended()?;
+                    let semi_token = input.expect_semi()?;
+                    props.push(Property { name, colon_token, value, semi_token })
+                }
+                x => {
+                    return Err(ParseError::new(x.span(), "unexpected token"));
+                }
+            }
+        }
+        Ok(Self {
+            props,
+            refs,
+        })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+        for r in &self.refs {
+            f(r);
+        }
+    }
+}
+
+impl<T: StyleSheetConstructor> syn::parse::Parse for StyleSheet<T> {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let tokens = &mut CssTokenStream::parse(input)?;
+        let ss = StyleSheet::parse_with_vars(tokens, &mut StyleSheetVars {}, &mut ScopeVars {})
+            .map_err(|x| x.into_syn_error())?;
+        tokens.expect_ended().map_err(|x| x.into_syn_error())?;
+        Ok(ss)
+    }
+}
+
+impl<T: StyleSheetConstructor> quote::ToTokens for StyleSheet<T> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         self.ssc.to_tokens(self, tokens)
     }

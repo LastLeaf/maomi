@@ -1,20 +1,53 @@
 #![recursion_limit = "128"]
 
+use rustc_hash::FxHashMap;
+use proc_macro2::Span;
+
 // pub mod parser;
-pub use cssparser;
+pub mod css_token;
+pub mod write_css;
 pub mod style_sheet;
 
-pub fn parse<T: StyleSheetConstructor>(s: &str) -> style_sheet::StyleSheet<T> {
-    let input = &mut cssparser::ParserInput::new(s);
-    let parser = &mut cssparser::Parser::new(input);
-    StyleSheet::parse_css(parser)
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub span: Span,
+    pub message: String,
 }
 
-type Error<'i> = cssparser::ParseError<'i, ParseCssError>;
+impl ParseError {
+    pub fn new(span: Span, message: impl ToString) -> Self {
+        Self {
+            span,
+            message: message.to_string(),
+        }
+    }
 
-pub enum ParseCssError {
+    pub fn into_syn_error(self) -> syn::Error {
+        syn::Error::new(self.span, self.message)
+    }
 }
 
-pub trait ParseCss {
-    fn parse_css<'i>(parser: &mut cssparser::Parser<'i>) -> Result<Self, Error<'i>> where Self: Sized;
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+pub trait ParseWithVars: Sized {
+    fn parse_with_vars(
+        input: &mut css_token::CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError>;
+    fn for_each_ref(&self, f: &mut impl FnMut(&css_token::CssIdent));
+}
+
+pub struct StyleSheetVars {
+    // macros: FxHashMap<String, MacroDefinition>,
+    // consts: FxHashMap<String, Vec<CssToken>>,
+    // keyframes: FxHashMap<String, CssIdent>,
+}
+
+pub struct ScopeVars {
+    // macro_pat_vars: Option<&'a mut mac::MacroPatVars>,
 }
