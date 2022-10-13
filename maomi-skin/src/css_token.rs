@@ -1,6 +1,8 @@
 use std::num::NonZeroU32;
 use proc_macro2::Span;
 
+use crate::ConstOrKeyframe;
+
 // use super::mac::MacroArgsToken;
 use super::{
     write_css::{CssWriter, WriteCss, WriteCssSepCond},
@@ -14,6 +16,10 @@ pub struct CssIdent {
 }
 
 impl CssIdent {
+    pub fn is(&self, s: &str) -> bool {
+        self.formal_name.as_str() == s
+    }
+
     pub fn css_name(&self) -> String {
         self.formal_name.replace('_', "-")
     }
@@ -35,6 +41,10 @@ pub struct CssAtKeyword {
 }
 
 impl CssAtKeyword {
+    pub fn is(&self, s: &str) -> bool {
+        self.formal_name.as_str() == s
+    }
+
     pub fn css_name(&self) -> String {
         self.formal_name.replace('_', "-")
     }
@@ -54,18 +64,7 @@ impl WriteCss for CssAtKeyword {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
-            if debug_mode {
-                match sc {
-                    WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
-                    _ => {
-                        write!(w, " ")?;
-                    }
-                }
-            }
-            write!(w, "@{}", self.css_name())?;
-            Ok(WriteCssSepCond::NonIdentAlpha)
-        })
+        cssw.write_at_keyword(self.formal_name.as_str())
     }
 }
 
@@ -259,6 +258,16 @@ pub struct CssPercentage {
     pub int_value: Option<i32>,
 }
 
+impl CssPercentage {
+    pub(crate) fn new_int(span: Span, value: i32) -> Self {
+        Self {
+            span,
+            value: value as f32,
+            int_value: Some(value),
+        }
+    }
+}
+
 impl WriteCss for CssPercentage {
     fn write_css<W: std::fmt::Write>(
         &self,
@@ -373,15 +382,12 @@ impl<T: ParseWithVars> ParseWithVars for CssFunction<T> {
         vars: &mut StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
-        let span = input.span();
-        let (formal_name, block) = input.parse_function(|formal_name, input| {
-            let block = T::parse_with_vars(input, vars, scope)?;
-            Ok((formal_name, block))
-        })?;
-        Ok(Self { span, formal_name, block })
+        input.parse_function(|_, input| {
+            T::parse_with_vars(input, vars, scope)
+        })
     }
 
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
         self.block.for_each_ref(f)
     }
 }
@@ -415,14 +421,12 @@ impl<T: ParseWithVars> ParseWithVars for CssParen<T> {
         vars: &mut StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
-        let span = input.span();
-        let block = input.parse_paren(|input| {
+        input.parse_paren(|input| {
             T::parse_with_vars(input, vars, scope)
-        })?;
-        Ok(Self { span, block })
+        })
     }
 
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
         self.block.for_each_ref(f)
     }
 }
@@ -456,14 +460,12 @@ impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
         vars: &mut StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
-        let span = input.span();
-        let block = input.parse_bracket(|input| {
+        input.parse_bracket(|input| {
             T::parse_with_vars(input, vars, scope)
-        })?;
-        Ok(Self { span, block })
+        })
     }
 
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
         self.block.for_each_ref(f)
     }
 }
@@ -497,14 +499,12 @@ impl<T: ParseWithVars> ParseWithVars for CssBrace<T> {
         vars: &mut StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
-        let span = input.span();
-        let block = input.parse_brace(|input| {
+        input.parse_brace(|input| {
             T::parse_with_vars(input, vars, scope)
-        })?;
-        Ok(Self { span, block })
+        })
     }
 
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssIdent)) {
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
         self.block.for_each_ref(f)
     }
 }
@@ -514,11 +514,68 @@ pub struct CssVarRef {
     pub ident: CssIdent,
 }
 
+impl CssVarRef {
+    pub fn into_ref(self) -> CssRef {
+        CssRef { span: self.ident.span, formal_name: self.ident.formal_name }
+    }
+
+    pub fn resolve_append(
+        &self,
+        ret: &mut Vec<CssToken>,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<(), ParseError> {
+        // TODO check scope vars
+        if let Some(x) = vars.consts.get(self) {
+            match x {
+                ConstOrKeyframe::Const(x) => {
+                    for x in x.iter() {
+                        ret.push(x.clone());
+                    }
+                }
+                ConstOrKeyframe::Keyframe(x) => {
+                    ret.push(CssToken::Ident(x.clone()));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl std::hash::Hash for CssVarRef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.ident.formal_name.hash(state);
+    }
+}
+
+impl PartialEq for CssVarRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident.formal_name == other.ident.formal_name
+    }
+}
+
+impl Eq for CssVarRef {}
+
 #[derive(Clone)]
 pub struct CssMacroRef<T> {
     pub span: Span,
     pub formal_name: String,
     pub block: T,
+}
+
+impl<T> CssMacroRef<T> {
+    pub fn into_ref(self) -> CssRef {
+        CssRef { span: self.span, formal_name: self.formal_name }
+    }
+
+    pub fn resolve_append(
+        &self,
+        ret: &mut Vec<CssToken>,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<(), ParseError> {
+        todo!() // TODO
+    }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for CssMacroRef<T> {
@@ -529,6 +586,12 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssMacroRef<T> {
             .field(&"block", &self.block)
             .finish()
     }
+}
+
+#[derive(Clone)]
+pub struct CssRef {
+    pub span: Span,
+    pub formal_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -576,6 +639,27 @@ impl<T: WriteCss> WriteCss for Repeat<T> {
             item.write_css(cssw)?;
         }
         Ok(())
+    }
+}
+
+impl<T: ParseWithVars> ParseWithVars for Repeat<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let mut inner = vec![];
+        while !input.is_ended() {
+            let i = T::parse_with_vars(input, vars, scope)?;
+            inner.push(i);
+        }
+        Ok(Self { inner })
+    }
+
+    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
+        for i in &self.inner {
+            i.for_each_ref(f);
+        }
     }
 }
 
@@ -837,7 +921,7 @@ impl syn::parse::Parse for CssToken {
             }
             loop {
                 if input.peek(Token![-]) {
-                    let sub_token: Token![-] = input.parse()?;
+                    let _: Token![-] = input.parse()?;
                     formal_name.push('_');
                 } else {
                     break;
@@ -969,7 +1053,7 @@ impl syn::parse::Parse for CssToken {
             if suffix.len() > 0 {
                 return Err(Error::new(
                     span,
-                    format!("a `.` should be added before units, i.e. `{}.{}`", value, suffix),
+                    format!("`.` should be added before units, i.e. `{}.{}`", value, suffix),
                 ));
             }
             if input.peek(Token![.]) {
@@ -1013,6 +1097,8 @@ impl syn::parse::Parse for CssToken {
                     ident,
                 })
             }
+        } else if input.peek(Token![#]) {
+            return Err(input.error("`#` values are not supported currently (consider other forms instead)"));
         } else if let Ok(ident) = parse_css_ident(input) {
             if input.peek(Token![!]) {
                 let _: Token![!] = input.parse()?;
@@ -1046,7 +1132,7 @@ impl syn::parse::Parse for CssToken {
 
 #[derive(Debug, Clone)]
 pub struct CssTokenStream {
-    span: Span,
+    last_span: Span,
     rev_tokens: Vec<CssToken>,
 }
 
@@ -1056,10 +1142,10 @@ impl CssTokenStream {
     }
 
     #[inline]
-    pub fn new(span: Span, mut tokens: Vec<CssToken>) -> Self {
+    pub fn new(last_span: Span, mut tokens: Vec<CssToken>) -> Self {
         tokens.reverse();
         Self {
-            span,
+            last_span,
             rev_tokens: tokens,
         }
     }
@@ -1079,11 +1165,11 @@ impl CssTokenStream {
     }
 
     #[inline]
-    pub fn span(&mut self) -> Span {
+    pub fn span(&self) -> Span {
         if let Some(x) = self.rev_tokens.last() {
             x.span()
         } else {
-            self.span
+            self.last_span
         }
     }
 
@@ -1097,16 +1183,46 @@ impl CssTokenStream {
         }) {
             let sub_rev_tokens = self.rev_tokens.drain(index..).collect();
             Self {
-                span: self.span(),
+                last_span: self.span(),
                 rev_tokens: sub_rev_tokens,
             }
         } else {
             let sub_rev_tokens = self.rev_tokens.drain(..).collect();
             Self {
-                span: self.span(),
+                last_span: self.span(),
                 rev_tokens: sub_rev_tokens,
             }
         }
+    }
+
+    #[inline]
+    pub fn resolve_until_semi(
+        &mut self,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<(Vec<CssToken>, Vec<CssRef>), ParseError> {
+        let mut tokens = vec![];
+        let mut refs = vec![];
+        while !self.is_ended() {
+            if let CssToken::Semi(_) = self.peek().unwrap() {
+                break;
+            }
+            let next = self.next().unwrap();
+            match next {
+                CssToken::VarRef(x) => {
+                    x.resolve_append(&mut tokens, vars, scope)?;
+                    refs.push(x.into_ref());
+                }
+                CssToken::MacroRef(x) => {
+                    x.resolve_append(&mut tokens, vars, scope)?;
+                    refs.push(x.into_ref());
+                }
+                x => {
+                    tokens.push(x);
+                }
+            }
+        }
+        Ok((tokens, refs))
     }
 
     #[inline]
@@ -1114,7 +1230,7 @@ impl CssTokenStream {
         if let Some(x) = self.rev_tokens.pop() {
             Ok(x)
         } else {
-            Err(ParseError::new(self.span, "unexpected end"))
+            Err(ParseError::new(self.span(), "unexpected end"))
         }
     }
 
@@ -1123,7 +1239,30 @@ impl CssTokenStream {
         if let Some(x) = self.rev_tokens.last() {
             Ok(x)
         } else {
-            Err(ParseError::new(self.span, "unexpected end"))
+            Err(ParseError::new(self.span(), "unexpected end"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_keyword(&mut self, keyword: &str) -> Result<CssIdent, ParseError> {
+        let peek = self.peek()?;
+        let matched = if let CssToken::Ident(x) = peek {
+            if x.is(keyword) {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if matched {
+            if let Ok(CssToken::Ident(x)) = self.next() {
+                Ok(x)
+            } else {
+                unreachable!()
+            }
+        } else {
+            Err(ParseError::new(self.span(), format!("expected `{}`", keyword)))
         }
     }
 
@@ -1134,7 +1273,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected CSS identifier"))
+            Err(ParseError::new(self.span(), "expected CSS identifier"))
         }
     }
 
@@ -1145,7 +1284,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected CSS at-keyword"))
+            Err(ParseError::new(self.span(), "expected CSS at-keyword"))
         }
     }
 
@@ -1156,7 +1295,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected CSS string literal"))
+            Err(ParseError::new(self.span(), "expected CSS string literal"))
         }
     }
 
@@ -1167,7 +1306,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected `:`"))
+            Err(ParseError::new(self.span(), "expected `:`"))
         }
     }
 
@@ -1178,7 +1317,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected `;`"))
+            Err(ParseError::new(self.span(), "expected `;`"))
         }
     }
 
@@ -1189,20 +1328,31 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected `,`"))
+            Err(ParseError::new(self.span(), "expected `,`"))
         }
     }
 
     #[inline]
     pub fn expect_delim(&mut self, s: &str) -> Result<CssDelim, ParseError> {
-        let next = self.next()?;
-        if let CssToken::Delim(x) = &next {
+        let peek = self.peek()?;
+        let matched = if let CssToken::Delim(x) = peek {
             if x.is(s) {
-                return Ok(x.clone());
+                true
+            } else {
+                false
             }
+        } else {
+            false
+        };
+        if matched {
+            if let Ok(CssToken::Delim(x)) = self.next() {
+                Ok(x)
+            } else {
+                unreachable!()
+            }
+        } else {
+            Err(ParseError::new(self.span(), format!("expected `{}`", s)))
         }
-        self.rev_tokens.push(next);
-        Err(ParseError::new(self.span, format!("expected `{}`", s)))
     }
 
     #[inline]
@@ -1212,7 +1362,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected number"))
+            Err(ParseError::new(self.span(), "expected number"))
         }
     }
 
@@ -1223,7 +1373,7 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected percentage (number with `%`)"))
+            Err(ParseError::new(self.span(), "expected percentage (number with `%`)"))
         }
     }
 
@@ -1234,23 +1384,23 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected dimension (number with unit)"))
+            Err(ParseError::new(self.span(), "expected dimension (number with unit)"))
         }
     }
 
     #[inline]
     pub fn parse_function<R>(
         &mut self,
-        f: impl FnOnce(String, &mut CssTokenStream) -> Result<R, ParseError>,
-    ) -> Result<R, ParseError> {
+        f: impl FnOnce(&str, &mut CssTokenStream) -> Result<R, ParseError>,
+    ) -> Result<CssFunction<R>, ParseError> {
         let next = self.next()?;
         if let CssToken::Function(mut x) = next {
-            let r = f(x.formal_name, &mut x.block)?;
+            let block = f(&x.formal_name, &mut x.block)?;
             x.block.expect_ended()?;
-            Ok(r)
+            Ok(CssFunction { span: x.span, formal_name: x.formal_name, block })
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected CSS function"))
+            Err(ParseError::new(self.span(), "expected CSS function"))
         }
     }
 
@@ -1258,15 +1408,15 @@ impl CssTokenStream {
     pub fn parse_paren<R>(
         &mut self,
         f: impl FnOnce(&mut CssTokenStream) -> Result<R, ParseError>,
-    ) -> Result<R, ParseError> {
+    ) -> Result<CssParen<R>, ParseError> {
         let next = self.next()?;
         if let CssToken::Paren(mut x) = next {
-            let r = f(&mut x.block)?;
+            let block = f(&mut x.block)?;
             x.block.expect_ended()?;
-            Ok(r)
+            Ok(CssParen { span: x.span, block })
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected `(...)`"))
+            Err(ParseError::new(self.span(), "expected `(...)`"))
         }
     }
 
@@ -1274,15 +1424,15 @@ impl CssTokenStream {
     pub fn parse_bracket<R>(
         &mut self,
         f: impl FnOnce(&mut CssTokenStream) -> Result<R, ParseError>,
-    ) -> Result<R, ParseError> {
+    ) -> Result<CssBracket<R>, ParseError> {
         let next = self.next()?;
         if let CssToken::Bracket(mut x) = next {
-            let r = f(&mut x.block)?;
+            let block = f(&mut x.block)?;
             x.block.expect_ended()?;
-            Ok(r)
+            Ok(CssBracket { span: x.span, block })
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected `[...]`"))
+            Err(ParseError::new(self.span(), "expected `[...]`"))
         }
     }
 
@@ -1290,15 +1440,31 @@ impl CssTokenStream {
     pub fn parse_brace<R>(
         &mut self,
         f: impl FnOnce(&mut CssTokenStream) -> Result<R, ParseError>,
-    ) -> Result<R, ParseError> {
+    ) -> Result<CssBrace<R>, ParseError> {
         let next = self.next()?;
-        if let CssToken::Bracket(mut x) = next {
-            let r = f(&mut x.block)?;
+        if let CssToken::Brace(mut x) = next {
+            let block = f(&mut x.block)?;
             x.block.expect_ended()?;
-            Ok(r)
+            Ok(CssBrace { span: x.span, block })
         } else {
             self.rev_tokens.push(next);
-            Err(ParseError::new(self.span, "expected `{...}`"))
+            Err(ParseError::new(self.span(), "expected `{...}`"))
+        }
+    }
+
+    #[inline]
+    pub fn expect_var_ref(&mut self) -> Result<CssVarRef, ParseError> {
+        let next = self.next()?;
+        if let CssToken::VarRef(x) = next {
+            Ok(x)
+        } else {
+            let hint = if let CssToken::Ident(x) = &next {
+                format!("expected variable name, i.e. `${}`", x.formal_name)
+            } else {
+                "expected variable name".to_string()
+            };
+            self.rev_tokens.push(next);
+            Err(ParseError::new(self.span(), hint))
         }
     }
 }

@@ -19,20 +19,19 @@ pub(crate) enum DomMediaColorScheme {
     Dark,
 }
 
-fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> syn::Result<(CssNumber, CssNumber)> {
-    todo!()
-    // let span = tokens.span();
-    // let a = tokens.expect_number()?;
-    // if a.positive_integer().is_none() {
-    //     return Err(Error::new(span, "Expected positive integer"));
-    // }
-    // let _ = tokens.expect_delim("/")?;
-    // let span = tokens.span();
-    // let b = tokens.expect_number()?;
-    // if b.positive_integer().is_none() {
-    //     return Err(Error::new(span, "Expected positive integer"));
-    // }
-    // Ok((a, b))
+fn parse_aspect_ratio(tokens: &mut CssTokenStream) -> Result<(CssNumber, CssNumber), ParseError> {
+    let span = tokens.span();
+    let a = tokens.expect_number()?;
+    if a.positive_integer().is_none() {
+        return Err(ParseError::new(span, "Expected positive integer"));
+    }
+    let _ = tokens.expect_delim("/")?;
+    let span = tokens.span();
+    let b = tokens.expect_number()?;
+    if b.positive_integer().is_none() {
+        return Err(ParseError::new(span, "Expected positive integer"));
+    }
+    Ok((a, b))
 }
 
 impl ParseStyleSheetValue for DomMediaCondValue {
@@ -40,53 +39,52 @@ impl ParseStyleSheetValue for DomMediaCondValue {
     where
         Self: Sized,
     {
-        todo!()
-        // let ret = match name.formal_name.as_str() {
-        //     "aspect_ratio" | "min_aspect_ratio" | "max_aspect_ratio" => {
-        //         let (a, b) = parse_aspect_ratio(tokens)?;
-        //         Self::AspectRatio(a, b)
-        //     }
-        //     "orientation" => Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
-        //         "landscape" => DomMediaOrientation::Landscape,
-        //         "portrait" => DomMediaOrientation::Portrait,
-        //         _ => Err(Error::new(
-        //             name.span(),
-        //             "Expected `landscape` or `portrait`",
-        //         ))?,
-        //     }),
-        //     "prefers_color_scheme" => {
-        //         Self::PrefersColorScheme(match tokens.expect_ident()?.formal_name.as_str() {
-        //             "light" => DomMediaColorScheme::Light,
-        //             "dark" => DomMediaColorScheme::Dark,
-        //             _ => Err(Error::new(name.span(), "Expected `light` or `dark`"))?,
-        //         })
-        //     }
-        //     "resolution" | "min_resolution" | "max_resolution" => {
-        //         let x = tokens.expect_dimension()?;
-        //         if x.unit.as_str() != "dpi" {
-        //             return Err(Error::new(name.span(), "Expected `dpi` unit"));
-        //         }
-        //         Self::Resolution(x)
-        //     }
-        //     "width" | "min_width" | "max_width" => {
-        //         let x = tokens.expect_dimension()?;
-        //         if x.unit.as_str() != "px" {
-        //             return Err(Error::new(name.span(), "Expected `px` unit"));
-        //         }
-        //         Self::Width(x)
-        //     }
-        //     "height" | "min_height" | "max_height" => {
-        //         let x = tokens.expect_dimension()?;
-        //         if x.unit.as_str() != "px" {
-        //             return Err(Error::new(name.span(), "Expected `px` unit"));
-        //         }
-        //         Self::Height(x)
-        //     }
-        //     _ => {
-        //         return Err(Error::new(name.span(), "Unknown media feature"));
-        //     }
-        // };
-        // Ok(ret)
+        let ret = match name.formal_name.as_str() {
+            "aspect_ratio" | "min_aspect_ratio" | "max_aspect_ratio" => {
+                let (a, b) = parse_aspect_ratio(tokens)?;
+                Self::AspectRatio(a, b)
+            }
+            "orientation" => Self::Orientation(match tokens.expect_ident()?.formal_name.as_str() {
+                "landscape" => DomMediaOrientation::Landscape,
+                "portrait" => DomMediaOrientation::Portrait,
+                _ => Err(ParseError::new(
+                    name.span,
+                    "Expected `landscape` or `portrait`",
+                ))?,
+            }),
+            "prefers_color_scheme" => {
+                Self::PrefersColorScheme(match tokens.expect_ident()?.formal_name.as_str() {
+                    "light" => DomMediaColorScheme::Light,
+                    "dark" => DomMediaColorScheme::Dark,
+                    _ => Err(ParseError::new(name.span, "Expected `light` or `dark`"))?,
+                })
+            }
+            "resolution" | "min_resolution" | "max_resolution" => {
+                let x = tokens.expect_dimension()?;
+                if x.unit.as_str() != "dpi" {
+                    return Err(ParseError::new(name.span, "Expected `dpi` unit"));
+                }
+                Self::Resolution(x)
+            }
+            "width" | "min_width" | "max_width" => {
+                let x = tokens.expect_dimension()?;
+                if x.unit.as_str() != "px" {
+                    return Err(ParseError::new(name.span, "Expected `px` unit"));
+                }
+                Self::Width(x)
+            }
+            "height" | "min_height" | "max_height" => {
+                let x = tokens.expect_dimension()?;
+                if x.unit.as_str() != "px" {
+                    return Err(ParseError::new(name.span, "Expected `px` unit"));
+                }
+                Self::Height(x)
+            }
+            _ => {
+                return Err(ParseError::new(name.span, "Unknown media feature"));
+            }
+        };
+        Ok(ret)
     }
 }
 
@@ -136,7 +134,7 @@ mod test {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
                     .c {
-                        @media only (resolution: 1dpi) {}
+                        @media only (resolution: 1.dpi) {}
                     }
                 "#,
             )
@@ -145,8 +143,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @media only all and (resolution: 1dpi) {
-                            padding: 1px;
+                        @media only all and (resolution: 1.dpi) {
+                            padding: 1.px;
                         }
                     }
                 "#,
@@ -175,16 +173,16 @@ mod test {
                     @config name_mangling: off;
                     .c {
                         @media screen {
-                            padding: 1px;
+                            padding: 1.px;
                         }
                         @media all {
-                            padding: 2px;
+                            padding: 2.px;
                         }
-                        @media print and not (resolution:1dpi) {
-                            padding: 3px;
+                        @media print and not (resolution: 1.dpi) {
+                            padding: 3.px;
                         }
-                        @media all and (resolution:2dpi) {
-                            padding: 4px;
+                        @media all and (resolution: 2.dpi) {
+                            padding: 4.px;
                         }
                     }
                 "#,

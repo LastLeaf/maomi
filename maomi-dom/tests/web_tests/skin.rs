@@ -8,7 +8,7 @@ use super::*;
 #[wasm_bindgen_test]
 async fn skin_const() {
     dom_css! {
-        @config name_mangling off;
+        @config name_mangling: off;
 
         @const $a: 1.px;
 

@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use maomi_skin::write_css::{CssWriter, WriteCss};
-use maomi_skin::{css_token::*, ParseError};
+use maomi_skin::{css_token::*, ParseError, pseudo};
 use maomi_skin::style_sheet::*;
 
 mod media_cond;
@@ -98,16 +98,13 @@ fn generate_css_name(full_ident: &CssIdent, name_mangling: bool, debug_mode: boo
     }
 }
 
-// IDEA really parse the value
-type DomFontFaceProperty = DomCssProperty;
-
 pub(crate) struct DomStyleSheet {
     name_mangling: bool,
+    key_frames_def: Vec<(CssIdent, Vec<(CssPercentage, CssBrace<Repeat<Property<property::DomCssProperty>>>)>)>,
 }
 
 impl StyleSheetConstructor for DomStyleSheet {
     type PropertyValue = DomCssProperty;
-    type FontFacePropertyValue = DomFontFaceProperty;
     type MediaCondValue = DomMediaCondValue;
 
     fn new() -> Self
@@ -116,6 +113,7 @@ impl StyleSheetConstructor for DomStyleSheet {
     {
         Self {
             name_mangling: true,
+            key_frames_def: vec![],
         }
     }
 
@@ -144,18 +142,20 @@ impl StyleSheetConstructor for DomStyleSheet {
 
     fn define_key_frames(
         &mut self,
-        name: &CssIdent,
-        _: &Vec<(
-            CssPercentage,
-            CssBrace<Repeat<Property<Self::PropertyValue>>>,
-        )>,
-    ) -> CssIdent {
+        name: &CssVarRef,
+        content: Vec<(CssPercentage, CssBrace<Repeat<Property<property::DomCssProperty>>>)>,
+    ) -> Result<Vec<CssToken>, ParseError> {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
-        let formal_name = generate_css_name(name, self.name_mangling, debug_mode);
-        CssIdent {
-            span: name.span,
+        let formal_name = generate_css_name(&name.ident, self.name_mangling, debug_mode);
+        let generated_ident = CssIdent {
+            span: name.ident.span,
             formal_name,
-        }
+        };
+        self.key_frames_def.push((
+            generated_ident.clone(),
+            content,
+        ));
+        Ok(vec![CssToken::Ident(generated_ident)])
     }
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
@@ -226,9 +226,39 @@ impl StyleSheetConstructor for DomStyleSheet {
             });
         }
 
+        // generate @keyframes output
+        if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
+            for (generated_ident, content) in self.key_frames_def.iter() {
+                let mut s = String::new();
+                let cssw = &mut CssWriter::new(&mut s, debug_mode);
+                cssw.write_at_keyword("keyframes").unwrap();
+                generated_ident.write_css(cssw).unwrap();
+                cssw.write_brace_block(|cssw| {
+                    for (p, item) in content.iter() {
+                        p.write_css(cssw)?;
+                        item.write_css(cssw)?;
+                    }
+                    Ok(())
+                })
+                .unwrap();
+                css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
+            }
+        }
+
         // generate css output
         for item in ss.items.iter() {
             match item {
+                // generate config ref
+                StyleSheetItem::ConfigDefinition { refs, .. } => {
+                    for r in refs {
+                        write_proc_macro_ref(
+                            inner_tokens,
+                            r.span,
+                            &syn::Ident::new(&r.formal_name, r.span),
+                        );
+                    }
+                }
+
                 // generate macro def
                 // StyleSheetItem::MacroDefinition { name, .. } => {
                 //     write_proc_macro_def(
@@ -239,50 +269,21 @@ impl StyleSheetConstructor for DomStyleSheet {
                 // }
 
                 // generate const def and ref
-                // StyleSheetItem::ConstDefinition { name, refs, .. } => {
-                //     write_proc_macro_def(
-                //         inner_tokens,
-                //         name.span,
-                //         &syn::Ident::new(&name.formal_name, name.span),
-                //     );
-                //     for r in refs {
-                //         write_proc_macro_ref(
-                //             inner_tokens,
-                //             r.span,
-                //             &syn::Ident::new(&r.formal_name, r.span),
-                //         );
-                //     }
-                // }
-
-                // generate @key-frames block
-                // StyleSheetItem::KeyFramesDefinition {
-                //     at_keyword,
-                //     name,
-                //     def,
-                //     content,
-                //     ..
-                // } => {
-                //     if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
-                //         let mut s = String::new();
-                //         let cssw = &mut CssWriter::new(&mut s, debug_mode);
-                //         at_keyword.write_css(cssw).unwrap();
-                //         def.write_css(cssw).unwrap();
-                //         cssw.write_brace_block(|cssw| {
-                //             for (p, item) in content.iter() {
-                //                 p.write_css(cssw)?;
-                //                 item.write_css(cssw)?;
-                //             }
-                //             Ok(())
-                //         })
-                //         .unwrap();
-                //         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
-                //     }
-                //     write_proc_macro_def(
-                //         inner_tokens,
-                //         name.span,
-                //         &syn::Ident::new(&name.formal_name, name.span),
-                //     );
-                // }
+                StyleSheetItem::ConstDefinition { name, refs, .. }
+                    | StyleSheetItem::KeyFramesDefinition { name, refs, .. } => {
+                    write_proc_macro_def(
+                        inner_tokens,
+                        name.ident.span,
+                        &syn::Ident::new(&name.ident.formal_name, name.ident.span),
+                    );
+                    for r in refs {
+                        write_proc_macro_ref(
+                            inner_tokens,
+                            r.span,
+                            &syn::Ident::new(&r.formal_name, r.span),
+                        );
+                    }
+                }
 
                 // generate common rule
                 StyleSheetItem::Rule { ident, content, .. } => {
@@ -349,10 +350,9 @@ impl StyleSheetConstructor for DomStyleSheet {
                                         AtBlock::Media {
                                             at_keyword,
                                             expr,
-                                            items,
-                                            ..
+                                            content,
                                         } => {
-                                            if items.block.as_slice().len() > 0 {
+                                            if content.block.props.len() > 0 {
                                                 at_keyword.write_css(cssw)?;
                                                 for (index, q) in expr.iter().enumerate() {
                                                     if index > 0 {
@@ -360,7 +360,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                                     }
                                                     q.write_css(cssw)?;
                                                 }
-                                                Some(items)
+                                                Some(&content.block.props)
                                             } else {
                                                 None
                                             }
@@ -368,13 +368,12 @@ impl StyleSheetConstructor for DomStyleSheet {
                                         AtBlock::Supports {
                                             at_keyword,
                                             expr,
-                                            items,
-                                            ..
+                                            content,
                                         } => {
-                                            if items.block.as_slice().len() > 0 {
+                                            if content.block.props.len() > 0 {
                                                 at_keyword.write_css(cssw)?;
                                                 expr.write_css(cssw)?;
-                                                Some(items)
+                                                Some(&content.block.props)
                                             } else {
                                                 None
                                             }
@@ -388,7 +387,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                                 pseudo.write_css(cssw)?;
                                             }
                                             cssw.write_brace_block(|cssw| {
-                                                write_prop_list(cssw, items.block.as_slice())
+                                                write_prop_list(cssw, items.as_slice())
                                             })?;
                                             Ok(())
                                         })?;
@@ -413,26 +412,6 @@ impl StyleSheetConstructor for DomStyleSheet {
                                     c.content.block.at_blocks.as_slice(),
                                 )?;
                             }
-                        }
-
-                        // write CSS for sub classes
-                        for c in content.sub_classes.iter() {
-                            let full_ident = CssIdent {
-                                formal_name: format!(
-                                    "{}{}",
-                                    full_ident.formal_name, c.partial_ident.formal_name
-                                ),
-                                span: c.partial_ident.span,
-                            };
-                            handle_rule_content(
-                                tokens,
-                                inner_tokens,
-                                name_mangling,
-                                debug_mode,
-                                &full_ident,
-                                &c.content.block,
-                                cssw,
-                            )?;
                         }
 
                         Ok(())

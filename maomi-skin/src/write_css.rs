@@ -106,6 +106,27 @@ impl<'a, W: Write> CssWriter<'a, W> {
         Ok(())
     }
 
+    pub fn write_at_keyword(&mut self, ident: &str) -> Result {
+        self.prepare_write()?;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            debug_mode,
+            ..
+        } = self;
+        if *debug_mode {
+            match sc {
+                WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
+                _ => {
+                    write!(w, " ")?;
+                }
+            }
+        }
+        write!(w, "@{}", ident)?;
+        *sc = WriteCssSepCond::NonIdentAlpha;
+        Ok(())
+    }
+
     pub fn write_delim(&mut self, s: &str, prefer_sep_before: bool) -> Result {
         self.prepare_write()?;
         let CssWriter {
