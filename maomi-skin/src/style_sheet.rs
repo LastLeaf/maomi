@@ -1,4 +1,50 @@
+use std::path::PathBuf;
+
 use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*};
+
+// TODO consider a proper way to handle global styling (font, css-reset, etc.)
+
+thread_local! {
+    static CSS_IMPORT_DIR: Option<PathBuf> = {
+        std::env::var("MAOMI_CSS_IMPORT_DIR")
+            .map(|s| PathBuf::from(&s))
+            .or_else(|_| {
+                std::env::var("CARGO_MANIFEST_DIR")
+                    .map(|s| PathBuf::from(&s).join("src"))
+            })
+            .ok()
+    };
+}
+
+fn get_import_content(src: &CssString) -> Result<String, ParseError> {
+    let p = src.value();
+    if !p.starts_with("/") {
+        return Err(ParseError::new(
+            src.span,
+            "Currently only paths started with `/` are supported (which means the path relative to crate `src` or MAOMI_CSS_IMPORT_DIR)",
+        ));
+    }
+    let mut target = CSS_IMPORT_DIR.with(|import_dir| match import_dir {
+        None => Err(ParseError::new(
+            src.span,
+            "no MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
+        )),
+        Some(s) => Ok(s.clone()),
+    })?;
+    for slice in p[1..].split('/') {
+        match slice {
+            "." => {}
+            ".." => {
+                target.pop();
+            }
+            x => {
+                target.push(x);
+            }
+        }
+    }
+    std::fs::read_to_string(&target)
+        .map_err(|_| ParseError::new(src.span, &format!("cannot open file {:?}", target)))
+}
 
 /// Handlers for CSS details (varies between backends)
 pub trait StyleSheetConstructor {
@@ -35,6 +81,7 @@ pub trait ParseStyleSheetValue {
 pub struct StyleSheet<T: StyleSheetConstructor> {
     ssc: T,
     pub items: Vec<StyleSheetItem<T>>,
+    vars: StyleSheetVars,
 }
 
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
@@ -53,7 +100,6 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
     },
     KeyFramesDefinition {
         name: CssVarRef,
-        refs: Vec<CssRef>,
     },
     Rule {
         dot_token: CssDelim,
@@ -80,16 +126,20 @@ impl<T: StyleSheetConstructor> quote::ToTokens for StyleSheet<T> {
     }
 }
 
-impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
-    fn parse_with_vars(
+impl<T: StyleSheetConstructor> StyleSheet<T> {
+    fn do_parsing(
         input: &mut CssTokenStream,
+        ssc: &mut T,
         vars: &mut StyleSheetVars,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let mut ssc = T::new();
-        let mut items = vec![];
+        items: &mut Vec<StyleSheetItem<T>>,
+        in_imports: bool,
+    ) -> Result<(), ParseError> {
+        let scope = &mut ScopeVars::default();
         while !input.is_ended() {
             if let Ok(dot_token) = input.expect_delim(".") {
+                if in_imports {
+                    return Err(ParseError::new(input.span(), "common rule is not allowed in imports"));
+                }
                 let item = StyleSheetItem::Rule {
                     dot_token,
                     ident: input.expect_ident()?,
@@ -98,6 +148,27 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                 items.push(item);
             } else if let Ok(at_keyword) = input.expect_at_keyword() {
                 match at_keyword.formal_name.as_str() {
+                    "import" => {
+                        // IDEA considering a proper cache to avoid parsing during every import
+                        let name = input.expect_string()?;
+                        let content = get_import_content(&name)?;
+                        let mut tokens = syn::parse_str::<CssTokenStream>(&content).map_err(|err| {
+                            let original_span = err.span();
+                            let start = original_span.start();
+                            ParseError::new(
+                                at_keyword.span,
+                                format_args!(
+                                    "when parsing {}:{}:{}: {}",
+                                    name.value(),
+                                    start.line,
+                                    start.column,
+                                    err
+                                ),
+                            )
+                        })?;
+                        StyleSheet::do_parsing(&mut tokens, ssc, vars, items, true)?;
+                        tokens.expect_ended()?;
+                    }
                     "config" => {
                         let name = input.expect_ident()?;
                         let _: CssColon = input.expect_colon()?;
@@ -115,13 +186,16 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                         let name = input.expect_var_ref()?;
                         let _: CssColon = input.expect_colon()?;
                         let (tokens, refs) = input.resolve_until_semi(vars, scope)?;
-                        if vars.consts.insert(name.clone(), crate::ConstOrKeyframe::Const(tokens)).is_some() {
-                            return Err(ParseError::new(name.ident.span, "redefined const"));
+                        if vars.consts.insert(name.clone(), crate::ConstOrKeyframe { tokens }).is_some() {
+                            return Err(ParseError::new(name.ident.span, "redefined const or keyframes"));
                         }
                         input.expect_semi()?;
                         items.push(StyleSheetItem::ConstDefinition { name, refs });
                     }
                     "keyframes" => {
+                        if in_imports {
+                            return Err(ParseError::new(at_keyword.span, "`@keyframes` is not allowed in imports"));
+                        }
                         let name = input.expect_var_ref()?;
                         let content = input.parse_brace(|input| {
                             let mut content = vec![];
@@ -129,7 +203,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                                 let percentage = if let Ok(ident) = input.expect_ident() {
                                     match ident.formal_name.as_str() {
                                         "from" => CssPercentage::new_int(ident.span, 0),
-                                        "to" => CssPercentage::new_int(ident.span, 1),
+                                        "to" => CssPercentage::new_int(ident.span, 100),
                                         _ => return Err(ParseError::new(ident.span, "illegal ident")),
                                     }
                                 } else if let Ok(n) = input.expect_percentage() {
@@ -141,7 +215,11 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                             }
                             Ok(content)
                         })?;
-                        ssc.define_key_frames(&name, content.block)?;
+                        let tokens = ssc.define_key_frames(&name, content.block)?;
+                        if vars.consts.insert(name.clone(), crate::ConstOrKeyframe { tokens }).is_some() {
+                            return Err(ParseError::new(name.ident.span, "redefined const or keyframes"));
+                        }
+                        items.push(StyleSheetItem::KeyFramesDefinition { name })
                     }
                     _ => {
                         return Err(ParseError::new(at_keyword.span, "unknown at-keyword"));
@@ -151,7 +229,21 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                 return Err(ParseError::new(input.span(), "unexpected CSS token"));
             };
         }
-        Ok(Self { ssc, items })
+        Ok(())
+    }
+}
+
+impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
+    fn parse_with_vars(
+        input: &mut CssTokenStream,
+        _vars: &mut StyleSheetVars,
+        _scope: &mut ScopeVars,
+    ) -> Result<Self, ParseError> {
+        let mut ssc = T::new();
+        let mut vars = StyleSheetVars::default();
+        let mut items = vec![];
+        Self::do_parsing(input, &mut ssc, &mut vars, &mut items, false)?;
+        Ok(Self { ssc, items, vars })
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
@@ -168,11 +260,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                         f(r);
                     }
                 }
-                StyleSheetItem::KeyFramesDefinition { refs, .. } => {
-                    for r in refs {
-                        f(r);
-                    }
-                }
+                StyleSheetItem::KeyFramesDefinition { .. } => {}
                 StyleSheetItem::Rule { content, .. } => {
                     content.block.for_each_ref(f);
                 }

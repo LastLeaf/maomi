@@ -211,7 +211,7 @@ mod test {
                     @config name_mangling: off;
                     .c {
                         @media (aspect-ratio: 16/9), (min-aspect-ratio: 4/3), (max-aspect-ratio: 2/1) {
-                            padding: 1px;
+                            padding: 1.px;
                         }
                     }
                 "#,
@@ -240,7 +240,7 @@ mod test {
                     @config name_mangling: off;
                     .c {
                         @media not (orientation: landscape) and (orientation: portrait) {
-                            padding: 1px;
+                            padding: 1.px;
                         }
                     }
                 "#,
@@ -269,7 +269,7 @@ mod test {
                     @config name_mangling: off;
                     .c {
                         @media (prefers-color-scheme: light), not (prefers-color-scheme: dark) {
-                            padding: 1px;
+                            padding: 1.px;
                         }
                     }
                 "#,
@@ -288,7 +288,7 @@ mod test {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
                     .c {
-                        @media (resolution: 1px) {}
+                        @media (resolution: 1.px) {}
                     }
                 "#
             )
@@ -297,8 +297,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @media (resolution: 1dpi), (min-resolution: 1.1dpi), (max-resolution: 2dpi) {
-                            padding: 1px;
+                        @media (resolution: 1.dpi), (min-resolution: 1.1.dpi), (max-resolution: 2.dpi) {
+                            padding: 1.px;
                         }
                     }
                 "#,
@@ -326,8 +326,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @media (width: 1px), (min-width: 2px), (max-width: 3px) {
-                            padding: 1px;
+                        @media (width: 1.px), (min-width: 2.px), (max-width: 3.px) {
+                            padding: 1.px;
                         }
                     }
                 "#,
@@ -346,7 +346,7 @@ mod test {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
                     .c {
-                        @media (height: 1dpi) {}
+                        @media (height: 1.dpi) {}
                     }
                 "#
             )
@@ -355,8 +355,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @media (height: 1px), (min-height: 2px), (max-height: 3px) {
-                            padding: 1px;
+                        @media (height: 1.px), (min-height: 2.px), (max-height: 3.px) {
+                            padding: 1.px;
                         }
                     }
                 "#,

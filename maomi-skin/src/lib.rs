@@ -51,9 +51,8 @@ pub struct StyleSheetVars {
 }
 
 #[derive(Debug, Clone)]
-pub enum ConstOrKeyframe {
-    Const(Vec<CssToken>),
-    Keyframe(CssIdent),
+pub struct ConstOrKeyframe {
+    pub tokens: Vec<CssToken>,
 }
 
 #[derive(Debug, Clone, Default)]

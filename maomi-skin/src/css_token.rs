@@ -9,6 +9,29 @@ use super::{
     ParseWithVars, ScopeVars, StyleSheetVars, ParseError
 };
 
+// This function tries to get the byte offset of a span.
+// Currently it tries to parse the `Debug` output of the span.
+// It may be an unstable behavior of the stdlib or the compiler.
+// So a simple check is done and panics if the output is not expected.
+fn span_byte_offset(span: Span) -> (usize, usize) {
+    let formatted = format!("{:?}", span);
+    if let Some(bytes_start) = formatted.find("bytes(") {
+        let bytes = &formatted[(bytes_start + 6)..];
+        if let Some(first_end) = bytes.find("..") {
+            let first_str = &bytes[..first_end];
+            if let Ok(first) = first_str.parse() {
+                if let Some(second_end) = bytes.find(")") {
+                    let second_str = &bytes[(first_end + 2)..second_end];
+                    if let Ok(second) = second_str.parse() {
+                        return (first, second)
+                    }
+                }
+            }
+        }
+    }
+    panic!("failed to parse; probably incompatible with the current version of the rust compiler")
+}
+
 #[derive(Debug, Clone)]
 pub struct CssIdent {
     pub span: Span,
@@ -293,9 +316,9 @@ impl WriteCss for CssPercentage {
                 }
             }
             if let Some(x) = self.int_value {
-                write!(w, "{}", x)?;
+                write!(w, "{}%", x)?;
             } else {
-                write!(w, "{}", self.value)?;
+                write!(w, "{}%", self.value)?;
             }
             Ok(WriteCssSepCond::Other)
         })
@@ -516,7 +539,10 @@ pub struct CssVarRef {
 
 impl CssVarRef {
     pub fn into_ref(self) -> CssRef {
-        CssRef { span: self.ident.span, formal_name: self.ident.formal_name }
+        CssRef {
+            span: self.ident.span,
+            formal_name: self.ident.formal_name,
+        }
     }
 
     pub fn resolve_append(
@@ -527,15 +553,8 @@ impl CssVarRef {
     ) -> Result<(), ParseError> {
         // TODO check scope vars
         if let Some(x) = vars.consts.get(self) {
-            match x {
-                ConstOrKeyframe::Const(x) => {
-                    for x in x.iter() {
-                        ret.push(x.clone());
-                    }
-                }
-                ConstOrKeyframe::Keyframe(x) => {
-                    ret.push(CssToken::Ident(x.clone()));
-                }
+            for x in x.tokens.iter() {
+                ret.push(x.clone());
             }
         }
         Ok(())
@@ -903,40 +922,58 @@ impl syn::parse::Parse for CssToken {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         use syn::{*, ext::IdentExt, spanned::Spanned};
 
-        fn parse_css_ident(input: syn::parse::ParseStream) -> Result<CssIdent> {
+        fn parse_css_ident_with_last_span(input: syn::parse::ParseStream) -> Result<(CssIdent, Span)> {
             let mut formal_name = String::new();
             let span;
             if input.peek(Ident::peek_any) {
-                let s = Ident::parse_any(input)?.to_string();
-                formal_name += &s;
+                let s = Ident::parse_any(input)?;
+                formal_name += &s.to_string();
                 span = s.span();
             } else if input.peek(Token![-]) && input.peek2(Ident::peek_any) {
                 let sub_token: Token![-] = input.parse()?;
                 formal_name.push('_');
                 span = sub_token.span();
-                let s = Ident::parse_any(input)?.to_string();
-                formal_name += &s;
+                let s = Ident::parse_any(input)?;
+                formal_name += &s.to_string();
             } else {
                 return Err(input.error("expected CSS identifier"));
             }
-            loop {
-                if input.peek(Token![-]) {
-                    let _: Token![-] = input.parse()?;
+            let mut last_span = span;
+            if input.peek(Token![-]) {
+                let mut last_span_end_offset = span_byte_offset(span).1;
+                loop {
+                    let cur_span_offset = span_byte_offset(input.span());
+                    if cur_span_offset.0 != last_span_end_offset {
+                        break;
+                    }
+                    let t: Token![-] = input.parse()?;
                     formal_name.push('_');
-                } else {
-                    break;
-                }
-                if input.peek(Ident::peek_any) {
-                    let s = Ident::parse_any(input)?.to_string();
-                    formal_name += &s;
-                } else {
-                    continue;
+                    last_span = t.span;
+                    last_span_end_offset = cur_span_offset.1;
+                    if input.peek(Ident::peek_any) {
+                        let cur_span_offset = span_byte_offset(input.span());
+                        if cur_span_offset.0 == last_span_end_offset {
+                            let s = Ident::parse_any(input)?;
+                            formal_name += &s.to_string();
+                            last_span = s.span();
+                            last_span_end_offset = cur_span_offset.1;
+                        }
+                    }
+                    if !input.peek(Token![-]) {
+                        break;
+                    }
                 }
             }
-            Ok(CssIdent {
+            let ident = CssIdent {
                 span,
                 formal_name,
-            })
+            };
+            Ok((ident, last_span))
+        }
+
+        fn parse_css_ident(input: syn::parse::ParseStream) -> Result<CssIdent> {
+            let (ident, _) = parse_css_ident_with_last_span(input)?;
+            Ok(ident)
         }
 
         fn parse_css_delim(input: syn::parse::ParseStream) -> Result<CssDelim> {
@@ -1099,7 +1136,7 @@ impl syn::parse::Parse for CssToken {
             }
         } else if input.peek(Token![#]) {
             return Err(input.error("`#` values are not supported currently (consider other forms instead)"));
-        } else if let Ok(ident) = parse_css_ident(input) {
+        } else if let Ok((ident, last_span)) = parse_css_ident_with_last_span(input) {
             if input.peek(Token![!]) {
                 let _: Token![!] = input.parse()?;
                 let content;
@@ -1110,13 +1147,19 @@ impl syn::parse::Parse for CssToken {
                     block: content.parse()?,
                 })
             } else if input.peek(token::Paren) {
-                let content;
-                parenthesized!(content in input);
-                CssToken::Function(CssFunction {
-                    span: ident.span,
-                    formal_name: ident.formal_name,
-                    block: content.parse()?,
-                })
+                let paren_start = span_byte_offset(input.span()).0;
+                let ident_end = span_byte_offset(last_span).1;
+                if paren_start == ident_end {
+                    let content;
+                    parenthesized!(content in input);
+                    CssToken::Function(CssFunction {
+                        span: ident.span,
+                        formal_name: ident.formal_name,
+                        block: content.parse()?,
+                    })
+                } else {
+                    CssToken::Ident(ident)
+                }
             } else {
                 CssToken::Ident(ident)
             }

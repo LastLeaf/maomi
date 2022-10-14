@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use maomi_skin::write_css::{CssWriter, WriteCss};
-use maomi_skin::{css_token::*, ParseError, pseudo};
+use maomi_skin::{css_token::*, ParseError, pseudo, ParseWithVars};
 use maomi_skin::style_sheet::*;
 
 mod media_cond;
@@ -210,7 +210,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         ) {
             tokens.append_all(quote_spanned! {span=>
                 #[allow(dead_code, non_camel_case_types)]
-                struct #name();
+                struct #name {}
             });
         }
 
@@ -222,7 +222,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         ) {
             tokens.append_all(quote_spanned! {span=>
                 #[allow(dead_code)]
-                #name();
+                #name {};
             });
         }
 
@@ -269,20 +269,13 @@ impl StyleSheetConstructor for DomStyleSheet {
                 // }
 
                 // generate const def and ref
-                StyleSheetItem::ConstDefinition { name, refs, .. }
-                    | StyleSheetItem::KeyFramesDefinition { name, refs, .. } => {
+                StyleSheetItem::ConstDefinition { name, .. }
+                    | StyleSheetItem::KeyFramesDefinition { name, .. } => {
                     write_proc_macro_def(
                         inner_tokens,
                         name.ident.span,
                         &syn::Ident::new(&name.ident.formal_name, name.ident.span),
                     );
-                    for r in refs {
-                        write_proc_macro_ref(
-                            inner_tokens,
-                            r.span,
-                            &syn::Ident::new(&r.formal_name, r.span),
-                        );
-                    }
                 }
 
                 // generate common rule
@@ -448,14 +441,25 @@ impl StyleSheetConstructor for DomStyleSheet {
             }
         }
 
+        // write refs
+        ss.for_each_ref(&mut |r| {
+            write_proc_macro_ref(
+                inner_tokens,
+                r.span,
+                &syn::Ident::new(&r.formal_name, r.span),
+            );
+        });
+
         // write extra tokens
         let fn_name = syn::Ident::new(
             &generate_span_hash(proc_macro2::Span::call_site()),
             proc_macro2::Span::call_site(),
         );
         tokens.append_all(quote! {
-            fn #fn_name() {
-                #inner_tokens
+            mod fn_name {
+                fn #fn_name() {
+                    #inner_tokens
+                }
             }
         });
     }
@@ -526,20 +530,17 @@ mod test {
             env.write_import_file(
                 "a.css",
                 r#"
+                    @config name_mangling: off;
                     @macro ma {
                         () => {
-                            2px
+                            2.px
                         };
                     }
-                    @const $a: 1px;                
-                    .imported {
-                        padding: $a;
-                    }
+                    @const $a: 1.px;                
                 "#,
             );
             parse_str(
                 r#"
-                    @config name_mangling: off;
                     @import "/a.css";
                     @const $b: $a ma!();
                     .self {
@@ -550,7 +551,7 @@ mod test {
             );
             assert_eq!(
                 env.read_output(),
-                r#".imported{padding:1px}.self{padding:1px 2px 1px 2px;margin:1px 2px}"#,
+                r#".self{padding:1px 2px 1px 2px;margin:1px 2px}"#,
             );
         });
     }
@@ -562,15 +563,15 @@ mod test {
             parse_str(
                 r#"
                     @config name_mangling: off;
-                    @const $ok: 2px;
+                    @const $ok: 2.px;
                     @macro ma {
                         ($$ $t:tt) => { $ok $t };
                         ($($t:tt),*) => { $($t)* };
                     }
-                    @const $p: ma!($$ 1px);
+                    @const $p: ma!($$ 1.px);
                     .c {
                         padding: $p;
-                        margin: ma!(1px, 2px, 3px);
+                        margin: ma!(1.px, 2.px, 3.px);
                     }
                 "#,
             );
@@ -601,10 +602,10 @@ mod test {
                         };
                     }
                     .c {
-                        ma![padding = 1px];
-                        margin: 2px;
+                        ma![padding = 1.px];
+                        margin: 2.px;
                         :hover {
-                            mb! { padding = 3px; margin = 4px }
+                            mb! { padding = 3.px; margin = 4.px }
                         }
                     }
                 "#,
@@ -629,8 +630,8 @@ mod test {
                     }
                     .c {
                         ma! {
-                            { padding: 1px }
-                            { margin: 2px }
+                            { padding: 1.px }
+                            { margin: 2.px }
                         }
                     }
                 "#,
@@ -647,13 +648,13 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     @macro ma {
-                        ($a:ident = $b:value) => { $a: 1px $b; };
+                        ($a:ident = $b:value) => { $a: 1.px $b; };
                     }
                     @macro mb {
-                        ($a: value) => { 2px $a };
+                        ($a: value) => { 2.px $a };
                     }
                     .c {
-                        ma!(padding = mb!(3px));
+                        ma!(padding = mb!(3.px));
                     }
                 "#,
             );
@@ -669,9 +670,9 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        padding: 1px;
+                        padding: 1.px;
                         @media (aspect_ratio: 16/9) {
-                            margin: 2px;
+                            margin: 2.px;
                         }
                     }
                 "#,
@@ -686,9 +687,9 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        padding: 1px;
+                        padding: 1.px;
                         @media (aspect_ratio: 16/9) {
-                            margin: 2px;
+                            margin: 2.px;
                         }
                     }
                 "#,
@@ -718,9 +719,9 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        padding: 1px;
-                        @supports (margin: 2px) {
-                            margin: 2px;
+                        padding: 1.px;
+                        @supports (margin: 2.px) {
+                            margin: 2.px;
                         }
                     }
                 "#,
@@ -735,8 +736,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @supports not (margin: 2px) {
-                            padding: 2px;
+                        @supports not (margin: 2.px) {
+                            padding: 2.px;
                         }
                     }
                 "#,
@@ -751,8 +752,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @supports (margin: 2px) and (margin: 3px) {
-                            margin: 2px;
+                        @supports (margin: 2.px) and (margin: 3.px) {
+                            margin: 2.px;
                         }
                     }
                 "#,
@@ -767,8 +768,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @supports (margin: 2px) or (margin: 3px) {
-                            margin: 2px;
+                        @supports (margin: 2.px) or (margin: 3.px) {
+                            margin: 2.px;
                         }
                     }
                 "#,
@@ -783,8 +784,8 @@ mod test {
                 r#"
                     @config name_mangling: off;
                     .c {
-                        @supports (not ((margin: 2px))) and ((((margin: 3px)) or (margin: 4px))) {
-                            margin: 2px;
+                        @supports (not ((margin: 2.px))) and ((((margin: 3.px)) or (margin: 4.px))) {
+                            margin: 2.px;
                         }
                     }
                 "#,
@@ -798,7 +799,7 @@ mod test {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
                     .c {
-                        @supports margin: 2px {}
+                        @supports margin: 2.px {}
                     }
                 "#
             )
@@ -825,7 +826,7 @@ mod test {
                     @config name_mangling: off;
                     @keyframes $kf {
                         from {
-                            transform: translateX(0px);
+                            transform: translateX(0.px);
                         }
                         50% {
                             transform: translateX(10%);
@@ -850,7 +851,7 @@ mod test {
                     @config name_mangling: off;
                     @keyframes $kf {
                         from {
-                            transform: translateX(0px);
+                            transform: translateX(0.px);
                         }
                         50% {
                             transform: translateX(10%);
@@ -899,12 +900,12 @@ mod test {
                     .c {
                         :hover {
                             @media (aspect-ratio: 16/9) {
-                                margin: 2px;
+                                margin: 2.px;
                             }
                         }
-                        padding: 1px;
+                        padding: 1.px;
                         :active {
-                            margin: 3px;
+                            margin: 3.px;
                         }
                     }
                 "#,
@@ -925,33 +926,6 @@ mod test {
                 "#
             )
             .is_err());
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn sub_classes() {
-        setup_env(false, |env| {
-            parse_str(
-                r#"
-                    @config name_mangling: off;
-                    .c {
-                        -d {
-                            @media (aspect-ratio: 16/9) {
-                                margin: 2px;
-                            }
-                            _e {
-                                margin: 3px;
-                            }
-                        }
-                        padding: 1px;
-                    }
-                "#,
-            );
-            assert_eq!(
-                env.read_output(),
-                r#".c{padding:1px}@media(aspect-ratio:16/9){.c-d{margin:2px}}.c-d-e{margin:3px}"#,
-            );
         });
     }
 }
