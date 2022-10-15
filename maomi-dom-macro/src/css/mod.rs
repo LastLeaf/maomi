@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use quote::{quote, quote_spanned, TokenStreamExt};
+use quote::{quote, TokenStreamExt};
 use std::cell::Cell;
 use std::fs::File;
 use std::hash::Hasher;
@@ -7,8 +7,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use maomi_skin::write_css::{CssWriter, WriteCss};
-use maomi_skin::{css_token::*, ParseError, pseudo, ParseWithVars};
+use maomi_skin::css_token::*;
 use maomi_skin::style_sheet::*;
+use maomi_skin::{ParseError, pseudo};
 
 mod media_cond;
 use media_cond::*;
@@ -204,26 +205,16 @@ impl StyleSheetConstructor for DomStyleSheet {
 
         // generate proc macro output for a definition
         fn write_proc_macro_def(
-            tokens: &mut proc_macro2::TokenStream,
-            span: proc_macro2::Span,
-            name: &syn::Ident,
+            _tokens: &mut proc_macro2::TokenStream,
+            _span: proc_macro2::Span,
+            _name: &syn::Ident,
         ) {
-            tokens.append_all(quote_spanned! {span=>
-                #[allow(dead_code, non_camel_case_types)]
-                struct #name {}
-            });
-        }
-
-        // generate proc macro output for a reference
-        fn write_proc_macro_ref(
-            tokens: &mut proc_macro2::TokenStream,
-            span: proc_macro2::Span,
-            name: &syn::Ident,
-        ) {
-            tokens.append_all(quote_spanned! {span=>
-                #[allow(dead_code)]
-                #name {};
-            });
+            // Currently, rust-analyzer cannot handle this properly.
+            // Just skip for now.
+            // tokens.append_all(quote_spanned! {span=>
+            //     #[allow(dead_code, non_camel_case_types)]
+            //     struct #name();
+            // });
         }
 
         // generate @keyframes output
@@ -249,14 +240,8 @@ impl StyleSheetConstructor for DomStyleSheet {
         for item in ss.items.iter() {
             match item {
                 // generate config ref
-                StyleSheetItem::ConfigDefinition { refs, .. } => {
-                    for r in refs {
-                        write_proc_macro_ref(
-                            inner_tokens,
-                            r.span,
-                            &syn::Ident::new(&r.formal_name, r.span),
-                        );
-                    }
+                StyleSheetItem::ConfigDefinition { .. } => {
+                    // empty
                 }
 
                 // generate macro def
@@ -283,7 +268,6 @@ impl StyleSheetConstructor for DomStyleSheet {
                     // rec to generate all CSS rules
                     fn handle_rule_content(
                         tokens: &mut proc_macro2::TokenStream,
-                        inner_tokens: &mut proc_macro2::TokenStream,
                         name_mangling: bool,
                         debug_mode: bool,
                         full_ident: &CssIdent,
@@ -416,7 +400,6 @@ impl StyleSheetConstructor for DomStyleSheet {
                         let cssw = CssWriter::new(&mut s, debug_mode);
                         handle_rule_content(
                             tokens,
-                            inner_tokens,
                             self.name_mangling,
                             debug_mode,
                             ident,
@@ -428,7 +411,6 @@ impl StyleSheetConstructor for DomStyleSheet {
                     } else {
                         handle_rule_content(
                             tokens,
-                            inner_tokens,
                             self.name_mangling,
                             debug_mode,
                             ident,
@@ -442,13 +424,25 @@ impl StyleSheetConstructor for DomStyleSheet {
         }
 
         // write refs
-        ss.for_each_ref(&mut |r| {
-            write_proc_macro_ref(
-                inner_tokens,
-                r.span,
-                &syn::Ident::new(&r.formal_name, r.span),
-            );
-        });
+        // Currently, rust-analyzer cannot handle this properly.
+        // Just skip for now.
+        // fn write_proc_macro_ref(
+        //     tokens: &mut proc_macro2::TokenStream,
+        //     span: proc_macro2::Span,
+        //     name: &syn::Ident,
+        // ) {
+        //     tokens.append_all(quote_spanned! {span=>
+        //         #[allow(dead_code)]
+        //         #name();
+        //     });
+        // }
+        // ss.for_each_ref(&mut |r| {
+        //     write_proc_macro_ref(
+        //         inner_tokens,
+        //         r.span,
+        //         &syn::Ident::new(&r.formal_name, r.span),
+        //     );
+        // });
 
         // write extra tokens
         let fn_name = syn::Ident::new(

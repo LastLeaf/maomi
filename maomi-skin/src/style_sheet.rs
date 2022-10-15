@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use quote::TokenStreamExt;
+
 use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*};
 
 // TODO consider a proper way to handle global styling (font, css-reset, etc.)
@@ -81,7 +83,6 @@ pub trait ParseStyleSheetValue {
 pub struct StyleSheet<T: StyleSheetConstructor> {
     ssc: T,
     pub items: Vec<StyleSheetItem<T>>,
-    vars: StyleSheetVars,
 }
 
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
@@ -122,6 +123,12 @@ impl<T: StyleSheetConstructor> syn::parse::Parse for StyleSheet<T> {
 
 impl<T: StyleSheetConstructor> quote::ToTokens for StyleSheet<T> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        if let Err(err) = crate::css_token::detect_byte_offset_compatibility() {
+            let desc = err.message.as_str();
+            tokens.append_all(quote::quote!(
+                compile_error!(#desc);
+            ));
+        }
         self.ssc.to_tokens(self, tokens)
     }
 }
@@ -131,10 +138,10 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
         input: &mut CssTokenStream,
         ssc: &mut T,
         vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
         items: &mut Vec<StyleSheetItem<T>>,
         in_imports: bool,
     ) -> Result<(), ParseError> {
-        let scope = &mut ScopeVars::default();
         while !input.is_ended() {
             if let Ok(dot_token) = input.expect_delim(".") {
                 if in_imports {
@@ -166,7 +173,7 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
                                 ),
                             )
                         })?;
-                        StyleSheet::do_parsing(&mut tokens, ssc, vars, items, true)?;
+                        StyleSheet::do_parsing(&mut tokens, ssc, vars, scope, items, true)?;
                         tokens.expect_ended()?;
                     }
                     "config" => {
@@ -236,14 +243,13 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
 impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        _vars: &mut StyleSheetVars,
-        _scope: &mut ScopeVars,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let mut ssc = T::new();
-        let mut vars = StyleSheetVars::default();
         let mut items = vec![];
-        Self::do_parsing(input, &mut ssc, &mut vars, &mut items, false)?;
-        Ok(Self { ssc, items, vars })
+        Self::do_parsing(input, &mut ssc, vars, scope, &mut items, false)?;
+        Ok(Self { ssc, items })
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {

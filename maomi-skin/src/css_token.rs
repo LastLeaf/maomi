@@ -1,9 +1,6 @@
 use std::num::NonZeroU32;
 use proc_macro2::Span;
 
-use crate::ConstOrKeyframe;
-
-// use super::mac::MacroArgsToken;
 use super::{
     write_css::{CssWriter, WriteCss, WriteCssSepCond},
     ParseWithVars, ScopeVars, StyleSheetVars, ParseError
@@ -13,23 +10,32 @@ use super::{
 // Currently it tries to parse the `Debug` output of the span.
 // It may be an unstable behavior of the stdlib or the compiler.
 // So a simple check is done and panics if the output is not expected.
-fn span_byte_offset(span: Span) -> (usize, usize) {
+fn span_byte_offset(span: Span) -> Option<(usize, usize)> {
     let formatted = format!("{:?}", span);
-    if let Some(bytes_start) = formatted.find("bytes(") {
-        let bytes = &formatted[(bytes_start + 6)..];
-        if let Some(first_end) = bytes.find("..") {
-            let first_str = &bytes[..first_end];
-            if let Ok(first) = first_str.parse() {
-                if let Some(second_end) = bytes.find(")") {
-                    let second_str = &bytes[(first_end + 2)..second_end];
-                    if let Ok(second) = second_str.parse() {
-                        return (first, second)
-                    }
-                }
-            }
-        }
+    let bytes_start = formatted.find("bytes(")?;
+    let bytes = &formatted[(bytes_start + 6)..];
+    let first_end = bytes.find("..")?;
+    let first_str = &bytes[..first_end];
+    let first = first_str.parse().ok()?;
+    let second_end = bytes.find(")")?;
+    let second_str = &bytes[(first_end + 2)..second_end];
+    let second = second_str.parse().ok()?;
+    Some((first, second))
+}
+
+pub(crate) fn detect_byte_offset_compatibility() -> Result<(), ParseError> {
+    thread_local! {
+        static COMPATIBLE: bool = {
+            span_byte_offset(Span::call_site()).is_some()
+        };
     }
-    panic!("failed to parse; probably incompatible with the current version of the rust compiler")
+    COMPATIBLE.with(|x| {
+        if *x {
+            Ok(())
+        } else {
+            Err(ParseError::new(Span::call_site(), "failed to parse (probably incompatible with current rust compiler)"))
+        }
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -940,9 +946,9 @@ impl syn::parse::Parse for CssToken {
             }
             let mut last_span = span;
             if input.peek(Token![-]) {
-                let mut last_span_end_offset = span_byte_offset(span).1;
+                let mut last_span_end_offset = span_byte_offset(span).unwrap_or_default().1;
                 loop {
-                    let cur_span_offset = span_byte_offset(input.span());
+                    let cur_span_offset = span_byte_offset(input.span()).unwrap_or_default();
                     if cur_span_offset.0 != last_span_end_offset {
                         break;
                     }
@@ -951,7 +957,7 @@ impl syn::parse::Parse for CssToken {
                     last_span = t.span;
                     last_span_end_offset = cur_span_offset.1;
                     if input.peek(Ident::peek_any) {
-                        let cur_span_offset = span_byte_offset(input.span());
+                        let cur_span_offset = span_byte_offset(input.span()).unwrap_or_default();
                         if cur_span_offset.0 == last_span_end_offset {
                             let s = Ident::parse_any(input)?;
                             formal_name += &s.to_string();
@@ -1147,8 +1153,8 @@ impl syn::parse::Parse for CssToken {
                     block: content.parse()?,
                 })
             } else if input.peek(token::Paren) {
-                let paren_start = span_byte_offset(input.span()).0;
-                let ident_end = span_byte_offset(last_span).1;
+                let paren_start = span_byte_offset(input.span()).unwrap_or_default().0;
+                let ident_end = span_byte_offset(last_span).unwrap_or_default().1;
                 if paren_start == ident_end {
                     let content;
                     parenthesized!(content in input);
