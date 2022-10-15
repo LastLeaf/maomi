@@ -54,6 +54,20 @@ impl CssIdent {
     }
 }
 
+impl std::hash::Hash for CssIdent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.formal_name.hash(state);
+    }
+}
+
+impl PartialEq for CssIdent {
+    fn eq(&self, other: &Self) -> bool {
+        self.formal_name == other.formal_name
+    }
+}
+
+impl Eq for CssIdent {}
+
 impl WriteCss for CssIdent {
     fn write_css<W: std::fmt::Write>(
         &self,
@@ -557,13 +571,18 @@ impl CssVarRef {
         vars: &mut StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
-        // TODO check scope vars
+        if let Some(p) = scope.pat_var_values.as_ref() {
+            if p.expand_append(ret, self).is_some() {
+                return Ok(());
+            }
+        }
         if let Some(x) = vars.consts.get(self) {
             for x in x.tokens.iter() {
                 ret.push(x.clone());
             }
+            return Ok(());
         }
-        Ok(())
+        return Err(ParseError::new(self.ident.span, "no such const, keyframes, or pattern variable"));
     }
 }
 
@@ -582,34 +601,70 @@ impl PartialEq for CssVarRef {
 impl Eq for CssVarRef {}
 
 #[derive(Clone)]
-pub struct CssMacroRef<T> {
+pub struct CssListRef<T> {
     pub span: Span,
-    pub formal_name: String,
     pub block: T,
+    pub sep: Option<Box<CssToken>>,
 }
 
-impl<T> CssMacroRef<T> {
-    pub fn into_ref(self) -> CssRef {
-        CssRef { span: self.span, formal_name: self.formal_name }
-    }
-
+impl CssListRef<Repeat<CssToken>> {
     pub fn resolve_append(
         &self,
         ret: &mut Vec<CssToken>,
         vars: &mut StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
-        todo!() // TODO
+        if let Some(sub_list) = scope.pat_var_values.as_mut() {
+            for item in sub_list.sub.iter_mut() {
+                let sub_scope = &mut ScopeVars { pat_var_values: Some(item) };
+                for token in self.block.iter() {
+                    token.clone().resolve_append(ret, None, vars, sub_scope)?;
+                }
+            }
+            if let Some(sep) = self.sep.as_ref() {
+                let sep: &CssToken = &sep;
+                ret.push(sep.clone());
+            }
+            Ok(())
+        } else {
+            return Err(ParseError::new(self.span, "not in macro"));
+        }
     }
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for CssMacroRef<T> {
+impl<T: std::fmt::Debug> std::fmt::Debug for CssListRef<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CssMacroRef")
+        f.debug_struct("CssListRef")
             .field(&"span", &self.span)
-            .field(&"formal_name", &self.formal_name)
             .field(&"block", &self.block)
             .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CssMacroRef<T> {
+    pub ident: CssIdent,
+    pub block: T,
+}
+
+impl<T> CssMacroRef<T> {
+    pub fn into_ref(self) -> CssRef {
+        CssRef { span: self.ident.span, formal_name: self.ident.formal_name }
+    }
+}
+
+impl CssMacroRef<Repeat<CssToken>> {
+    pub fn resolve_append(
+        &self,
+        ret: &mut Vec<CssToken>,
+        vars: &StyleSheetVars,
+        _scope: &mut ScopeVars,
+    ) -> Result<(), ParseError> {
+        if let Some(x) = vars.macros.get(&self.ident) {
+            x.expand_recursive(ret, self.ident.span, &mut self.block, vars);
+            return Ok(());
+        }
+        return Err(ParseError::new(self.ident.span, "no such macro"));
     }
 }
 
@@ -714,10 +769,41 @@ pub enum CssToken {
     Bracket(CssBracket<CssTokenStream>),
     Brace(CssBrace<CssTokenStream>),
     VarRef(CssVarRef),
-    MacroRef(CssMacroRef<CssTokenStream>),
+    VarListRef(CssListRef<Repeat<CssToken>>),
+    MacroRef(CssMacroRef<Repeat<CssToken>>),
 }
 
 impl CssToken {
+    fn resolve_append(
+        self,
+        ret: &mut Vec<CssToken>,
+        refs: Option<&mut Vec<CssRef>>,
+        vars: &mut StyleSheetVars,
+        scope: &mut ScopeVars,
+    ) -> Result<(), ParseError> {
+        match self {
+            CssToken::VarRef(x) => {
+                x.resolve_append(ret, vars, scope)?;
+                if let Some(refs) = refs {
+                    refs.push(x.into_ref());
+                }
+            }
+            CssToken::VarListRef(x) => {
+                x.resolve_append(ret, vars, scope)?;
+            }
+            CssToken::MacroRef(x) => {
+                x.resolve_append(ret, vars, scope)?;
+                if let Some(refs) = refs {
+                    refs.push(x.into_ref());
+                }
+            }
+            x => {
+                ret.push(x);
+            }
+        }
+        Ok(())
+    }
+
     pub fn content_eq(&self, other: &Self) -> bool {
         match self {
             Self::Ident(x) => {
@@ -855,9 +941,25 @@ impl CssToken {
                     false
                 }
             }
+            Self::VarListRef(x) => {
+                if let Self::VarListRef(y) = other {
+                    let mut eq = true;
+                    if eq {
+                        for (x, y) in x.block.iter().zip(y.block.iter()) {
+                            if !x.content_eq(y) {
+                                eq = false;
+                                break;
+                            }
+                        }
+                    }
+                    eq
+                } else {
+                    false
+                }
+            }
             Self::MacroRef(x) => {
                 if let Self::MacroRef(y) = other {
-                    let mut eq = x.formal_name == y.formal_name;
+                    let mut eq = x.ident.formal_name == y.ident.formal_name;
                     if eq {
                         for (x, y) in x.block.iter().zip(y.block.iter()) {
                             if !x.content_eq(y) {
@@ -891,7 +993,8 @@ impl CssToken {
             Self::Bracket(x) => x.span,
             Self::Brace(x) => x.span,
             Self::VarRef(x) => x.ident.span,
-            Self::MacroRef(x) => x.span,
+            Self::VarListRef(x) => x.span,
+            Self::MacroRef(x) => x.ident.span,
         }
     }
 }
@@ -916,7 +1019,7 @@ impl WriteCss for CssToken {
             Self::Paren(x) => x.write_css(cssw)?,
             Self::Bracket(x) => x.write_css(cssw)?,
             Self::Brace(x) => x.write_css(cssw)?,
-            Self::VarRef(_) | Self::MacroRef(_) => {
+            Self::VarRef(_) | Self::VarListRef(_) | Self::MacroRef(_) => {
                 panic!("cannot write unresolved ref");
             }
         };
@@ -1134,6 +1237,21 @@ impl syn::parse::Parse for CssToken {
             let _: Token![$] = input.parse()?;
             if input.peek(Token![$]) {
                 CssToken::Delim(parse_css_delim(input)?)
+            } else if input.peek(token::Paren) {
+                let content;
+                let t = parenthesized!(content in input);
+                let sep = if input.peek(Token![*]) {
+                    None
+                } else {
+                    let sep = input.parse()?;
+                    let _: Token![*] = input.parse()?;
+                    Some(sep)
+                };
+                CssToken::VarListRef(CssListRef {
+                    span: t.span,
+                    block: content.parse()?,
+                    sep,
+                })
             } else {
                 let ident = parse_css_ident(input)?;
                 CssToken::VarRef(CssVarRef {
@@ -1148,8 +1266,7 @@ impl syn::parse::Parse for CssToken {
                 let content;
                 parenthesized!(content in input);
                 CssToken::MacroRef(CssMacroRef {
-                    span: ident.span,
-                    formal_name: ident.formal_name,
+                    ident,
                     block: content.parse()?,
                 })
             } else if input.peek(token::Paren) {
@@ -1257,19 +1374,7 @@ impl CssTokenStream {
                 break;
             }
             let next = self.next().unwrap();
-            match next {
-                CssToken::VarRef(x) => {
-                    x.resolve_append(&mut tokens, vars, scope)?;
-                    refs.push(x.into_ref());
-                }
-                CssToken::MacroRef(x) => {
-                    x.resolve_append(&mut tokens, vars, scope)?;
-                    refs.push(x.into_ref());
-                }
-                x => {
-                    tokens.push(x);
-                }
-            }
+            next.resolve_append(&mut tokens, Some(&mut refs), vars, scope);
         }
         Ok((tokens, refs))
     }

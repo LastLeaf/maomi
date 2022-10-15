@@ -9,6 +9,7 @@ use css_token::*;
 pub mod write_css;
 pub mod style_sheet;
 pub mod pseudo;
+pub mod mac;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -44,9 +45,9 @@ pub trait ParseWithVars: Sized {
     fn for_each_ref(&self, f: &mut impl FnMut(&CssRef));
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Default)]
 pub struct StyleSheetVars {
-    // macros: FxHashMap<String, MacroDefinition>,
+    macros: FxHashMap<CssIdent, mac::MacroDefinition>,
     consts: FxHashMap<CssVarRef, ConstOrKeyframe>,
 }
 
@@ -55,7 +56,7 @@ pub struct ConstOrKeyframe {
     pub tokens: Vec<CssToken>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ScopeVars {
-    // macro_pat_vars: Option<&'a mut mac::MacroPatVars>,
+#[derive(Default)]
+pub struct ScopeVars<'a> {
+    pat_var_values: Option<&'a mut mac::PatVarValues>,
 }

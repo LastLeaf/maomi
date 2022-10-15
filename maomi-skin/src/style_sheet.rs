@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use quote::TokenStreamExt;
 
-use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*};
+use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*, mac::MacroDefinition};
 
 // TODO consider a proper way to handle global styling (font, css-reset, etc.)
 
@@ -90,11 +90,9 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         name: CssIdent,
         refs: Vec<CssRef>,
     },
-    // MacroDefinition {
-    //     at_keyword: CssAtKeyword,
-    //     name: CssIdent,
-    //     refs: Vec<CssRef>,
-    // },
+    MacroDefinition {
+        name: CssIdent,
+    },
     ConstDefinition {
         name: CssVarRef,
         refs: Vec<CssRef>,
@@ -187,7 +185,12 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
                         items.push(StyleSheetItem::ConfigDefinition { name, refs });
                     }
                     "macro" => {
-                        todo!() // TODO
+                        let name = input.expect_ident()?;
+                        let mac_def = MacroDefinition::parse_with_vars(input, vars, scope)?;
+                        if vars.macros.insert(name.clone(), mac_def).is_some() {
+                            return Err(ParseError::new(name.span, "redefined macro"));
+                        }
+                        items.push(StyleSheetItem::MacroDefinition { name });
                     }
                     "const" => {
                         let name = input.expect_var_ref()?;
@@ -253,7 +256,6 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
     }
 
     fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        // TODO
         for item in self.items.iter() {
             match item {
                 StyleSheetItem::ConfigDefinition { refs, .. } => {
@@ -261,6 +263,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
                         f(r);
                     }
                 }
+                StyleSheetItem::MacroDefinition { .. } => {}
                 StyleSheetItem::ConstDefinition { refs, .. } => {
                     for r in refs {
                         f(r);
@@ -292,24 +295,41 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
         let mut at_blocks = vec![];
         let mut pseudo_classes = vec![];
         let mut refs = vec![];
-        while !input.is_ended() {
-            let next = input.peek()?.clone();
-            match next {
-                // TODO expend macro
-                CssToken::Ident(_) => {
-                    props.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                }
-                CssToken::AtKeyword(_) => {
-                    at_blocks.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                }
-                CssToken::Colon(_) => {
-                    pseudo_classes.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                }
-                x => {
-                    return Err(ParseError::new(x.span(), "unexpected token"));
+        fn rec<T: StyleSheetConstructor>(
+            input: &mut CssTokenStream,
+            vars: &mut StyleSheetVars,
+            scope: &mut ScopeVars,
+            props: &mut Vec<Property<T::PropertyValue>>,
+            at_blocks: &mut Vec<AtBlock<T>>,
+            pseudo_classes: &mut Vec<PseudoClass<T>>,
+            refs: &mut Vec<CssRef>,
+        ) -> Result<(), ParseError> {
+            while !input.is_ended() {
+                let next = input.peek()?.clone();
+                match next {
+                    CssToken::MacroRef(x) => {
+                        let mut tokens = vec![];
+                        x.resolve_append(&mut tokens, vars, scope)?;
+                        let expanded = &mut CssTokenStream::new(input.span(), tokens);
+                        rec(expanded, vars, scope, props, at_blocks, pseudo_classes, refs)?;
+                    }
+                    CssToken::Ident(_) => {
+                        props.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    }
+                    CssToken::AtKeyword(_) => {
+                        at_blocks.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    }
+                    CssToken::Colon(_) => {
+                        pseudo_classes.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    }
+                    x => {
+                        return Err(ParseError::new(x.span(), "unexpected token"));
+                    }
                 }
             }
+            Ok(())
         }
+        rec(input, vars, scope, &mut props, &mut at_blocks, &mut pseudo_classes, &mut refs)?;
         Ok(Self {
             props,
             at_blocks,

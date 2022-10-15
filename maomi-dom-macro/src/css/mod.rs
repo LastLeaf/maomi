@@ -245,13 +245,13 @@ impl StyleSheetConstructor for DomStyleSheet {
                 }
 
                 // generate macro def
-                // StyleSheetItem::MacroDefinition { name, .. } => {
-                //     write_proc_macro_def(
-                //         inner_tokens,
-                //         name.span,
-                //         &syn::Ident::new(&name.formal_name, name.span),
-                //     );
-                // }
+                StyleSheetItem::MacroDefinition { name, .. } => {
+                    write_proc_macro_def(
+                        inner_tokens,
+                        name.span,
+                        &syn::Ident::new(&name.formal_name, name.span),
+                    );
+                }
 
                 // generate const def and ref
                 StyleSheetItem::ConstDefinition { name, .. }
