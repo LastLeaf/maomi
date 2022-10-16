@@ -173,6 +173,7 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
                         })?;
                         StyleSheet::do_parsing(&mut tokens, ssc, vars, scope, items, true)?;
                         tokens.expect_ended()?;
+                        input.expect_semi()?;
                     }
                     "config" => {
                         let name = input.expect_ident()?;
@@ -306,26 +307,45 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
             refs: &mut Vec<CssRef>,
         ) -> Result<(), ParseError> {
             while !input.is_ended() {
-                let next = input.peek()?.clone();
-                match next {
-                    CssToken::MacroRef(x) => {
-                        let mut tokens = vec![];
-                        x.resolve_append(&mut tokens, vars, scope)?;
-                        let expanded = &mut CssTokenStream::new(input.span(), tokens);
-                        rec(expanded, vars, scope, props, at_blocks, pseudo_classes, refs)?;
-                    }
-                    CssToken::Ident(_) => {
-                        props.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                    }
-                    CssToken::AtKeyword(_) => {
-                        at_blocks.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                    }
-                    CssToken::Colon(_) => {
-                        pseudo_classes.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                    }
+                enum NextKind {
+                    Mac,
+                    Prop,
+                    At,
+                    Pseudo,
+                }
+                let next_kind = match input.peek()? {
+                    CssToken::MacroRef(_) => NextKind::Mac,
+                    CssToken::Ident(_) => NextKind::Prop,
+                    CssToken::AtKeyword(_) => NextKind::At,
+                    CssToken::Colon(_) => NextKind::Pseudo,
                     x => {
                         return Err(ParseError::new(x.span(), "unexpected token"));
                     }
+                };
+                match next_kind {
+                    NextKind::Mac => {
+                        if let CssToken::MacroRef(x) = input.next()? {
+                            let mut tokens = vec![];
+                            x.resolve_append(&mut tokens, vars, scope)?;
+                            let expanded = &mut CssTokenStream::new(input.span(), tokens);
+                            rec(expanded, vars, scope, props, at_blocks, pseudo_classes, refs)?;
+                            if !x.is_brace {
+                                input.expect_semi()?;
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    NextKind::Prop => {
+                        props.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    }
+                    NextKind::At => {
+                        at_blocks.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    }
+                    NextKind::Pseudo => {
+                        pseudo_classes.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    }
+                    
                 }
             }
             Ok(())

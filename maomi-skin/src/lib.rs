@@ -56,7 +56,7 @@ pub struct ConstOrKeyframe {
     pub tokens: Vec<CssToken>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ScopeVars<'a> {
     pat_var_values: Option<&'a mut mac::PatVarValues>,
 }

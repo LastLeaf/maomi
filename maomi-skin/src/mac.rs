@@ -3,14 +3,6 @@ use rustc_hash::FxHashMap;
 
 use crate::{css_token::*, ParseWithVars, ScopeVars, StyleSheetVars, ParseError};
 
-struct DroppedRefs();
-
-impl Extend<CssIdent> for DroppedRefs {
-    fn extend<T: IntoIterator<Item = CssIdent>>(&mut self, _iter: T) {
-        // empty
-    }
-}
-
 pub struct MacroDefinition {
     branches: CssBrace<Repeat<MacroBranch>>,
 }
@@ -20,11 +12,11 @@ impl MacroDefinition {
         &self,
         ret: &mut Vec<CssToken>,
         span: Span,
-        call: &Repeat<CssToken>,
+        call: &Vec<CssToken>,
         vars: &StyleSheetVars,
     ) -> Result<(), ParseError> {
         for branch in self.branches.block.iter() {
-            let call = &mut CssTokenStream::new(span, call.clone().into_vec());
+            let call = &mut CssTokenStream::new(span, call.clone());
             if let Some(x) = branch.match_and_expand(ret, call, vars) {
                 return x;
             }
@@ -141,12 +133,13 @@ pub(super) enum MacroPatTy {
     Value,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(super) struct PatVarValues {
     map: FxHashMap<CssVarRef, PatVarValueTokens>,
     pub(super) sub: Vec<PatVarValues>,
 }
 
+#[derive(Debug)]
 enum PatVarValueTokens {
     Single(CssToken),
     Multi(Vec<CssToken>),
@@ -198,7 +191,7 @@ impl MacroPat {
                     }
                     MacroPatTy::Value => {
                         let mut tokens = vec![];
-                        loop {
+                        while !call.is_ended() {
                             if let CssToken::Semi(_) = call.peek()? {
                                 break;
                             };
@@ -229,13 +222,15 @@ impl MacroPat {
                             sub_vars
                         };
                         Self::try_match(inner.as_slice(), call, false, &mut sub_vars)?;
+                        if call.is_ended() {
+                            break;
+                        }
                         if let Some(sep) = sep.as_ref() {
-                            let next = call.next()?;
-                            if !next.content_eq(sep) {
+                            let peek = call.peek()?;
+                            if !peek.content_eq(sep) {
                                 break;
                             }
-                        } else if call.is_ended() {
-                            break;
+                            call.next().unwrap();
                         }
                     }
                     if cur_index != count {
@@ -336,13 +331,26 @@ impl ParseWithVars for MacroPat {
                 sep: x.sep,
             }
         } else if let CssToken::Function(mut x) = next {
-            MacroPat::Function(ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?)
+            MacroPat::Function(CssFunction {
+                span: x.span,
+                formal_name: x.formal_name,
+                block: ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?
+            })
         } else if let CssToken::Paren(mut x) = next {
-            MacroPat::Paren(ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?)
+            MacroPat::Paren(CssParen {
+                span: x.span,
+                block: ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?
+            })
         } else if let CssToken::Bracket(mut x) = next {
-            MacroPat::Bracket(ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?)
+            MacroPat::Bracket(CssBracket {
+                span: x.span,
+                block: ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?
+            })
         } else if let CssToken::Brace(mut x) = next {
-            MacroPat::Brace(ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?)
+            MacroPat::Brace(CssBrace {
+                span: x.span,
+                block: ParseWithVars::parse_with_vars(&mut x.block, vars, scope)?
+            })
         } else {
             MacroPat::Token(next)
         };

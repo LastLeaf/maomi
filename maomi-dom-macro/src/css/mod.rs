@@ -530,7 +530,7 @@ mod test {
                             2.px
                         };
                     }
-                    @const $a: 1.px;                
+                    @const $a: 1.px;
                 "#,
             );
             parse_str(

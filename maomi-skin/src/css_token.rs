@@ -645,6 +645,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssListRef<T> {
 pub struct CssMacroRef<T> {
     pub ident: CssIdent,
     pub block: T,
+    pub is_brace: bool,
 }
 
 impl<T> CssMacroRef<T> {
@@ -658,10 +659,14 @@ impl CssMacroRef<Repeat<CssToken>> {
         &self,
         ret: &mut Vec<CssToken>,
         vars: &StyleSheetVars,
-        _scope: &mut ScopeVars,
+        scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         if let Some(x) = vars.macros.get(&self.ident) {
-            x.expand_recursive(ret, self.ident.span, &self.block, vars)?;
+            let mut resolved_inner = vec![];
+            for token in self.block.iter() {
+                token.clone().resolve_append(&mut resolved_inner, None, vars, scope)?;
+            }
+            x.expand_recursive(ret, self.ident.span, &resolved_inner, vars)?;
             return Ok(());
         }
         return Err(ParseError::new(self.ident.span, "no such macro"));
@@ -702,7 +707,7 @@ impl<T> Repeat<T> {
 impl<T: syn::parse::Parse> syn::parse::Parse for Repeat<T> {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut inner = vec![];
-        while input.is_empty() {
+        while !input.is_empty() {
             let v = input.parse()?;
             inner.push(v);
         }
@@ -777,7 +782,7 @@ impl CssToken {
     fn resolve_append(
         self,
         ret: &mut Vec<CssToken>,
-        refs: Option<&mut Vec<CssRef>>,
+        mut refs: Option<&mut Vec<CssRef>>,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
@@ -796,6 +801,75 @@ impl CssToken {
                 if let Some(refs) = refs {
                     refs.push(x.into_ref());
                 }
+            }
+            CssToken::Function(mut x) => {
+                let mut resolved_inner = vec![];
+                while let Ok(token) = x.block.next() {
+                    match refs.as_mut() {
+                        Some(refs) => {
+                            token.resolve_append(&mut resolved_inner, Some(refs), vars, scope)?;
+                        }
+                        None => {
+                            token.resolve_append(&mut resolved_inner, None, vars, scope)?;
+                        }
+                    }
+                }
+                ret.push(CssToken::Function(CssFunction {
+                    span: x.span,
+                    formal_name: x.formal_name,
+                    block: CssTokenStream::new(x.block.span(), resolved_inner),
+                }));
+            }
+            CssToken::Paren(mut x) => {
+                let mut resolved_inner = vec![];
+                while let Ok(token) = x.block.next() {
+                    match refs.as_mut() {
+                        Some(refs) => {
+                            token.resolve_append(&mut resolved_inner, Some(refs), vars, scope)?;
+                        }
+                        None => {
+                            token.resolve_append(&mut resolved_inner, None, vars, scope)?;
+                        }
+                    }
+                }
+                ret.push(CssToken::Paren(CssParen {
+                    span: x.span,
+                    block: CssTokenStream::new(x.block.span(), resolved_inner),
+                }));
+            }
+            CssToken::Bracket(mut x) => {
+                let mut resolved_inner = vec![];
+                while let Ok(token) = x.block.next() {
+                    match refs.as_mut() {
+                        Some(refs) => {
+                            token.resolve_append(&mut resolved_inner, Some(refs), vars, scope)?;
+                        }
+                        None => {
+                            token.resolve_append(&mut resolved_inner, None, vars, scope)?;
+                        }
+                    }
+                }
+                ret.push(CssToken::Bracket(CssBracket {
+                    span: x.span,
+                    block: CssTokenStream::new(x.block.span(), resolved_inner),
+                }));
+            }
+            CssToken::Brace(mut x) => {
+                let mut resolved_inner = vec![];
+                while let Ok(token) = x.block.next() {
+                    match refs.as_mut() {
+                        Some(refs) => {
+                            token.resolve_append(&mut resolved_inner, Some(refs), vars, scope)?;
+                        }
+                        None => {
+                            token.resolve_append(&mut resolved_inner, None, vars, scope)?;
+                        }
+                    }
+                }
+                ret.push(CssToken::Brace(CssBrace {
+                    span: x.span,
+                    block: CssTokenStream::new(x.block.span(), resolved_inner),
+                }));
             }
             x => {
                 ret.push(x);
@@ -1099,47 +1173,47 @@ impl syn::parse::Parse for CssToken {
                     }
                 };
             }
-            parse_delim!(+);
             parse_delim!(+=);
-            parse_delim!(&);
+            parse_delim!(+);
             parse_delim!(&&);
             parse_delim!(&=);
+            parse_delim!(&);
             parse_delim!(@);
-            parse_delim!(!);
-            parse_delim!(^);
             parse_delim!(^=);
-            parse_delim!(/);
+            parse_delim!(^);
             parse_delim!(/=);
+            parse_delim!(/);
             parse_delim!($);
-            parse_delim!(.);
-            parse_delim!(..);
-            parse_delim!(...);
             parse_delim!(..=);
-            parse_delim!(=);
+            parse_delim!(...);
+            parse_delim!(..);
+            parse_delim!(.);
+            parse_delim!(*=);
+            parse_delim!(*);
+            parse_delim!(!=);
+            parse_delim!(!);
+            parse_delim!(||);
+            parse_delim!(|=);
+            parse_delim!(|);
+            parse_delim!(#);
+            parse_delim!(?);
+            parse_delim!(->);
+            parse_delim!(%=);
+            parse_delim!(%);
+            parse_delim!(<<=);
+            parse_delim!(>>=);
+            parse_delim!(<<);
+            parse_delim!(>>);
             parse_delim!(==);
             parse_delim!(=>);
+            parse_delim!(=);
             parse_delim!(>=);
             parse_delim!(>);
             parse_delim!(<-);
             parse_delim!(<=);
             parse_delim!(<);
-            parse_delim!(*=);
-            parse_delim!(!=);
-            parse_delim!(|);
-            parse_delim!(|=);
-            parse_delim!(||);
-            parse_delim!(#);
-            parse_delim!(?);
-            parse_delim!(->);
-            parse_delim!(%);
-            parse_delim!(%=);
-            parse_delim!(<<);
-            parse_delim!(<<=);
-            parse_delim!(>>);
-            parse_delim!(>>=);
-            parse_delim!(*);
-            parse_delim!(-);
             parse_delim!(-=);
+            parse_delim!(-);
             parse_delim!(~);
             Err(la.error())
         }
@@ -1241,6 +1315,7 @@ impl syn::parse::Parse for CssToken {
                 let content;
                 let t = parenthesized!(content in input);
                 let sep = if input.peek(Token![*]) {
+                    let _: Token![*] = input.parse()?;
                     None
                 } else {
                     let sep = input.parse()?;
@@ -1263,12 +1338,34 @@ impl syn::parse::Parse for CssToken {
         } else if let Ok((ident, last_span)) = parse_css_ident_with_last_span(input) {
             if input.peek(Token![!]) {
                 let _: Token![!] = input.parse()?;
-                let content;
-                parenthesized!(content in input);
-                CssToken::MacroRef(CssMacroRef {
-                    ident,
-                    block: content.parse()?,
-                })
+                let la = input.lookahead1();
+                if la.peek(token::Paren) {
+                    let content;
+                    parenthesized!(content in input);
+                    CssToken::MacroRef(CssMacroRef {
+                        ident,
+                        block: content.parse()?,
+                        is_brace: false,
+                    })
+                } else if la.peek(token::Bracket) {
+                    let content;
+                    bracketed!(content in input);
+                    CssToken::MacroRef(CssMacroRef {
+                        ident,
+                        block: content.parse()?,
+                        is_brace: false,
+                    })
+                } else if la.peek(token::Brace) {
+                    let content;
+                    braced!(content in input);
+                    CssToken::MacroRef(CssMacroRef {
+                        ident,
+                        block: content.parse()?,
+                        is_brace: true,
+                    })
+                } else {
+                    return Err(la.error());
+                }
             } else if input.peek(token::Paren) {
                 let paren_start = span_byte_offset(input.span()).unwrap_or_default().0;
                 let ident_end = span_byte_offset(last_span).unwrap_or_default().1;
@@ -1370,10 +1467,10 @@ impl CssTokenStream {
         let mut tokens = vec![];
         let mut refs = vec![];
         while !self.is_ended() {
-            if let CssToken::Semi(_) = self.peek().unwrap() {
+            if let CssToken::Semi(_) = self.peek()? {
                 break;
             }
-            let next = self.next().unwrap();
+            let next = self.next()?;
             next.resolve_append(&mut tokens, Some(&mut refs), vars, scope)?;
         }
         Ok((tokens, refs))
