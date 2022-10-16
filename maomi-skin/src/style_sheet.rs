@@ -246,11 +246,12 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
 impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        _vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let mut ssc = T::new();
         let mut items = vec![];
+        let vars = &mut StyleSheetVars::default();
         Self::do_parsing(input, &mut ssc, vars, scope, &mut items, false)?;
         Ok(Self { ssc, items })
     }
@@ -288,7 +289,7 @@ pub struct RuleContent<T: StyleSheetConstructor> {
 impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let mut props = vec![];
@@ -297,7 +298,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
         let mut refs = vec![];
         fn rec<T: StyleSheetConstructor>(
             input: &mut CssTokenStream,
-            vars: &mut StyleSheetVars,
+            vars: &StyleSheetVars,
             scope: &mut ScopeVars,
             props: &mut Vec<Property<T::PropertyValue>>,
             at_blocks: &mut Vec<AtBlock<T>>,
@@ -376,7 +377,7 @@ impl<V: WriteCss> WriteCss for Property<V> {
 impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let name = input.expect_ident()?;
@@ -413,7 +414,7 @@ pub enum AtBlock<T: StyleSheetConstructor> {
 impl<T: StyleSheetConstructor> ParseWithVars for AtBlock<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let at_keyword = input.expect_at_keyword()?;
@@ -467,7 +468,7 @@ pub struct AtBlockContent<T: StyleSheetConstructor> {
 impl<T: StyleSheetConstructor> ParseWithVars for AtBlockContent<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars, scope)?;
@@ -529,7 +530,7 @@ pub struct MediaCond<V> {
 impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let only = input.expect_keyword("only").ok();
@@ -657,7 +658,7 @@ pub struct SupportsCond<V> {
 impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let ret = if let Ok(_) = input.expect_keyword("not") {
@@ -794,7 +795,7 @@ pub struct PseudoClass<T: StyleSheetConstructor> {
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClass<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let colon_token = input.expect_colon()?;
@@ -817,7 +818,7 @@ pub struct PseudoClassContent<T: StyleSheetConstructor> {
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars, scope)?;

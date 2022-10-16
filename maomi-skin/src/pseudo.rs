@@ -56,7 +56,7 @@ pub enum PseudoDir {
 impl ParseWithVars for Pseudo {
     fn parse_with_vars(
         input: &mut crate::css_token::CssTokenStream,
-        _vars: &mut crate::StyleSheetVars,
+        _vars: &crate::StyleSheetVars,
         _scope: &mut crate::ScopeVars,
     ) -> Result<Self, ParseError> {
         let ident = input.expect_ident()?;

@@ -422,7 +422,7 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
 impl<T: ParseWithVars> ParseWithVars for CssFunction<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         input.parse_function(|_, input| {
@@ -461,7 +461,7 @@ impl<T: WriteCss> WriteCss for CssParen<T> {
 impl<T: ParseWithVars> ParseWithVars for CssParen<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         input.parse_paren(|input| {
@@ -500,7 +500,7 @@ impl<T: WriteCss> WriteCss for CssBracket<T> {
 impl<T: ParseWithVars> ParseWithVars for CssBracket<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         input.parse_bracket(|input| {
@@ -539,7 +539,7 @@ impl<T: WriteCss> WriteCss for CssBrace<T> {
 impl<T: ParseWithVars> ParseWithVars for CssBrace<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         input.parse_brace(|input| {
@@ -568,7 +568,7 @@ impl CssVarRef {
     pub fn resolve_append(
         &self,
         ret: &mut Vec<CssToken>,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         if let Some(p) = scope.pat_var_values.as_ref() {
@@ -611,7 +611,7 @@ impl CssListRef<Repeat<CssToken>> {
     pub fn resolve_append(
         &self,
         ret: &mut Vec<CssToken>,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         if let Some(sub_list) = scope.pat_var_values.as_mut() {
@@ -661,7 +661,7 @@ impl CssMacroRef<Repeat<CssToken>> {
         _scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         if let Some(x) = vars.macros.get(&self.ident) {
-            x.expand_recursive(ret, self.ident.span, &mut self.block, vars);
+            x.expand_recursive(ret, self.ident.span, &self.block, vars)?;
             return Ok(());
         }
         return Err(ParseError::new(self.ident.span, "no such macro"));
@@ -725,7 +725,7 @@ impl<T: WriteCss> WriteCss for Repeat<T> {
 impl<T: ParseWithVars> ParseWithVars for Repeat<T> {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let mut inner = vec![];
@@ -778,7 +778,7 @@ impl CssToken {
         self,
         ret: &mut Vec<CssToken>,
         refs: Option<&mut Vec<CssRef>>,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         match self {
@@ -1364,7 +1364,7 @@ impl CssTokenStream {
     #[inline]
     pub fn resolve_until_semi(
         &mut self,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(Vec<CssToken>, Vec<CssRef>), ParseError> {
         let mut tokens = vec![];
@@ -1374,7 +1374,7 @@ impl CssTokenStream {
                 break;
             }
             let next = self.next().unwrap();
-            next.resolve_append(&mut tokens, Some(&mut refs), vars, scope);
+            next.resolve_append(&mut tokens, Some(&mut refs), vars, scope)?;
         }
         Ok((tokens, refs))
     }

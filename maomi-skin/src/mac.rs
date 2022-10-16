@@ -36,7 +36,7 @@ impl MacroDefinition {
 impl ParseWithVars for MacroDefinition {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         Ok(Self {
@@ -61,7 +61,7 @@ impl MacroBranch {
         &self,
         ret: &mut Vec<CssToken>,
         call: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
     ) -> Option<Result<(), ParseError>> {
         let mut pat_vars = PatVarValues::default();
         MacroPat::try_match(
@@ -77,7 +77,7 @@ impl MacroBranch {
     fn expand(
         &self,
         ret: &mut Vec<CssToken>,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         for token in self.body.block.iter() {
@@ -95,7 +95,7 @@ impl MacroBranch {
 impl ParseWithVars for MacroBranch {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let pattern: CssParen<Repeat<MacroPat>> = ParseWithVars::parse_with_vars(input, vars, scope)?;
@@ -215,7 +215,7 @@ impl MacroPat {
                     }
                 },
                 MacroPat::ListScope { inner, sep } => {
-                    let mut count = ret.sub.len();
+                    let count = ret.sub.len();
                     let mut cur_index = 0;
                     loop {
                         let mut sub_vars = if count == 0 {
@@ -307,7 +307,7 @@ impl MacroPat {
 impl ParseWithVars for MacroPat {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError> {
         let next = input.next()?;

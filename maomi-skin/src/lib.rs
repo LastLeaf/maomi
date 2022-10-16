@@ -39,7 +39,7 @@ impl std::fmt::Display for ParseError {
 pub trait ParseWithVars: Sized {
     fn parse_with_vars(
         input: &mut CssTokenStream,
-        vars: &mut StyleSheetVars,
+        vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<Self, ParseError>;
     fn for_each_ref(&self, f: &mut impl FnMut(&CssRef));
