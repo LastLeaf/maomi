@@ -107,7 +107,10 @@ pub(crate) mod mac {
                 Some(group) => super::LocaleGroup::get(&group.to_string()),
             };
             let r = match locale_group_res {
-                Err(e) => quote! { compile_error!("{}", #e) },
+                Err(e) => {
+                    let hint = format!("{}", e);
+                    quote! { compile_error!(#hint) }
+                }
                 Ok(locale_group) => {
                     let s = &self.s;
                     let span = s.span();
