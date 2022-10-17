@@ -1,3 +1,5 @@
+//! Utility types for backends.
+
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
@@ -15,7 +17,10 @@ use crate::error::Error;
 use crate::mount_point::{MountPoint, DynMountPoint};
 use crate::template::ComponentTemplate;
 
-/// A future that can be resolved with a callback function
+/// A future that can be resolved with a callback function.
+///
+/// This type implements `Future` .
+/// It can convert a callback-style interface into a `Future` .
 #[must_use]
 pub struct AsyncCallback<R: 'static> {
     done: Rc<Cell<Option<R>>>,
@@ -36,7 +41,7 @@ impl<R: 'static> Future for AsyncCallback<R> {
 }
 
 impl<R: 'static> AsyncCallback<R> {
-    /// Create with a function which can resolve the future later
+    /// Create with a function which can resolve the future later.
     pub fn new() -> (Self, impl 'static + FnOnce(R)) {
         let done = Rc::new(Cell::new(None));
         let done2 = done.clone();
@@ -60,7 +65,12 @@ pub(crate) enum BackendContextEvent<B: Backend> {
     General(Box<dyn FnOnce(&mut EnteredBackendContext<B>)>),
 }
 
-/// A backend context for better backend management
+/// A wrapper type for a backend.
+/// 
+/// The wrapped backend cannot be visited directly.
+/// This is because the backend might be visited in multiple async tasks.
+/// When a task want to visit the backend,
+/// `BackendContext::enter` or `BackendContext::enter_sync` should be used.
 pub struct BackendContext<B: Backend> {
     inner: Rc<BackendContextInner<B>>,
 }
@@ -80,7 +90,7 @@ impl<B: Backend> Clone for BackendContext<B> {
 }
 
 impl<B: Backend> BackendContext<B> {
-    /// Create a new backend context
+    /// Create a new backend context.
     pub fn new(backend: B) -> Self {
         let initial_backend_stage = Cell::new(backend.backend_stage());
         let entered = RefCell::new(EnteredBackendContext { backend, ctx: None });
@@ -94,7 +104,9 @@ impl<B: Backend> BackendContext<B> {
         Self { inner }
     }
 
-    /// Get the current backend stage
+    /// Get the current backend stage.
+    /// 
+    /// This is meaningful only when prerendering is used.
     pub fn initial_backend_stage(&self) -> BackendStage {
         self.inner.initial_backend_stage.get()
     }
@@ -113,12 +125,13 @@ impl<B: Backend> BackendContext<B> {
         });
     }
 
-    /// Enter the backend context
+    /// Get the underlying backend synchronously.
     ///
-    /// If the backend context has already entered,
-    /// it will wait until exits.
-    /// Generate an async task otherwise.
-    /// The `f` is required to be `'static` .
+    /// If the backend context is visited by other async tasks,
+    /// it will wait until available.
+    /// 
+    /// The backend is always be visited asynchronously,
+    /// so the `f` is required to be `'static` .
     #[inline]
     pub fn enter<T: 'static, F>(&self, f: F) -> AsyncCallback<T>
     where
@@ -138,9 +151,9 @@ impl<B: Backend> BackendContext<B> {
         fut
     }
 
-    /// Try enter the backend context sync
+    /// Get the underlying backend asynchronously.
     ///
-    /// If the backend context has already entered, an `Err` is returned.
+    /// If the backend context is still being visited, an `Err` is returned.
     #[inline]
     pub fn enter_sync<T, F>(&self, f: F) -> Result<T, F>
     where
@@ -158,7 +171,7 @@ impl<B: Backend> BackendContext<B> {
         }
     }
 
-    /// Get the prerendering data of a component
+    /// Get the prerendering data of a prerenderable component.
     ///
     /// The `QueryData` should be provided to the `PrerenderableComponent` .
     #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
@@ -169,14 +182,14 @@ impl<B: Backend> BackendContext<B> {
     }
 }
 
-/// An entered backend context
+/// A mutable reference to a backend context.
 pub struct EnteredBackendContext<B: Backend> {
     backend: B,
     ctx: Option<Weak<BackendContextInner<B>>>,
 }
 
 impl<B: Backend> EnteredBackendContext<B> {
-    /// Create a mount point
+    /// Create a mount point.
     ///
     /// The `init` provides a way to do some updates before the component `created` lifetime.
     pub fn attach<C: Component + ComponentTemplate<B>>(
@@ -193,7 +206,7 @@ impl<B: Backend> EnteredBackendContext<B> {
         )
     }
 
-    /// Create a mount point and apply the prerendering data
+    /// Create a mount point and apply the prerendering data.
     #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
     pub fn prerendering_attach<C: PrerenderableComponent + ComponentTemplate<B> + 'static>(
         &mut self,
@@ -211,7 +224,7 @@ impl<B: Backend> EnteredBackendContext<B> {
         )
     }
 
-    /// Detach a mount point
+    /// Detach a mount point.
     pub fn detach<C: Component + ComponentTemplate<B>>(
         &mut self,
         mount_point: &mut MountPoint<B, C>,
@@ -220,7 +233,7 @@ impl<B: Backend> EnteredBackendContext<B> {
         mount_point.detach(&mut root);
     }
 
-    /// Detach a mount point with its `dyn` form
+    /// Detach a mount point with its `dyn` form.
     pub fn detach_dyn(
         &mut self,
         mount_point: &mut DynMountPoint<B>
@@ -229,7 +242,8 @@ impl<B: Backend> EnteredBackendContext<B> {
         mount_point.detach(&mut root);
     }
 
-    /// Get the root component of a mount point
+    /// Get the root component of a mount point.
+    #[inline]
     pub fn root_component_with<C: Component + ComponentTemplate<B>, R>(
         &mut self,
         mount_point: &MountPoint<B, C>,
@@ -239,13 +253,13 @@ impl<B: Backend> EnteredBackendContext<B> {
         f(&mut n.component().borrow_mut())
     }
 
-    /// Get the root backend element
+    /// Get the root backend element.
     #[inline]
     pub fn root(&self) -> tree::ForestNode<B::GeneralElement> {
         self.backend.root()
     }
 
-    /// Get the root backend element
+    /// Get the root backend element.
     #[inline]
     pub fn root_mut(&mut self) -> tree::ForestNodeMut<B::GeneralElement> {
         self.backend.root_mut()
@@ -255,18 +269,20 @@ impl<B: Backend> EnteredBackendContext<B> {
 impl<B: Backend> std::ops::Deref for EnteredBackendContext<B> {
     type Target = B;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.backend
     }
 }
 
 impl<B: Backend> std::ops::DerefMut for EnteredBackendContext<B> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.backend
     }
 }
 
-/// A helper for the prerendering data
+/// A helper for the prerendering data.
 #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 pub struct PrerenderingData<C: PrerenderableComponent> {
     data: C::PrerenderingData,
@@ -274,17 +290,17 @@ pub struct PrerenderingData<C: PrerenderableComponent> {
 
 #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 impl<C: PrerenderableComponent> PrerenderingData<C> {
-    /// Wrap the prerendering data
+    /// Wrap the prerendering data.
     pub fn new(data: C::PrerenderingData) -> Self {
         Self { data }
     }
 
-    /// Get the underlying prerendering data
+    /// Get the underlying prerendering data.
     pub fn get(&self) -> &C::PrerenderingData {
         &self.data
     }
 
-    /// Unwrap to the bare data
+    /// Unwrap the data.
     pub fn unwrap(self) -> C::PrerenderingData {
         self.data
     }

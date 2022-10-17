@@ -1,7 +1,15 @@
-# maomi: A rust wasm framework for building pages with components
+# maomi: a rust framework for building pages with components
 
-`maomi` is a MVVM-like framework for web development. Write your code in rust and compile to WebAssembly!
+`maomi` is a framework for building (web) application user interface. Write your code in rust and compile to WebAssembly!
 
-**Refactoring. Do not use it in productional stage.**
+Key features:
 
-See [dom-template](./maomi-dom-template/) for examples. Compile with `wasm-pack build maomi-dom-template --target no-modules` .
+* better performance than hand-written vanilla JavaScript;
+* strict compile-time check like rust;
+* highlighted mistakes in IDE with rust-analyzer;
+* limited CSS usage;
+* performant server side rendering;
+* integrated i18n support.
+
+See [dom-template](./maomi-dom-template/) for examples.
+Compile with `wasm-pack build maomi-dom-template --target no-modules` .

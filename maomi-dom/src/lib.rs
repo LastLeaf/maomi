@@ -1,3 +1,62 @@
+//! maomi: a rust framework for building pages with components
+//! 
+//! This is the *DOM binding* module of the framework.
+//! 
+//! ### Quick Start
+//! 
+//! Pages are composed by components.
+//! 
+//! To build a page, write a component which contains the page content.
+//! 
+//! ```rust
+//! use wasm_bindgen::prelude::*;
+//! use maomi::prelude::*;
+//! use maomi_dom::{prelude::*, element::*};
+//! 
+//! // declare a component
+//! #[component(Backend = DomBackend)]
+//! struct HelloWorld {
+//!     // a component should have a template field
+//!     template: template! {
+//!         <div>
+//!             // text in the template must be quoted
+//!             "Hello world!"
+//!         </div>
+//!     },
+//! }
+//! 
+//! // the component must implement `Component` trait
+//! impl Component for HelloWorld {
+//!     fn new() -> Self {
+//!         Self {
+//!             template: Default::default(),
+//!         }
+//!     }
+//! }
+//! 
+//! #[wasm_bindgen(start)]
+//! pub fn wasm_main() {
+//!     // the `<body>` is used to contain component content
+//!     let dom_backend = DomBackend::new_with_document_body().unwrap();
+//!     let backend_context = maomi::BackendContext::new(dom_backend);
+//! 
+//!     // create a mount point
+//!     let mount_point = backend_context
+//!         .enter_sync(move |ctx| {
+//!             ctx.attach(|_: &mut HelloWorld| {}).unwrap()
+//!         })
+//!         .map_err(|_| "Cannot init mount point")
+//!         .unwrap();
+//! 
+//!     // leak the backend context, so that event callbacks still work
+//!     std::mem::forget(mount_point);
+//!     std::mem::forget(backend_context);
+//! }
+//! ```
+//! 
+
+#![warn(missing_docs)]
+
 use maomi::{
     backend::{tree::*, *},
     error::Error,

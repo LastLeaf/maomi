@@ -21,7 +21,7 @@ struct HelloWorld {
     template: template! {
         // the template is XML-like
         <div title="Hello!">
-            // strings in the template must be quoted
+            // text in the template must be quoted
             "Hello world!"
         </div>
         // use { ... } bindings in the template
@@ -75,11 +75,11 @@ pub fn wasm_main() {
         .enter_sync(move |ctx| {
             let mount_point = ctx.attach(|_: &mut HelloWorld| {}).unwrap();
             // leak the mount point, so that event callbacks still work
-            Box::leak(Box::new(mount_point));
+            std::mem::forget(mount_point);
         })
         .map_err(|_| "Cannot init mount point")
         .unwrap();
 
     // leak the backend context, so that event callbacks still work
-    Box::leak(Box::new(backend_context));
+    std::mem::forget(backend_context);
 }
