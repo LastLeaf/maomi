@@ -1,5 +1,7 @@
 #![recursion_limit = "128"]
 
+use std::collections::VecDeque;
+
 use rustc_hash::FxHashMap;
 use proc_macro2::Span;
 
@@ -53,7 +55,7 @@ pub struct StyleSheetVars {
 
 #[derive(Debug, Clone)]
 pub struct ConstOrKeyframe {
-    pub tokens: Vec<CssToken>,
+    pub tokens: VecDeque<CssToken>,
 }
 
 #[derive(Debug, Default)]

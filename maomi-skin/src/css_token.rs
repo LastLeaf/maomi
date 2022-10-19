@@ -1,4 +1,4 @@
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, collections::VecDeque};
 use proc_macro2::Span;
 
 use super::{
@@ -567,7 +567,7 @@ impl CssVarRef {
 
     pub fn resolve_append(
         &self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
@@ -578,7 +578,7 @@ impl CssVarRef {
         }
         if let Some(x) = vars.consts.get(self) {
             for x in x.tokens.iter() {
-                ret.push(x.clone());
+                ret.push_back(x.clone());
             }
             return Ok(());
         }
@@ -610,7 +610,7 @@ pub struct CssListRef<T> {
 impl CssListRef<Repeat<CssToken>> {
     pub fn resolve_append(
         &self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
@@ -623,7 +623,7 @@ impl CssListRef<Repeat<CssToken>> {
             }
             if let Some(sep) = self.sep.as_ref() {
                 let sep: &CssToken = &sep;
-                ret.push(sep.clone());
+                ret.push_back(sep.clone());
             }
             Ok(())
         } else {
@@ -657,12 +657,12 @@ impl<T> CssMacroRef<T> {
 impl CssMacroRef<Repeat<CssToken>> {
     pub fn resolve_append(
         &self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
         if let Some(x) = vars.macros.get(&self.ident) {
-            let mut resolved_inner = vec![];
+            let mut resolved_inner = VecDeque::new();
             for token in self.block.iter() {
                 token.clone().resolve_append(&mut resolved_inner, None, vars, scope)?;
             }
@@ -781,7 +781,7 @@ pub enum CssToken {
 impl CssToken {
     fn resolve_append(
         self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         mut refs: Option<&mut Vec<CssRef>>,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
@@ -803,7 +803,7 @@ impl CssToken {
                 }
             }
             CssToken::Function(mut x) => {
-                let mut resolved_inner = vec![];
+                let mut resolved_inner = VecDeque::new();
                 while let Ok(token) = x.block.next() {
                     match refs.as_mut() {
                         Some(refs) => {
@@ -814,14 +814,14 @@ impl CssToken {
                         }
                     }
                 }
-                ret.push(CssToken::Function(CssFunction {
+                ret.push_back(CssToken::Function(CssFunction {
                     span: x.span,
                     formal_name: x.formal_name,
                     block: CssTokenStream::new(x.block.span(), resolved_inner),
                 }));
             }
             CssToken::Paren(mut x) => {
-                let mut resolved_inner = vec![];
+                let mut resolved_inner = VecDeque::new();
                 while let Ok(token) = x.block.next() {
                     match refs.as_mut() {
                         Some(refs) => {
@@ -832,13 +832,13 @@ impl CssToken {
                         }
                     }
                 }
-                ret.push(CssToken::Paren(CssParen {
+                ret.push_back(CssToken::Paren(CssParen {
                     span: x.span,
                     block: CssTokenStream::new(x.block.span(), resolved_inner),
                 }));
             }
             CssToken::Bracket(mut x) => {
-                let mut resolved_inner = vec![];
+                let mut resolved_inner = VecDeque::new();
                 while let Ok(token) = x.block.next() {
                     match refs.as_mut() {
                         Some(refs) => {
@@ -849,13 +849,13 @@ impl CssToken {
                         }
                     }
                 }
-                ret.push(CssToken::Bracket(CssBracket {
+                ret.push_back(CssToken::Bracket(CssBracket {
                     span: x.span,
                     block: CssTokenStream::new(x.block.span(), resolved_inner),
                 }));
             }
             CssToken::Brace(mut x) => {
-                let mut resolved_inner = vec![];
+                let mut resolved_inner = VecDeque::new();
                 while let Ok(token) = x.block.next() {
                     match refs.as_mut() {
                         Some(refs) => {
@@ -866,13 +866,13 @@ impl CssToken {
                         }
                     }
                 }
-                ret.push(CssToken::Brace(CssBrace {
+                ret.push_back(CssToken::Brace(CssBrace {
                     span: x.span,
                     block: CssTokenStream::new(x.block.span(), resolved_inner),
                 }));
             }
             x => {
-                ret.push(x);
+                ret.push_back(x);
             }
         }
         Ok(())
@@ -1396,31 +1396,30 @@ impl syn::parse::Parse for CssToken {
 #[derive(Debug, Clone)]
 pub struct CssTokenStream {
     last_span: Span,
-    rev_tokens: Vec<CssToken>,
+    tokens: VecDeque<CssToken>,
 }
 
 impl CssTokenStream {
     fn iter(&self) -> impl Iterator<Item = &CssToken> {
-        self.rev_tokens.iter().rev()
+        self.tokens.iter()
     }
 
     #[inline]
-    pub fn new(last_span: Span, mut tokens: Vec<CssToken>) -> Self {
-        tokens.reverse();
+    pub fn new(last_span: Span, tokens: VecDeque<CssToken>) -> Self {
         Self {
             last_span,
-            rev_tokens: tokens,
+            tokens,
         }
     }
 
     #[inline]
     pub fn is_ended(&self) -> bool {
-        self.rev_tokens.last().is_none()
+        self.tokens.is_empty()
     }
 
     #[inline]
     pub fn expect_ended(&self) -> Result<(), ParseError> {
-        if let Some(x) = self.rev_tokens.last() {
+        if let Some(x) = self.tokens.front() {
             Err(ParseError::new(x.span(), "expected end"))
         } else {
             Ok(())
@@ -1429,7 +1428,7 @@ impl CssTokenStream {
 
     #[inline]
     pub fn span(&self) -> Span {
-        if let Some(x) = self.rev_tokens.last() {
+        if let Some(x) = self.tokens.front() {
             x.span()
         } else {
             self.last_span
@@ -1438,22 +1437,22 @@ impl CssTokenStream {
 
     #[inline]
     pub fn sub_until_semi(&mut self) -> Self {
-        if let Some((index, _)) = self.rev_tokens.iter().enumerate().rfind(|(_, t)| {
+        if let Some((index, _)) = self.tokens.iter().enumerate().rfind(|(_, t)| {
             if let CssToken::Semi(_) = t {
                 return true;
             }
             false
         }) {
-            let sub_rev_tokens = self.rev_tokens.drain(index..).collect();
+            let sub_tokens = self.tokens.drain(index..).collect();
             Self {
                 last_span: self.span(),
-                rev_tokens: sub_rev_tokens,
+                tokens: sub_tokens,
             }
         } else {
-            let sub_rev_tokens = self.rev_tokens.drain(..).collect();
+            let sub_tokens = self.tokens.drain(..).collect();
             Self {
                 last_span: self.span(),
-                rev_tokens: sub_rev_tokens,
+                tokens: sub_tokens,
             }
         }
     }
@@ -1463,8 +1462,8 @@ impl CssTokenStream {
         &mut self,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
-    ) -> Result<(Vec<CssToken>, Vec<CssRef>), ParseError> {
-        let mut tokens = vec![];
+    ) -> Result<(VecDeque<CssToken>, Vec<CssRef>), ParseError> {
+        let mut tokens = VecDeque::new();
         let mut refs = vec![];
         while !self.is_ended() {
             if let CssToken::Semi(_) = self.peek()? {
@@ -1478,7 +1477,7 @@ impl CssTokenStream {
 
     #[inline]
     pub fn next(&mut self) -> Result<CssToken, ParseError> {
-        if let Some(x) = self.rev_tokens.pop() {
+        if let Some(x) = self.tokens.pop_front() {
             Ok(x)
         } else {
             Err(ParseError::new(self.span(), "unexpected end"))
@@ -1487,7 +1486,7 @@ impl CssTokenStream {
 
     #[inline]
     pub fn peek(&self) -> Result<&CssToken, ParseError> {
-        if let Some(x) = self.rev_tokens.last() {
+        if let Some(x) = self.tokens.front() {
             Ok(x)
         } else {
             Err(ParseError::new(self.span(), "unexpected end"))
@@ -1523,7 +1522,7 @@ impl CssTokenStream {
         if let CssToken::Ident(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected CSS identifier"))
         }
     }
@@ -1534,7 +1533,7 @@ impl CssTokenStream {
         if let CssToken::AtKeyword(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected CSS at-keyword"))
         }
     }
@@ -1545,7 +1544,7 @@ impl CssTokenStream {
         if let CssToken::String(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected CSS string literal"))
         }
     }
@@ -1556,7 +1555,7 @@ impl CssTokenStream {
         if let CssToken::Colon(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `:`"))
         }
     }
@@ -1567,7 +1566,7 @@ impl CssTokenStream {
         if let CssToken::Semi(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `;`"))
         }
     }
@@ -1578,7 +1577,7 @@ impl CssTokenStream {
         if let CssToken::Comma(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `,`"))
         }
     }
@@ -1612,7 +1611,7 @@ impl CssTokenStream {
         if let CssToken::Number(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected number"))
         }
     }
@@ -1623,7 +1622,7 @@ impl CssTokenStream {
         if let CssToken::Percentage(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected percentage (number with `%`)"))
         }
     }
@@ -1634,7 +1633,7 @@ impl CssTokenStream {
         if let CssToken::Dimension(x) = next {
             Ok(x)
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected dimension (number with unit)"))
         }
     }
@@ -1650,7 +1649,7 @@ impl CssTokenStream {
             x.block.expect_ended()?;
             Ok(CssFunction { span: x.span, formal_name: x.formal_name, block })
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected CSS function"))
         }
     }
@@ -1666,7 +1665,7 @@ impl CssTokenStream {
             x.block.expect_ended()?;
             Ok(CssParen { span: x.span, block })
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `(...)`"))
         }
     }
@@ -1682,7 +1681,7 @@ impl CssTokenStream {
             x.block.expect_ended()?;
             Ok(CssBracket { span: x.span, block })
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `[...]`"))
         }
     }
@@ -1698,7 +1697,7 @@ impl CssTokenStream {
             x.block.expect_ended()?;
             Ok(CssBrace { span: x.span, block })
         } else {
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `{...}`"))
         }
     }
@@ -1714,7 +1713,7 @@ impl CssTokenStream {
             } else {
                 "expected variable name".to_string()
             };
-            self.rev_tokens.push(next);
+            self.tokens.push_front(next);
             Err(ParseError::new(self.span(), hint))
         }
     }
@@ -1725,7 +1724,7 @@ impl WriteCss for CssTokenStream {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::result::Result<(), std::fmt::Error> {
-        for token in self.rev_tokens.iter() {
+        for token in self.tokens.iter() {
             token.write_css(cssw)?;
         }
         Ok(())
@@ -1734,9 +1733,9 @@ impl WriteCss for CssTokenStream {
 
 impl syn::parse::Parse for CssTokenStream {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut ret = vec![];
+        let mut ret = VecDeque::new();
         while !input.is_empty() {
-            ret.push(input.parse()?);
+            ret.push_back(input.parse()?);
         }
         Ok(Self::new(input.span(), ret))
     }

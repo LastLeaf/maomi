@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use proc_macro2::Span;
 use rustc_hash::FxHashMap;
 
@@ -10,9 +11,9 @@ pub struct MacroDefinition {
 impl MacroDefinition {
     pub(crate) fn expand_recursive(
         &self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         span: Span,
-        call: &Vec<CssToken>,
+        call: &VecDeque<CssToken>,
         vars: &StyleSheetVars,
     ) -> Result<(), ParseError> {
         for branch in self.branches.block.iter() {
@@ -51,7 +52,7 @@ pub(super) struct MacroBranch {
 impl MacroBranch {
     fn match_and_expand(
         &self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         call: &mut CssTokenStream,
         vars: &StyleSheetVars,
     ) -> Option<Result<(), ParseError>> {
@@ -68,7 +69,7 @@ impl MacroBranch {
 
     fn expand(
         &self,
-        ret: &mut Vec<CssToken>,
+        ret: &mut VecDeque<CssToken>,
         vars: &StyleSheetVars,
         scope: &mut ScopeVars,
     ) -> Result<(), ParseError> {
@@ -77,7 +78,7 @@ impl MacroBranch {
                 CssToken::VarRef(x) => x.resolve_append(ret, vars, scope)?,
                 CssToken::VarListRef(x) => x.resolve_append(ret, vars, scope)?,
                 CssToken::MacroRef(x) => x.resolve_append(ret, vars, scope)?,
-                x => ret.push(x.clone()),
+                x => ret.push_back(x.clone()),
             };
         }
         Ok(())
@@ -146,15 +147,15 @@ enum PatVarValueTokens {
 }
 
 impl PatVarValues {
-    pub(crate) fn expand_append(&self, ret: &mut Vec<CssToken>, var_name: &CssVarRef) -> Option<()> {
+    pub(crate) fn expand_append(&self, ret: &mut VecDeque<CssToken>, var_name: &CssVarRef) -> Option<()> {
         if let Some(x) = self.map.get(var_name) {
             match x {
                 PatVarValueTokens::Single(x) => {
-                    ret.push(x.clone());
+                    ret.push_back(x.clone());
                 }
                 PatVarValueTokens::Multi(x) => {
                     for i in x.iter() {
-                        ret.push(i.clone());
+                        ret.push_back(i.clone());
                     }
                 }
             }
@@ -325,7 +326,7 @@ impl ParseWithVars for MacroPat {
                 ty,
             }
         } else if let CssToken::VarListRef(x) = next {
-            let mut s = CssTokenStream::new(x.span, x.block.into_vec());
+            let mut s = CssTokenStream::new(x.span, x.block.into_vec().into());
             MacroPat::ListScope {
                 inner: ParseWithVars::parse_with_vars(&mut s, vars, scope)?,
                 sep: x.sep,

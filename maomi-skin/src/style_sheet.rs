@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-
+use std::{path::PathBuf, collections::VecDeque, str::FromStr};
 use quote::TokenStreamExt;
 
 use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*, mac::MacroDefinition};
@@ -19,6 +18,11 @@ thread_local! {
 }
 
 fn get_import_content(src: &CssString) -> Result<String, ParseError> {
+    // TODO Currently we must force this so that the span can work properly.
+    // This requires nightly rust to work with rust-analyzer properly.
+    // Consider tokenizing with CSS parser to avoid this problem.
+    proc_macro2::fallback::force();
+
     let p = src.value();
     if !p.starts_with("/") {
         return Err(ParseError::new(
@@ -66,7 +70,7 @@ pub trait StyleSheetConstructor {
             CssPercentage,
             CssBrace<Repeat<Property<Self::PropertyValue>>>,
         )>,
-    ) -> Result<Vec<CssToken>, ParseError>;
+    ) -> Result<VecDeque<CssToken>, ParseError>;
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
     where
@@ -157,17 +161,26 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
                         // IDEA considering a proper cache to avoid parsing during every import
                         let name = input.expect_string()?;
                         let content = get_import_content(&name)?;
-                        let mut tokens = syn::parse_str::<CssTokenStream>(&content).map_err(|err| {
+                        let ts = proc_macro2::TokenStream::from_str(&content)
+                            .map_err(|err| ParseError::new(
+                                name.span,
+                                format_args!(
+                                    "when tokenizing {}: {}",
+                                    name.value(),
+                                    err,
+                                )),
+                            )?;
+                        let mut tokens = syn::parse2(ts).map_err(|err| {
                             let original_span = err.span();
                             let start = original_span.start();
                             ParseError::new(
-                                at_keyword.span,
+                                name.span,
                                 format_args!(
                                     "when parsing {}:{}:{}: {}",
                                     name.value(),
                                     start.line,
                                     start.column,
-                                    err
+                                    err,
                                 ),
                             )
                         })?;
@@ -220,7 +233,7 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
                                 } else if let Ok(n) = input.expect_percentage() {
                                     n
                                 } else {
-                                    return Err(ParseError::new(input.span(), "unknown at-keyword"));
+                                    return Err(ParseError::new(input.span(), "unexpected token"));
                                 };
                                 content.push((percentage, ParseWithVars::parse_with_vars(input, vars, scope)?));
                             }
@@ -325,7 +338,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
                 match next_kind {
                     NextKind::Mac => {
                         if let CssToken::MacroRef(x) = input.next()? {
-                            let mut tokens = vec![];
+                            let mut tokens = VecDeque::new();
                             x.resolve_append(&mut tokens, vars, scope)?;
                             let expanded = &mut CssTokenStream::new(input.span(), tokens);
                             rec(expanded, vars, scope, props, at_blocks, pseudo_classes, refs)?;

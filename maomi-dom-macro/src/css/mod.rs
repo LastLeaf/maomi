@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use quote::{quote, TokenStreamExt};
 use std::cell::Cell;
+use std::collections::VecDeque;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::Write;
@@ -145,7 +146,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         &mut self,
         name: &CssVarRef,
         content: Vec<(CssPercentage, CssBrace<Repeat<Property<property::DomCssProperty>>>)>,
-    ) -> Result<Vec<CssToken>, ParseError> {
+    ) -> Result<VecDeque<CssToken>, ParseError> {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
         let formal_name = generate_css_name(&name.ident, self.name_mangling, debug_mode);
         let generated_ident = CssIdent {
@@ -156,7 +157,7 @@ impl StyleSheetConstructor for DomStyleSheet {
             generated_ident.clone(),
             content,
         ));
-        Ok(vec![CssToken::Ident(generated_ident)])
+        Ok(vec![CssToken::Ident(generated_ident)].into())
     }
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
@@ -531,6 +532,7 @@ mod test {
                         };
                     }
                     @const $a: 1.px;
+                    @const $color: rgb(1, 2, 3);
                 "#,
             );
             parse_str(
@@ -539,13 +541,13 @@ mod test {
                     @const $b: $a ma!();
                     .self {
                         padding: $b $a ma!();
-                        margin: $b;
+                        color: $color;
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#".self{padding:1px 2px 1px 2px;margin:1px 2px}"#,
+                r#".self{padding:1px 2px 1px 2px;color:rgb(1,2,3)}"#,
             );
         });
     }
