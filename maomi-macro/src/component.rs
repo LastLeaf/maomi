@@ -216,7 +216,7 @@ impl ComponentBody {
                         let tokens = m.mac.tokens.clone();
                         let t = Template::parse.parse2(tokens);
                         let structure_ty = match t.as_ref() {
-                            Ok(x) => x.gen_type(&backend_param, &m.mac.delimiter),
+                            Ok(x) => x.gen_type(&m.mac.delimiter),
                             Err(_) => parse_quote! { () },
                         };
                         field.ty = parse_quote! {

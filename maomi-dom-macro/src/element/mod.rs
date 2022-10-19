@@ -323,7 +323,7 @@ impl ToTokens for DomElementDefinition {
                 }
             }
 
-            impl SupportBackend<DomBackend> for #tag_name {
+            impl SupportBackend for #tag_name {
                 type Target = Self;
             }
         });

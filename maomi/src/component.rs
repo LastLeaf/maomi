@@ -57,6 +57,13 @@ impl<C: 'static> ComponentRc<C> {
         }
     }
 
+    fn downgrade(&self) -> ComponentWeak<C> {
+        ComponentWeak {
+            inner: Rc::downgrade(&self.inner),
+            _phantom: PhantomData,
+        }
+    }
+
     /// Schedule an update in another task, getting the component mutable reference.
     ///
     /// The `f` will be called asynchously.
@@ -67,6 +74,7 @@ impl<C: 'static> ComponentRc<C> {
         f: impl 'static + FnOnce(&mut C) -> R,
     ) {
         self.inner
+            .clone()
             .enter_mut_detached(Box::new(move |c| {
                 f(c);
                 true
@@ -83,6 +91,7 @@ impl<C: 'static> ComponentRc<C> {
         f: impl 'static + FnOnce(&mut C, &mut ComponentMutCtx) -> R,
     ) {
         self.inner
+            .clone()
             .enter_mut_detached(Box::new(move |c| {
                 let mut ctx = ComponentMutCtx { need_update: false };
                 f(c, &mut ctx);
@@ -101,6 +110,7 @@ impl<C: 'static> ComponentRc<C> {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
         self.inner
+            .clone()
             .enter_mut(Box::new(move |c| {
                 let r = f(c);
                 ret2.set(Some(r));
@@ -125,6 +135,7 @@ impl<C: 'static> ComponentRc<C> {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
         self.inner
+            .clone()
             .enter_mut(Box::new(move |c| {
                 let mut ctx = ComponentMutCtx { need_update: false };
                 let r = f(c, &mut ctx);
@@ -146,6 +157,7 @@ impl<C: 'static> ComponentRc<C> {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
         self.inner
+            .clone()
             .enter(Box::new(move |c| {
                 let r = f(c);
                 ret2.set(Some(r));
@@ -164,7 +176,7 @@ impl<C: 'static> ComponentRc<C> {
 /// This is the weak version of `ComponentRc` ,
 /// which does not prevent the component from dropped.
 pub struct ComponentWeak<C> {
-    inner: Rc<dyn UpdateSchedulerWeak<EnterType = C>>,
+    inner: Weak<dyn UpdateScheduler<EnterType = C>>,
     _phantom: PhantomData<C>,
 }
 
@@ -177,28 +189,33 @@ impl<C> Clone for ComponentWeak<C> {
     }
 }
 
-impl<C> ComponentWeak<C> {
-    pub(crate) fn new(inner: Rc<dyn UpdateSchedulerWeak<EnterType = C>>) -> Self {
-        Self {
-            inner,
-            _phantom: PhantomData,
-        }
-    }
-}
-
 impl<C: 'static> ComponentWeak<C> {
     pub(crate) fn to_owner_weak(&self) -> Box<dyn OwnerWeak> {
-        self.inner.to_owner_weak()
+        self.clone_owner_weak()
     }
-}
 
-impl<C: 'static> ComponentWeak<C> {
     /// Upgrade to a `ComponentRc`
     pub fn upgrade(&self) -> Option<ComponentRc<C>> {
-        let inner = self.inner.upgrade_scheduler()?;
+        let inner = self.inner.upgrade()?;
         Some(ComponentRc {
             inner,
             _phantom: PhantomData,
+        })
+    }
+}
+
+impl<C: 'static> OwnerWeak for ComponentWeak<C> {
+    fn apply_updates(&self) -> Result<(), Error> {
+        if let Some(x) = self.inner.upgrade() {
+            x.sync_update()?;
+        }
+        Ok(())
+    }
+
+    fn clone_owner_weak(&self) -> Box<dyn OwnerWeak> {
+        Box::new(Self {
+            inner: self.inner.clone(),
+            _phantom: PhantomData
         })
     }
 }
@@ -377,13 +394,13 @@ pub trait PrerenderableComponent: Component {
 
 pub(crate) trait UpdateScheduler: 'static {
     type EnterType;
-    fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()>;
+    fn enter(self: Rc<Self>, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()>;
     fn enter_mut(
-        &self,
+        self: Rc<Self>,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>>;
     fn enter_mut_detached(
-        &self,
+        self: Rc<Self>,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     );
     fn sync_update(&self) -> Result<(), Error>;
@@ -396,36 +413,41 @@ pub(crate) trait UpdateSchedulerWeak: 'static {
 }
 
 /// A node that wraps a component instance.
-pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component> {
-    inner: Rc<ComponentNodeInner<B, C>>,
+#[derive(Clone)]
+pub struct ComponentNode<C: Component> {
+    inner: Rc<RefCell<C>>,
+    backend_element_token: ForestToken,
+    rc: ComponentRc<C>,
 }
 
-struct ComponentNodeInner<B: Backend, C: ComponentTemplate<B> + Component> {
-    c: RefCell<C>,
-    backend_context: BackendContext<B>,
-    forest_node_rc: ForestNodeRc<B::GeneralElement>,
-    owner_weak: Box<dyn OwnerWeak>,
-}
-
-impl<B: Backend, C: ComponentTemplate<B> + Component> Clone for ComponentNode<B, C> {
-    fn clone(&self) -> Self {
+impl<C: Component> ComponentNode<C> {
+    fn new<B: Backend>(
+        c: C,
+        backend_context: BackendContext<B>,
+        forest_node_rc: ForestNodeRc<<B as Backend>::GeneralElement>,
+        owner_weak: Box<dyn OwnerWeak>,
+    ) -> Self
+    where
+        C: ComponentTemplate<B>,
+    {
+        let inner = Rc::new(RefCell::new(c));
+        let backend_element_token = forest_node_rc.token();
+        let rc: Rc<dyn UpdateScheduler<EnterType = C>> = Rc::new(ComponentNodeInBackend {
+            inner: inner.clone(),
+            backend_context,
+            forest_node_rc,
+            owner_weak,
+        });
+        let rc = ComponentRc::new(rc);
         Self {
-            inner: self.inner.clone(),
+            inner,
+            backend_element_token,
+            rc,
         }
     }
-}
 
-impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
     pub(crate) fn component(&self) -> &RefCell<C> {
-        &self.inner.c
-    }
-
-    fn backend_context(&self) -> &BackendContext<B> {
-        &self.inner.backend_context
-    }
-
-    fn backend_element(&self) -> &ForestNodeRc<B::GeneralElement> {
-        &self.inner.forest_node_rc
+        &self.inner
     }
 
     /// Get a ref-counted token `ComponentRc` for the component.
@@ -434,8 +456,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
     /// It is useful for doing updates after async steps such as network requests.
     #[inline]
     pub fn rc(&self) -> ComponentRc<C> {
-        let component = Rc::new(self.clone());
-        ComponentRc::new(component)
+        self.rc.clone()
     }
 
     /// Get a ref-counted token `ComponentWeak` for the component.
@@ -444,34 +465,34 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
     /// It is a weak ref which does not prevent dropping the component.
     #[inline]
     pub fn weak(&self) -> ComponentWeak<C> {
-        let component = Rc::new(self.downgrade());
-        ComponentWeak::new(component)
+        todo!() // TODO
     }
+}
 
-    /// Get a weak reference.
-    #[inline]
-    pub fn downgrade(&self) -> ComponentNodeWeak<B, C> {
-        ComponentNodeWeak {
-            inner: Rc::downgrade(&self.inner),
-        }
-    }
+struct ComponentNodeInBackend<B: Backend, C: ComponentTemplate<B> + Component> {
+    inner: Rc<RefCell<C>>,
+    backend_context: BackendContext<B>,
+    forest_node_rc: ForestNodeRc<B::GeneralElement>,
+    owner_weak: Box<dyn OwnerWeak>,
+}
 
+impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeInBackend<B, C> {
     fn prepare_inner_changes(
-        inner: Rc<ComponentNodeInner<B, C>>,
+        this: &Rc<Self>,
         f: Box<dyn FnOnce(&mut C) -> bool>,
     ) -> Result<(), Error> {
         let has_slot_changes = {
-            let mut comp = inner.c.borrow_mut();
+            let mut comp = this.inner.borrow_mut();
             let force_schdule_update = f(&mut comp);
             if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
                 || force_schdule_update
             {
-                let mut backend_element = inner.forest_node_rc.borrow_mut();
+                let mut backend_element = this.forest_node_rc.borrow_mut();
                 <C as Component>::before_template_apply(&mut comp);
                 let has_slot_changes =
                     <C as ComponentTemplate<B>>::template_update_store_slot_changes(
                         &mut comp,
-                        &inner.backend_context,
+                        &this.backend_context,
                         &mut backend_element,
                     )?;
                 has_slot_changes
@@ -480,41 +501,38 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
             }
         };
         if has_slot_changes {
-            inner.owner_weak.apply_updates()?;
+            this.owner_weak.apply_updates()?;
         }
         Ok(())
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for ComponentNode<B, C> {
+impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for ComponentNodeInBackend<B, C> {
     type EnterType = C;
 
     #[inline]
-    fn enter(&self, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()> {
-        let inner = self.inner.clone();
-        self.backend_context().enter(move |_| f(&inner.c.borrow()))
+    fn enter(self: Rc<Self>, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()> {
+        self.backend_context.clone().enter(move |_| f(&self.inner.borrow()))
     }
 
     #[inline]
     fn enter_mut(
-        &self,
+        self: Rc<Self>,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>> {
-        let inner = self.inner.clone();
-        self.backend_context().enter::<Result<(), Error>, _>(move |_| {
-            Self::prepare_inner_changes(inner, f)
+        self.backend_context.clone().enter::<Result<(), Error>, _>(move |_| {
+            Self::prepare_inner_changes(&self, f)
         })
     }
 
     #[inline]
     fn enter_mut_detached(
-        &self,
+        self: Rc<Self>,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) {
-        let inner = self.inner.clone();
         // the sync part of `f` is always executed, so it does not require to poll
-        let _ = self.backend_context().enter::<(), _>(move |_| {
-            if let Err(err) = Self::prepare_inner_changes(inner, f) {
+        let _ = self.backend_context.clone().enter::<(), _>(move |_| {
+            if let Err(err) = Self::prepare_inner_changes(&self, f) {
                 panic!("{}", err);
             }
         });
@@ -522,85 +540,82 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
 
     #[inline]
     fn sync_update(&self) -> Result<(), Error> {
-        let inner = &self.inner;
         let has_slot_changes = {
-            let mut comp = inner.c.borrow_mut();
+            let mut comp = self.inner.borrow_mut();
             <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty();
-            let mut backend_element = inner.forest_node_rc.borrow_mut();
+            let mut backend_element = self.forest_node_rc.borrow_mut();
             <C as Component>::before_template_apply(&mut comp);
             let has_slot_changes = <C as ComponentTemplate<B>>::template_update_store_slot_changes(
                 &mut comp,
-                &inner.backend_context,
+                &self.backend_context,
                 &mut backend_element,
             )?;
             has_slot_changes
         };
         if has_slot_changes {
-            inner.owner_weak.apply_updates()?;
+            self.owner_weak.apply_updates()?;
         }
         Ok(())
     }
 }
 
-/// A node that wraps a component instance
-pub struct ComponentNodeWeak<B: Backend, C: ComponentTemplate<B> + Component> {
-    inner: Weak<ComponentNodeInner<B, C>>,
+// /// A node that wraps a component instance
+// pub struct ComponentNodeWeak<C: Component> {
+//     inner: Weak<ComponentNodeInner<C>>,
+// }
+
+// impl<C: Component> ComponentNodeWeak<C> {
+//     /// Upgrade to a strong reference
+//     #[inline]
+//     pub fn upgrade(&self) -> Option<ComponentNode<C>> {
+//         if let Some(inner) = self.inner.upgrade() {
+//             Some(ComponentNode { inner })
+//         } else {
+//             None
+//         }
+//     }
+// }
+
+// impl<C: Component> UpdateSchedulerWeak for ComponentNodeWeak<C> {
+//     type EnterType = C;
+
+//     #[inline]
+//     fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>> {
+//         if let Some(this) = self.upgrade() {
+//             Some(Rc::new(this))
+//         } else {
+//             None
+//         }
+//     }
+
+//     #[inline]
+//     fn to_owner_weak(&self) -> Box<dyn OwnerWeak> {
+//         Box::new(Self {
+//             inner: self.inner.clone(),
+//         })
+//     }
+// }
+
+// impl<C: Component> OwnerWeak for ComponentNodeWeak<C> {
+//     fn apply_updates(&self) -> Result<(), Error> {
+//         if let Some(x) = self.upgrade_scheduler() {
+//             x.sync_update()?;
+//         }
+//         Ok(())
+//     }
+
+//     fn clone_owner_weak(&self) -> Box<dyn OwnerWeak> {
+//         Box::new(Self {
+//             inner: self.inner.clone(),
+//         })
+//     }
+// }
+
+impl<C: Component> SupportBackend for C {
+    type Target = ComponentNode<C>;
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeWeak<B, C> {
-    /// Upgrade to a strong reference
-    #[inline]
-    pub fn upgrade(&self) -> Option<ComponentNode<B, C>> {
-        if let Some(inner) = self.inner.upgrade() {
-            Some(ComponentNode { inner })
-        } else {
-            None
-        }
-    }
-}
-
-impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateSchedulerWeak
-    for ComponentNodeWeak<B, C>
-{
-    type EnterType = C;
-
-    #[inline]
-    fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>> {
-        if let Some(this) = self.upgrade() {
-            Some(Rc::new(this))
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    fn to_owner_weak(&self) -> Box<dyn OwnerWeak> {
-        Box::new(Self {
-            inner: self.inner.clone(),
-        })
-    }
-}
-
-impl<B: Backend, C: ComponentTemplate<B> + Component> OwnerWeak for ComponentNodeWeak<B, C> {
-    fn apply_updates(&self) -> Result<(), Error> {
-        if let Some(x) = self.upgrade_scheduler() {
-            x.sync_update()?;
-        }
-        Ok(())
-    }
-
-    fn clone_owner_weak(&self) -> Box<dyn OwnerWeak> {
-        Box::new(Self {
-            inner: self.inner.clone(),
-        })
-    }
-}
-
-impl<B: Backend, C: ComponentTemplate<B> + Component> SupportBackend<B> for C {
-    type Target = ComponentNode<B, C>;
-}
-
-impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for ComponentNode<B, C> {
+impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for ComponentNode<C> {
     type SlotData = <C as ComponentTemplate<B>>::SlotData;
     type UpdateTarget = C;
     type UpdateContext = bool;
@@ -615,16 +630,14 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         Self: Sized,
     {
         let backend_element = B::GeneralElement::create_virtual_element(owner)?;
-        let this = ComponentNode {
-            inner: Rc::new(ComponentNodeInner {
-                c: RefCell::new(<C as Component>::new()),
-                backend_context: backend_context.clone(),
-                forest_node_rc: backend_element.clone(),
-                owner_weak: owner_weak.clone_owner_weak(),
-            }),
-        };
+        let this = ComponentNode::new(
+            <C as Component>::new(),
+            backend_context.clone(),
+            backend_element.clone(),
+            owner_weak.clone_owner_weak(),
+        );
         let init = TemplateInit {
-            updater: ComponentWeak::new(Rc::new(this.downgrade())),
+            updater: this.rc.downgrade(),
         };
         {
             let mut comp = this.component().borrow_mut();
@@ -646,7 +659,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
         if let Ok(mut comp) = self.component().try_borrow_mut() {
-            let mut backend_element = owner.borrow_mut(&self.backend_element());
+            let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
             let mut force_dirty = false;
             update_fn(&mut comp, &mut force_dirty);
             <C as Component>::before_template_apply(&mut comp);
@@ -684,7 +697,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             update_fn(&mut comp, &mut force_dirty);
             if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
                 // if any data changed, do updates
-                let mut backend_element = owner.borrow_mut(&self.backend_element());
+                let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
                 <C as Component>::before_template_apply(&mut comp);
                 <C as ComponentTemplate<B>>::template_update(
                     &mut comp,
@@ -736,7 +749,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     Ok(())
                 } else {
                     // if nothing changed, just return the slots
-                    let mut backend_element = owner.borrow_mut(&self.backend_element());
+                    let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
                     <C as ComponentTemplate<B>>::for_each_slot_scope(
                         &mut comp,
                         &mut backend_element,

@@ -21,14 +21,14 @@ pub(super) struct Template {
 }
 
 impl Template {
-    pub(super) fn gen_type(&self, backend_param: &TokenStream, md: &MacroDelimiter) -> Type {
+    pub(super) fn gen_type(&self, md: &MacroDelimiter) -> Type {
         let Self { children } = self;
         let span = match md {
             MacroDelimiter::Paren(x) => x.span,
             MacroDelimiter::Brace(x) => x.span,
             MacroDelimiter::Bracket(x) => x.span,
         };
-        let children = children.iter().map(|c| c.gen_type(backend_param));
+        let children = children.iter().map(|c| c.gen_type());
         parse_quote_spanned!(span=> (#(#children,)*) )
     }
 
@@ -125,7 +125,7 @@ pub(super) struct TemplateMatchArm {
     comma: Option<token::Comma>,
 }
 impl TemplateNode {
-    fn gen_type(&self, backend_param: &TokenStream) -> Type {
+    fn gen_type(&self) -> Type {
         match self {
             Self::StaticText { content } => {
                 let span = content.span();
@@ -143,14 +143,14 @@ impl TemplateNode {
                 tag_name, children, ..
             } => {
                 let span = tag_name.span();
-                let children = children.iter().map(|c| c.gen_type(backend_param));
-                parse_quote_spanned!(span=> maomi::node::Node<#backend_param, #tag_name, (#(#children,)*)> )
+                let children = children.iter().map(|c| c.gen_type());
+                parse_quote_spanned!(span=> maomi::node::Node<#tag_name, (#(#children,)*)> )
             }
             Self::IfElse { branches } => {
                 let branch_ty = get_branch_ty(branches.len());
                 let branches = branches.iter().map(|x| {
                     let span = x.brace_token.span;
-                    let children = x.children.iter().map(|c| c.gen_type(backend_param));
+                    let children = x.children.iter().map(|c| c.gen_type());
                     quote_spanned!(span=> (#(#children,)*) )
                 });
                 parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
@@ -159,7 +159,7 @@ impl TemplateNode {
                 let branch_ty = get_branch_ty(arms.len());
                 let branches = arms.iter().map(|x| {
                     let span = x.brace_token.span;
-                    let children = x.children.iter().map(|c| c.gen_type(backend_param));
+                    let children = x.children.iter().map(|c| c.gen_type());
                     quote_spanned!(span=> (#(#children,)*) )
                 });
                 parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
@@ -171,7 +171,7 @@ impl TemplateNode {
                 ..
             } => {
                 let span = brace_token.span;
-                let children = children.iter().map(|c| c.gen_type(backend_param));
+                let children = children.iter().map(|c| c.gen_type());
                 let ty = if let Some((_, _, _, key_ty)) = key.as_ref() {
                     quote!(maomi::diff::key::KeyList<#key_ty, (#(#children,)*)>)
                 } else {
@@ -773,13 +773,13 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 };
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
-                        <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
+                        <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
                             __m_self_owner_weak,
                         )?;
                     let mut __m_slot_children = maomi::node::SlotChildren::None;
-                    <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
+                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
                         &mut __m_child,
                         __m_backend_context,
                         __m_parent_element,
@@ -1055,13 +1055,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_children.#child_index;
-                    <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
+                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
                         #[inline] |
-                            __m_child: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
-                            __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend<#backend_param>>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
+                            __m_child: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
+                            __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
                         | {
                             #(#attrs)*
                         },

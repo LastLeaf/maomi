@@ -223,7 +223,7 @@ pub trait BackendComponent<B: Backend> {
 /// 
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
-pub trait SupportBackend<B: Backend> {
+pub trait SupportBackend {
     /// The converted `BackendComponent` type.
-    type Target: BackendComponent<B>;
+    type Target;
 }

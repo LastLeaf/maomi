@@ -1,24 +1,29 @@
+//! The translated string types, used in i18n.
+
 use std::{fmt::Display, ops::Deref};
 
-/// Marker for a type that is i18n friendly
+/// Marker for a type that is i18n friendly.
 ///
 /// When i18n support is enabled,
 /// only types which implemented this trait can be used in text node.
 pub trait ToLocaleStr {
+    /// Get the translated text.
     fn to_locale_str(&self) -> &str;
 }
 
-/// A translated static str
+/// A translated static str.
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub struct LocaleStaticStr(&'static str);
 
 impl LocaleStaticStr {
-    /// Wraps a translated str
+    /// Wraps a translated str.
+    /// 
+    /// Make sure the string is translated!
     pub const fn translated(s: &'static str) -> Self {
         Self(s)
     }
 
-    /// Convert to a `LocaleString`
+    /// Convert to a `LocaleString` .
     pub fn to_locale_string(&self) -> LocaleString {
         LocaleString(self.0.to_string())
     }
@@ -36,12 +41,14 @@ impl Display for LocaleStaticStr {
     }
 }
 
-/// A translated string
+/// A translated string.
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct LocaleString(String);
 
 impl LocaleString {
-    /// Wraps a translated string
+    /// Wraps a translated string.
+    /// 
+    /// Make sure the string is translated!
     pub fn translated(s: impl ToString) -> Self {
         Self(s.to_string())
     }

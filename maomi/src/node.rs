@@ -1,7 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
 use crate::{
-    backend::{tree, Backend, SupportBackend},
+    backend::{tree, SupportBackend},
     error::Error,
 };
 use tree::ForestTokenAddr;
@@ -14,12 +14,12 @@ pub trait OwnerWeak {
 
 /// A helper type for a node with child nodes
 #[derive(Debug)]
-pub struct Node<B: Backend, N: SupportBackend<B>, C> {
+pub struct Node<N: SupportBackend, C> {
     pub tag: N::Target,
     pub child_nodes: SlotChildren<ForestTokenAddr, C>,
 }
 
-impl<B: Backend, N: SupportBackend<B>, C> Node<B, N, C> {
+impl<N: SupportBackend, C> Node<N, C> {
     #[inline(always)]
     pub fn new(tag: N::Target, child_nodes: SlotChildren<ForestTokenAddr, C>) -> Self {
         Self { tag, child_nodes }

@@ -21,7 +21,7 @@ impl OwnerWeak for DanglingOwner {
 ///
 /// A mount point can be created in a `BackendContext` .
 pub struct MountPoint<B: Backend, C: Component + ComponentTemplate<B> + 'static> {
-    component_node: ComponentNode<B, C>,
+    component_node: ComponentNode<C>,
     backend_element: tree::ForestNodeRc<B::GeneralElement>,
 }
 
@@ -33,12 +33,12 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     ) -> Result<Self, Error> {
         let owner_weak: Box<dyn OwnerWeak> = Box::new(DanglingOwner());
         let (mut component_node, backend_element) =
-            <ComponentNode<B, C> as BackendComponent<B>>::init(
+            <ComponentNode<C> as BackendComponent<B>>::init(
                 backend_context,
                 parent,
                 &owner_weak,
             )?;
-        <ComponentNode<B, C> as BackendComponent<B>>::create(
+        <ComponentNode<C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,
             parent,
@@ -59,7 +59,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     }
 
     /// Get the root component
-    pub fn root_component(&self) -> &ComponentNode<B, C> {
+    pub fn root_component(&self) -> &ComponentNode<C> {
         &self.component_node
     }
 

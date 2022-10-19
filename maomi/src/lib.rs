@@ -25,7 +25,6 @@ pub mod prop;
 pub mod template;
 /// Helper types for text nodes.
 pub mod text_node;
-/// The translated string types, used in i18n.
 pub mod locale_string;
 #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 pub use backend::context::PrerenderingData;
