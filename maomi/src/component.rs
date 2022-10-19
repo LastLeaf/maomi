@@ -1,3 +1,21 @@
+//! The component interface.
+//! 
+//! Pages are composed by components.
+//! This module contains basic types about components.
+//! 
+//! A component should implement two traits:
+//! * the `ComponentTemplate` trait is usually auto-implemented by `#[component]` (no need to implement manually);
+//! * the `Component` trait should be implemented manually.
+//! 
+//! When a component should be created,
+//! the framework calls the `Component::new` function and owns the created component.
+//! It is not possible to get the ownership of it,
+//! but a `ComponentRc` can be obtained.
+//! 
+//! `ComponentRc` is a ref-counted token of the component.
+//! The component can be visited through functions like `ComponentRc::task` and `ComponentRc::update` .
+//! 
+
 use async_trait::async_trait;
 use std::{
     cell::{Cell, RefCell},
@@ -16,7 +34,7 @@ use crate::{
     BackendContext,
 };
 
-/// A ref-counted token of a component
+/// A ref-counted token of a component.
 pub struct ComponentRc<C: 'static> {
     inner: Rc<dyn UpdateScheduler<EnterType = C>>,
     _phantom: PhantomData<C>,
@@ -39,11 +57,11 @@ impl<C: 'static> ComponentRc<C> {
         }
     }
 
-    /// Schedule an update in another task, getting the component mutable reference
+    /// Schedule an update in another task, getting the component mutable reference.
     ///
     /// The `f` will be called asynchously.
     /// The template is always updated after `f` being called.
-    /// Panics if any error accurred during update.
+    /// Panics if any error occurred during update.
     pub fn task<R: 'static>(
         &self,
         f: impl 'static + FnOnce(&mut C) -> R,
@@ -55,11 +73,11 @@ impl<C: 'static> ComponentRc<C> {
             }));
     }
 
-    /// Schedule an update in another task, getting the component mutable reference
+    /// Schedule an update in another task, getting the component mutable reference.
     ///
     /// The `f` will be called asynchously.
     /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
-    /// Panics if any error accurred during update.
+    /// Panics if any error occurred during update.
     pub fn task_with<R: 'static>(
         &self,
         f: impl 'static + FnOnce(&mut C, &mut ComponentMutCtx) -> R,
@@ -72,7 +90,7 @@ impl<C: 'static> ComponentRc<C> {
             }));
     }
 
-    /// Schedule an update, getting the component mutable reference
+    /// Schedule an update, getting the component mutable reference.
     ///
     /// The `f` will be called asynchously.
     /// The template is always updated after `f` being called.
@@ -96,7 +114,7 @@ impl<C: 'static> ComponentRc<C> {
             .unwrap())
     }
 
-    /// Schedule a visiting task, getting the component mutable reference
+    /// Schedule a visiting task, getting the component mutable reference.
     ///
     /// The `f` will be called asynchously.
     /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
@@ -121,7 +139,7 @@ impl<C: 'static> ComponentRc<C> {
             .unwrap())
     }
 
-    /// Schedule a visiting task, getting the component reference
+    /// Schedule a visiting task, getting the component reference.
     ///
     /// The `f` will be called asynchously.
     pub async fn get<R: 'static>(&self, f: impl 'static + FnOnce(&C) -> R) -> R {
@@ -141,7 +159,10 @@ impl<C: 'static> ComponentRc<C> {
     }
 }
 
-/// A weak ref-counted token of a component
+/// A weak ref-counted token of a component.
+/// 
+/// This is the weak version of `ComponentRc` ,
+/// which does not prevent the component from dropped.
 pub struct ComponentWeak<C> {
     inner: Rc<dyn UpdateSchedulerWeak<EnterType = C>>,
     _phantom: PhantomData<C>,
@@ -182,55 +203,68 @@ impl<C: 'static> ComponentWeak<C> {
     }
 }
 
-/// A helper for `ComponentRc::get_mut`
+/// A helper for `ComponentRc::task_with` or `ComponentRc::update_with` .
 pub struct ComponentMutCtx {
     need_update: bool,
 }
 
 impl ComponentMutCtx {
-    /// Request an update when the `ComponentRc::get_mut` call ends
+    /// Schedule an update when the `ComponentRc::task_with` or `ComponentRc::update_with` call ends
     pub fn need_update(&mut self) {
         self.need_update = true;
     }
 }
 
-/// A component
+/// A component.
 ///
 /// This trait must be implemented by components.
 /// It contains some lifetime callbacks.
 pub trait Component: 'static {
-    /// Called when a new instance requested
+    /// Called when a new component need to be created.
+    /// 
+    /// This function will be called once when a new instance is needed.
     fn new() -> Self;
 
-    /// Called after fully created
+    /// Called after the component is fully created.
+    /// 
+    /// This function can be used to do some async startup tasks,
+    /// such as network requests.
     fn created(&self) {}
 
-    /// Called before every template updates
+    /// Called before every template updates.
+    /// 
+    /// This function can be used to update some cache that used in the template.
     fn before_template_apply(&mut self) {}
 }
 
-/// Some component helper functions
+/// Some component utility functions.
 ///
 /// This trait is auto-implemented by `#[component]` .
 #[async_trait(?Send)]
 pub trait ComponentExt<B: Backend, C> {
+    /// The type of template structure.
     type TemplateStructure;
 
-    /// Get a template structure
+    /// Get the template structure.
     ///
     /// The components in the template can be visited within the structure.
     /// If the component has not been fully created yet, `None` is returned.
     fn template_structure(&self) -> Option<&Self::TemplateStructure>;
 
-    /// Manually trigger an update for the template
+    /// Manually trigger an update for the template.
+    /// 
+    /// In most cases, you should not call this function manually.
+    /// Use `ComponentRc::task` or `ComponentRc::update` instead.
     async fn apply_updates(&mut self) -> Result<(), Error>
     where
         C: 'static,
         Self: 'static;
 
-    /// Get a mutable reference of the component and then do updates
+    /// Get a mutable reference of the component and then do updates.
     ///
     /// It is a short cut for `.rc().update()`
+    /// In most cases, you should not call this function manually.
+    /// Use `ComponentRc::task` or `ComponentRc::update` instead.
     async fn update<R>(
         &self,
         f: impl 'static + for<'r> FnOnce(&'r mut Self) -> R,
@@ -240,7 +274,7 @@ pub trait ComponentExt<B: Backend, C> {
         C: 'static,
         Self: 'static;
 
-    /// Get a ref-counted token `ComponentRc` for the component
+    /// Get a ref-counted token `ComponentRc` for the component.
     ///
     /// The `ComponentRc` can move across async steps.
     /// It is useful for doing updates after async steps such as network requests.
@@ -249,7 +283,7 @@ pub trait ComponentExt<B: Backend, C> {
         C: 'static,
         Self: 'static;
 
-    /// Get a ref-counted token `ComponentWeak` for the component
+    /// Get a ref-counted token `ComponentWeak` for the component.
     ///
     /// Similar to `ComponentRc` , the `ComponentWeak` can move across async steps.
     /// It is a weak ref which does not prevent dropping the component.
@@ -288,6 +322,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
         <Self as ComponentExt<B, Self>>::rc(self).update(f).await
     }
 
+    // TODO should improve interface (currently this requires B to be specific)
     #[inline]
     fn rc(&self) -> ComponentRc<Self>
     where
@@ -317,10 +352,12 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
 #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 #[async_trait]
 pub trait PrerenderableComponent: Component {
+    /// The type of the query data.
     type QueryData;
+    /// The type of the prerendering generated data.
     type PrerenderingData;
 
-    /// Generate the prerendering data
+    /// Generate the prerendering data.
     ///
     /// This function accepts `QueryData` which represents some startup state,
     /// i.e. the URL params or the POST data.
@@ -330,7 +367,7 @@ pub trait PrerenderableComponent: Component {
     /// This also requires the `PrerenderingData` to be transferable.
     async fn prerendering_data(query_data: &Self::QueryData) -> Self::PrerenderingData;
 
-    /// Apply the prerendering data
+    /// Apply the prerendering data.
     ///
     /// This function will be called
     /// both in prerendering process (server-side) and in prerendering-apply process (client-side).
@@ -358,7 +395,7 @@ pub(crate) trait UpdateSchedulerWeak: 'static {
     fn to_owner_weak(&self) -> Box<dyn OwnerWeak>;
 }
 
-/// A node that wraps a component instance
+/// A node that wraps a component instance.
 pub struct ComponentNode<B: Backend, C: ComponentTemplate<B> + Component> {
     inner: Rc<ComponentNodeInner<B, C>>,
 }
@@ -391,7 +428,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
         &self.inner.forest_node_rc
     }
 
-    /// Get a ref-counted token `ComponentRc` for the component
+    /// Get a ref-counted token `ComponentRc` for the component.
     ///
     /// The `ComponentRc` can move across async steps.
     /// It is useful for doing updates after async steps such as network requests.
@@ -401,7 +438,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
         ComponentRc::new(component)
     }
 
-    /// Get a ref-counted token `ComponentWeak` for the component
+    /// Get a ref-counted token `ComponentWeak` for the component.
     ///
     /// Similar to `ComponentRc` , the `ComponentWeak` can move across async steps.
     /// It is a weak ref which does not prevent dropping the component.
@@ -411,7 +448,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNode<B, C> {
         ComponentWeak::new(component)
     }
 
-    /// Get a weak reference
+    /// Get a weak reference.
     #[inline]
     pub fn downgrade(&self) -> ComponentNodeWeak<B, C> {
         ComponentNodeWeak {

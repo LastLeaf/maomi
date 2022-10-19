@@ -5,19 +5,15 @@
 //! 
 //! This is the *core* module of the framework.
 //! In browsers, the `maomi-dom` crate is also needed.
-//! See the [`maomi_dom`](../maomi-dom) crate document for quick start.
+//! See the [`maomi_dom`](../maomi_dom) crate document for quick start.
 //! 
 
 #![warn(missing_docs)]
 
 pub mod backend;
-/// The component interface for building pages.
 pub mod component;
-/// The diff algorithm utilities.
 pub mod diff;
-/// The utilities for error handling.
 pub mod error;
-/// The events that can be triggered by components.
 pub mod event;
 /// The mount point containing the root of the page.
 pub mod mount_point;

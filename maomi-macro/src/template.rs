@@ -173,9 +173,9 @@ impl TemplateNode {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type(backend_param));
                 let ty = if let Some((_, _, _, key_ty)) = key.as_ref() {
-                    quote!(maomi::diff::key::KeyList<#backend_param, #key_ty, (#(#children,)*)>)
+                    quote!(maomi::diff::key::KeyList<#key_ty, (#(#children,)*)>)
                 } else {
-                    quote!(maomi::diff::keyless::KeylessList<#backend_param, (#(#children,)*)>)
+                    quote!(maomi::diff::keyless::KeylessList<(#(#children,)*)>)
                 };
                 parse_quote_spanned!(span=> maomi::node::ControlNode<#ty> )
             }
@@ -868,12 +868,12 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                 let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
                     (
-                        quote!(maomi::diff::key::KeyList::<#backend_param, #key_ty, _>),
+                        quote!(maomi::diff::key::KeyList::<#key_ty, _>),
                         quote!(#key_expr,),
                     )
                 } else {
                     (
-                        quote!(maomi::diff::keyless::KeylessList::<#backend_param, _>),
+                        quote!(maomi::diff::keyless::KeylessList::<_>),
                         quote!(),
                     )
                 };
@@ -886,7 +886,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_list_diff_algo = {
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                        let mut __m_list_update_iter = #algo::list_diff_new(
+                        let mut __m_list_update_iter = #algo::list_diff_new::<#backend_param>(
                             __m_parent_element,
                             __m_size_hint,
                         );
@@ -1221,7 +1221,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         let size_hint = std::iter::Iterator::size_hint(&__m_list);
                         size_hint.1.unwrap_or(size_hint.0)
                     };
-                    let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update(
+                    let mut __m_list_update_iter = __m_list_diff_algo.list_diff_update::<#backend_param>(
                         __m_parent_element,
                         __m_size_hint,
                     );

@@ -1,17 +1,25 @@
+//! The keyless list algorithm module.
+//! 
+//! This is one of the list compare algorithm.
+//! See [diff](../) module documentation for details.
+//! 
+
 use std::marker::PhantomData;
 
 use super::*;
 use crate::backend::BackendGeneralElement;
 
-/// The repeated list which will be updated through the keyless-list-update algorithm
-pub struct KeylessList<B: Backend, C> {
+/// The repeated list storing the list state.
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub struct KeylessList<C> {
     list: Vec<(C, ForestToken)>,
-    _phantom: PhantomData<B>,
 }
 
-impl<B: Backend, C> KeylessList<B, C> {
+impl<C> KeylessList<C> {
     #[doc(hidden)]
-    pub fn list_diff_new<'a, 'b>(
+    pub fn list_diff_new<'a, 'b, B: Backend>(
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
     ) -> ListKeylessAlgoNew<'a, 'b, B, C> {
@@ -23,7 +31,7 @@ impl<B: Backend, C> KeylessList<B, C> {
     }
 
     #[doc(hidden)]
-    pub fn list_diff_update<'a, 'b>(
+    pub fn list_diff_update<'a, 'b, B: Backend>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
@@ -66,10 +74,9 @@ impl<'a, 'b, B: Backend, C> ListKeylessAlgoNew<'a, 'b, B, C> {
     }
 
     #[doc(hidden)]
-    pub fn end(self) -> KeylessList<B, C> {
+    pub fn end(self) -> KeylessList<C> {
         KeylessList {
             list: self.list,
-            _phantom: PhantomData,
         }
     }
 }
@@ -141,7 +148,7 @@ impl<'a, C> Iterator for KeylessListIter<'a, C> {
     }
 }
 
-impl<'a, B: Backend, C> IntoIterator for &'a KeylessList<B, C> {
+impl<'a, C> IntoIterator for &'a KeylessList<C> {
     type Item = &'a C;
     type IntoIter = KeylessListIter<'a, C>;
 

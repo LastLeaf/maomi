@@ -1,14 +1,24 @@
+//! The key list-update algorithm module.
+//! 
+//! This is one of the list compare algorithm.
+//! See [diff](../) module documentation for details.
+
 use std::{borrow::Borrow, collections::HashMap, hash::Hash, marker::PhantomData};
 
 use super::*;
 use crate::backend::BackendGeneralElement;
 
-/// Generate the key for list items
+/// Indicate the type contains a list key.
 ///
-/// The key will be used in the key-list-update algorithm.
+/// The key will be used in the list-update algorithm.
 pub trait AsListKey {
+    /// The list key type.
+    /// 
+    /// This type must implement `Eq` and `Hash` for comparison between keys.
+    /// Usually, `usize` or `str` is a good option.
     type ListKey: Eq + Hash + ToOwned + ?Sized;
 
+    /// Returns the list key.
     fn as_list_key(&self) -> &Self::ListKey;
 }
 
@@ -20,15 +30,17 @@ impl<T: AsListKey> AsListKey for &'_ T {
     }
 }
 
-/// The repeated list which will be updated through the key-list-update algorithm
-pub struct KeyList<B: Backend, K: Eq + Hash, C> {
+/// The repeated list storing the list and key state.
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub struct KeyList<K: Eq + Hash, C> {
     map: HashMap<K, (usize, C, ForestToken)>,
-    _phantom: PhantomData<B>,
 }
 
-impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
+impl<K: Eq + Hash, C> KeyList<K, C> {
     #[doc(hidden)]
-    pub fn list_diff_new<'a, 'b>(
+    pub fn list_diff_new<'a, 'b, B: Backend>(
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
     ) -> ListKeyAlgoNew<'a, 'b, B, K, C> {
@@ -41,7 +53,7 @@ impl<B: Backend, K: Eq + Hash, C> KeyList<B, K, C> {
     }
 
     #[doc(hidden)]
-    pub fn list_diff_update<'a, 'b>(
+    pub fn list_diff_update<'a, 'b, B: Backend>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
@@ -102,10 +114,9 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoNew<'a, 'b, B, K, C> {
     }
 
     #[doc(hidden)]
-    pub fn end(self) -> KeyList<B, K, C> {
+    pub fn end(self) -> KeyList<K, C> {
         KeyList {
             map: self.map,
-            _phantom: PhantomData,
         }
     }
 }
@@ -278,7 +289,7 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
     }
 }
 
-/// The iterator for a `KeyList`
+/// The iterator for a `KeyList` .
 pub struct KeyListIter<'a, C> {
     children: std::vec::IntoIter<Option<&'a C>>,
 }
@@ -295,7 +306,7 @@ impl<'a, C> Iterator for KeyListIter<'a, C> {
     }
 }
 
-impl<'a, B: Backend, K: Eq + Hash, C> IntoIterator for &'a KeyList<B, K, C> {
+impl<'a, K: Eq + Hash, C> IntoIterator for &'a KeyList<K, C> {
     type Item = &'a C;
     type IntoIter = KeyListIter<'a, C>;
 

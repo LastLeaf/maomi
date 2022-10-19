@@ -1,4 +1,46 @@
-/// The event handler setter
+//! The event handling utilities.
+//! 
+//! The event fields in components can be binded by component users,
+//! and triggered by the component itself.
+//! 
+//! ```rust
+//! use maomi::prelude::*;
+//! 
+//! #[component]
+//! struct MyComponent {
+//!     template: template! {
+//!         /* ... */
+//!     },
+//!     my_event: Event<usize>,
+//! }
+//! 
+//! impl Component for MyComponent {
+//!     fn new() -> Self {
+//!         Self {
+//!             template: Default::default(),
+//!             my_event: Event::new(),
+//!         }
+//!     }
+//! }
+//! 
+//! #[component]
+//! struct MyComponentUser {
+//!     template: template! {
+//!         <MyComponent my_event=@my_ev() />
+//!     },
+//! }
+//! 
+//! impl MyComponentUser {
+//!     fn my_ev(this: ComponentRc<Self>, detail: &mut usize) { /* ... */ }
+//! }
+//! ```
+//! 
+//! 
+
+/// The event handler setter.
+/// 
+/// This trait is implemented by `Event` .
+/// It can be triggered by 
 pub trait EventHandler<D: ?Sized> {
     /// Must be `bool` if used in components
     type UpdateContext;
@@ -11,7 +53,7 @@ pub trait EventHandler<D: ?Sized> {
     );
 }
 
-/// An event that can be triggered
+/// An event that can be binded and triggered
 pub struct Event<D: ?Sized> {
     handler: Option<Box<dyn 'static + Fn(&mut D)>>,
 }

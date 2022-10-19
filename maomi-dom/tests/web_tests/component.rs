@@ -6,6 +6,44 @@ use maomi_dom::{async_task, element::*, prelude::*};
 use super::*;
 
 #[wasm_bindgen_test]
+async fn use_without_backend() {
+    #[component]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {},
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+            }
+        }
+
+        fn created(&self) {
+            use maomi::template::TemplateHelper;
+            let this = self.template.component_rc().unwrap();
+            async_task(async move {
+                this.update_with(|this, _| {
+                    (this.callback.take().unwrap())();
+                })
+                .await
+                .unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
 async fn single_static_slot() {
     #[component(Backend = DomBackend)]
     struct Child {
