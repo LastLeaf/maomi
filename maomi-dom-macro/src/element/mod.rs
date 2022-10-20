@@ -4,6 +4,8 @@ use syn::*;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
+// TODO consider disable inline for optimize sizing
+
 fn add_global_attrs(
     fields: &mut Punctuated<Field, token::Comma>,
 ) {

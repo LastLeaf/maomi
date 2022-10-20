@@ -1,3 +1,5 @@
+//! Helper types for text nodes.
+
 use crate::{
     backend::{tree, Backend, BackendGeneralElement, BackendTextNode},
     error::Error, locale_string::ToLocaleStr,
@@ -9,7 +11,7 @@ pub struct TextNode {
 }
 
 impl TextNode {
-    #[doc(hidden)]
+    /// Create a text node.
     #[inline]
     pub fn create<B: Backend>(
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
@@ -25,7 +27,7 @@ impl TextNode {
         Ok((this, elem))
     }
 
-    #[doc(hidden)]
+    /// Get the backend element.
     #[inline]
     pub fn backend_element_rc<'b, B: Backend>(
         &'b mut self,
@@ -36,7 +38,7 @@ impl TextNode {
             .ok_or(Error::TreeNodeReleased)
     }
 
-    #[doc(hidden)]
+    /// Set the text content.
     #[inline]
     pub fn set_text<B: Backend>(
         &mut self,

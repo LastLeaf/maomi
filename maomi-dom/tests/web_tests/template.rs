@@ -790,3 +790,71 @@ async fn event_handler() {
 
     test_component::<Parent>().await;
 }
+
+#[wasm_bindgen_test]
+async fn list_prop() {
+    use maomi::prop::ListProp;
+
+    #[component(Backend = DomBackend)]
+    struct Child {
+        template: template! {
+            for item in &self.my_list_prop {
+                <div> { item } </div>
+            }
+        },
+        my_list_prop: ListProp<String>,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                my_list_prop: ListProp::new(),
+            }
+        }
+    }
+
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                <Child my_list_prop:String="abc" my_list_prop:String="def" />
+                <Child my_list_prop=&{ ["ghi".to_string()] } />
+            </div>
+        },
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            this.task_with(|this, _| {
+                assert_eq!(
+                    this.template_structure()
+                        .unwrap()
+                        .0
+                        .tag
+                        .dom_element()
+                        .inner_html(),
+                    r#"<div>abc</div><div>def</div><div>ghi</div>"#,
+                );
+                (this.callback.take().unwrap())();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}

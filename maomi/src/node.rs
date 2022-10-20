@@ -1,3 +1,5 @@
+//! Helper types for node trees.
+
 use std::{collections::HashMap, hash::Hash};
 
 use crate::{
@@ -6,46 +8,60 @@ use crate::{
 };
 use tree::ForestTokenAddr;
 
-/// A weak ref to the owner
+/// A weak ref to the owner.
+/// 
+/// This is used by the backend implementor.
+/// *In most cases, it should not be used in component implementors.*
 pub trait OwnerWeak {
+    /// Schedule an update on the owner.
     fn apply_updates(&self) -> Result<(), Error>;
+    /// Clone the owner itself.
     fn clone_owner_weak(&self) -> Box<dyn OwnerWeak>;
 }
 
-/// A helper type for a node with child nodes
+/// A helper type for a node with child nodes.
 #[derive(Debug)]
 pub struct Node<N: SupportBackend, C> {
+    /// The node itself.
     pub tag: N::Target,
+    /// The child nodes of the node.
     pub child_nodes: SlotChildren<ForestTokenAddr, C>,
 }
 
 impl<N: SupportBackend, C> Node<N, C> {
+    /// Create a node with specified children.
     #[inline(always)]
     pub fn new(tag: N::Target, child_nodes: SlotChildren<ForestTokenAddr, C>) -> Self {
         Self { tag, child_nodes }
     }
 
-    /// Iterator over slots of the node
+    /// Iterator over slots of the node.
     #[inline]
     pub fn iter_slots(&self) -> SlotChildrenIter<ForestTokenAddr, C> {
         self.child_nodes.iter()
     }
 
-    /// If the node has only one slot, returns it
+    /// If the node has only one slot, returns it.
     #[inline]
     pub fn single_slot(&self) -> Option<&C> {
         self.child_nodes.single_slot()
     }
 }
 
-/// A helper type for control flow node such as "if" node
+/// A helper type for control flow node such as "if" node and "for" node.
 #[derive(Debug)]
 pub struct ControlNode<C> {
+    /// The backend node token
+    /// 
+    /// It is auto-managed by the `#[component]` .
+    /// Do not touch unless you know how it works exactly.
     pub forest_token: tree::ForestToken,
+    /// The content nodes of the control node.
     pub content: C,
 }
 
 impl<C> ControlNode<C> {
+    /// Create a control node.
     #[inline(always)]
     pub fn new(forest_token: tree::ForestToken, content: C) -> Self {
         Self {
@@ -57,10 +73,13 @@ impl<C> ControlNode<C> {
 
 macro_rules! gen_branch_node {
     ($t: ident, $($n: ident),*) => {
-        /// A helper type for "if" and "match" node
+        /// A helper type for "if" and "match" node.
         #[derive(Debug, Clone, PartialEq)]
         pub enum $t<$($n),*> {
-            $($n($n),)*
+            $(
+                /// A branch in "if...else" or "match" node.
+                $n($n),
+            )*
         }
     };
 }
@@ -81,12 +100,18 @@ gen_branch_node!(Branch14, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12
 gen_branch_node!(Branch15, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14);
 gen_branch_node!(Branch16, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15);
 
-/// A helper type for store slot children
+/// A helper type for store slot children.
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
 // Since rust GAT is not stable yet, we cannot make it a trait - use enum instead
 #[derive(Debug)]
 pub enum SlotChildren<K: Hash + Eq, C> {
+    /// There is no children.
     None,
+    /// There is only one child.
     Single(K, C),
+    /// There are multiple children.
     Multiple(HashMap<K, C>),
 }
 
@@ -174,13 +199,13 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         }
     }
 
-    /// Iterator over slots
+    /// Iterator over slots.
     #[inline]
     pub fn iter(&self) -> SlotChildrenIter<K, C> {
         (&self).into_iter()
     }
 
-    /// If there is only one slot, returns it
+    /// If there is only one slot, returns it.
     #[inline]
     pub fn single_slot(&self) -> Option<&C> {
         match self {
@@ -207,9 +232,16 @@ impl<'a, K: Hash + Eq, C> IntoIterator for &'a SlotChildren<K, C> {
     }
 }
 
+/// The iterator of `SlotChildren` .
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
 pub enum SlotChildrenIter<'a, K: Hash + Eq, C> {
+    /// There is no children.
     None,
+    /// There is only one child.
     Single(&'a K, &'a C),
+    /// There are multiple children.
     Multiple(std::collections::hash_map::Iter<'a, K, C>),
 }
 
@@ -318,11 +350,18 @@ impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
 }
 
 /// A helper type for slot changes
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
 // Since rust GAT is not stable yet, we cannot make it a trait - use enum instead
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlotChange<N, M, T> {
+    /// The slot is not changed.
     Unchanged(N, M, T),
+    /// The data of the slot may have changed.
     DataChanged(N, M, T),
+    /// The slot is added.
     Added(N, M, T),
+    /// The slot is removed.
     Removed(M),
 }

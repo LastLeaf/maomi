@@ -559,58 +559,6 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
     }
 }
 
-// /// A node that wraps a component instance
-// pub struct ComponentNodeWeak<C: Component> {
-//     inner: Weak<ComponentNodeInner<C>>,
-// }
-
-// impl<C: Component> ComponentNodeWeak<C> {
-//     /// Upgrade to a strong reference
-//     #[inline]
-//     pub fn upgrade(&self) -> Option<ComponentNode<C>> {
-//         if let Some(inner) = self.inner.upgrade() {
-//             Some(ComponentNode { inner })
-//         } else {
-//             None
-//         }
-//     }
-// }
-
-// impl<C: Component> UpdateSchedulerWeak for ComponentNodeWeak<C> {
-//     type EnterType = C;
-
-//     #[inline]
-//     fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>> {
-//         if let Some(this) = self.upgrade() {
-//             Some(Rc::new(this))
-//         } else {
-//             None
-//         }
-//     }
-
-//     #[inline]
-//     fn to_owner_weak(&self) -> Box<dyn OwnerWeak> {
-//         Box::new(Self {
-//             inner: self.inner.clone(),
-//         })
-//     }
-// }
-
-// impl<C: Component> OwnerWeak for ComponentNodeWeak<C> {
-//     fn apply_updates(&self) -> Result<(), Error> {
-//         if let Some(x) = self.upgrade_scheduler() {
-//             x.sync_update()?;
-//         }
-//         Ok(())
-//     }
-
-//     fn clone_owner_weak(&self) -> Box<dyn OwnerWeak> {
-//         Box::new(Self {
-//             inner: self.inner.clone(),
-//         })
-//     }
-// }
-
 impl<C: Component> SupportBackend for C {
     type Target = ComponentNode<C>;
 }

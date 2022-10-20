@@ -1,3 +1,7 @@
+//! Utilities for template management.
+//! 
+//! Most utilities in this module is used by `#[component]` .
+
 use crate::{
     backend::{tree::*, Backend},
     component::*,
@@ -7,42 +11,65 @@ use crate::{
     BackendContext,
 };
 
-/// An init object for the template
+/// An init object for the template.
 ///
-/// This struct is auto-managed by `#[component]` .
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
 pub struct TemplateInit<C> {
     pub(crate) updater: ComponentWeak<C>,
 }
 
-/// Some helper functions for the template type
-///
-/// This struct is auto-managed by `#[component]` and should not be called directly.
+/// Some helper functions for the template type.
 pub trait TemplateHelper<C: ?Sized, S, D>: Default {
+    /// Mark the template that update is needed.
+    ///
+    /// It is auto-managed by the `#[component]` .
+    /// Do not touch unless you know how it works exactly.
     fn mark_dirty(&mut self)
     where
         C: 'static;
+
+    /// Clear the mark.
+    ///
+    /// It is auto-managed by the `#[component]` .
+    /// Do not touch unless you know how it works exactly.
     fn clear_dirty(&mut self) -> bool
     where
         C: 'static;
+
+    /// Returns whether the template has been initialized.
     fn is_initialized(&self) -> bool;
+
+    /// Get the template inner node tree.
     fn structure(&self) -> Option<&S>;
+
+    /// Get the corresponding `ComponentRc` .
     fn component_rc(&self) -> Result<ComponentRc<C>, Error>
     where
         C: 'static + Sized;
+
+    /// Get the corresponding `ComponentWeak` .
     fn component_weak(&self) -> Result<ComponentWeak<C>, Error>
     where
         C: 'static + Sized;
+
+    #[doc(hidden)]
     fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)>;
+
+    #[doc(hidden)]
     fn pending_slot_changes(
         &mut self,
         new_changes: Vec<SlotChange<(), ForestToken, ()>>,
     ) -> Vec<SlotChange<(), ForestToken, ()>>;
+
+    /// Get the `OwnerWeak` of the current component.
     fn self_owner_weak(&self) -> &Box<dyn OwnerWeak>;
 }
 
-/// The template type
+/// The template type.
 ///
-/// This struct is auto-managed by `#[component]` .
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
 pub struct Template<C, S, D> {
     #[doc(hidden)]
     pub __m_self_owner_weak: Option<Box<dyn OwnerWeak>>,
@@ -70,6 +97,7 @@ impl<C, S, D> Default for Template<C, S, D> {
 }
 
 impl<C: 'static, S, D> Template<C, S, D> {
+    #[doc(hidden)]
     #[inline]
     pub fn init(&mut self, init: TemplateInit<C>) {
         self.__m_self_owner_weak = Some(init.updater.to_owner_weak());
@@ -153,24 +181,28 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
 
 /// A component template
 ///
-/// It is auto-implemented by `#[component]` .
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
 pub trait ComponentTemplate<B: Backend> {
+    /// The type of the template field.
     type TemplateField: TemplateHelper<Self, Self::TemplateStructure, Self::SlotData>;
+    /// The type of the template inner structure.
     type TemplateStructure;
+    /// The type of the slot data, specified through `#[component(SlotData = ...)]`.
     type SlotData: 'static;
 
-    /// Get a reference of the template field of the component
+    /// Get a reference of the template field of the component.
     fn template(&self) -> &Self::TemplateField;
 
-    /// Get a mutable reference of the template field of the component
+    /// Get a mutable reference of the template field of the component.
     fn template_mut(&mut self) -> &mut Self::TemplateField;
 
-    /// Init a template
+    /// Initialize a template.
     fn template_init(&mut self, init: TemplateInit<Self>)
     where
         Self: Sized;
 
-    /// Create a component within the specified shadow root
+    /// Create a component within the specified shadow root.
     fn template_create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
@@ -184,7 +216,7 @@ pub trait ComponentTemplate<B: Backend> {
     where
         Self: Sized;
 
-    /// Update a component
+    /// Update a component.
     fn template_update<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
@@ -196,7 +228,7 @@ pub trait ComponentTemplate<B: Backend> {
     where
         Self: Sized;
 
-    /// Update a component and store the slot changes
+    /// Update a component and store the slot changes.
     #[inline]
     fn template_update_store_slot_changes<'b>(
         &'b mut self,
@@ -230,7 +262,7 @@ pub trait ComponentTemplate<B: Backend> {
         }
     }
 
-    /// Iterate slots
+    /// Iterate over slots.
     #[inline]
     fn for_each_slot_scope<'b>(
         &'b mut self,

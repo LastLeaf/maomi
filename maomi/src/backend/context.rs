@@ -191,6 +191,7 @@ pub struct EnteredBackendContext<B: Backend> {
 impl<B: Backend> EnteredBackendContext<B> {
     /// Create a mount point.
     ///
+    /// A component should be specified as the root component.
     /// The `init` provides a way to do some updates before the component `created` lifetime.
     pub fn attach<C: Component + ComponentTemplate<B>>(
         &mut self,

@@ -1,3 +1,5 @@
+//! The mount point utilities.
+
 use crate::backend::{tree, Backend, BackendComponent, BackendGeneralElement};
 use crate::component::{Component, ComponentNode};
 use crate::error::Error;
@@ -17,9 +19,9 @@ impl OwnerWeak for DanglingOwner {
     }
 }
 
-/// A mount point which can generate a "root" component and mounted to the whole page
+/// A mount point which contains a root component.
 ///
-/// A mount point can be created in a `BackendContext` .
+/// A mount point can be created through `BackendContext::attach` .
 pub struct MountPoint<B: Backend, C: Component + ComponentTemplate<B> + 'static> {
     component_node: ComponentNode<C>,
     backend_element: tree::ForestNodeRc<B::GeneralElement>,
@@ -58,7 +60,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
         <B::GeneralElement as BackendGeneralElement>::detach(elem);
     }
 
-    /// Get the root component
+    /// Get the root component node.
     pub fn root_component(&self) -> &ComponentNode<C> {
         &self.component_node
     }
@@ -74,6 +76,9 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     }
 }
 
+/// The `dyn` form of the mount point.
+/// 
+/// This form does not contain the root component type.
 pub struct DynMountPoint<B: Backend> {
     _component_node: Box<dyn std::any::Any>,
     backend_element: tree::ForestNodeRc<B::GeneralElement>,
