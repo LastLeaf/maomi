@@ -1,3 +1,5 @@
+//! The DOM elements about demarcating edits.
+
 use super::*;
 
 #[dom_element_definition]

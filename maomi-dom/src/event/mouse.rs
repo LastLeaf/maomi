@@ -3,7 +3,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 use super::{BubbleEvent, ColdEventItem, DomEventRegister};
 use crate::DomGeneralElement;
 
-/// The mouse-related event detail
+/// The mouse-related event detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MouseEvent {
     propagation_stopped: bool,
@@ -11,25 +11,25 @@ pub struct MouseEvent {
     dom_event: web_sys::MouseEvent,
 }
 
-/// A mouse button
+/// A mouse button.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MouseButton {
-    /// The main button, i.e. left button
+    /// The main button, i.e. left button.
     Main,
-    /// The auxiliary button, i.e. middle button or wheel button
+    /// The auxiliary button, i.e. middle button or wheel button.
     Auxiliary,
-    /// The secondary button, i.e. right button
+    /// The secondary button, i.e. right button.
     Secondary,
-    /// The fourth button, i.e. history-back button
+    /// The fourth button, i.e. history-back button.
     Fourth,
-    /// The fifth button, i.e. history-forward button
+    /// The fifth button, i.e. history-forward button.
     Fifth,
-    /// Other unknwon button
+    /// Other unknwon button.
     Unknown(i16),
 }
 
 impl MouseEvent {
-    /// Get the button that triggers `mouse_down` or `mouse_up`
+    /// Get the button that triggers `mouse_down` or `mouse_up` .
     #[inline]
     pub fn button(&self) -> MouseButton {
         match self.dom_event.button() {
@@ -42,37 +42,37 @@ impl MouseEvent {
         }
     }
 
-    /// Check whether keyboard alt key is pressed
+    /// Check whether keyboard alt key is pressed.
     #[inline]
     pub fn alt_key(&self) -> bool {
         self.dom_event.alt_key()
     }
 
-    /// Check whether keyboard ctrl key is pressed
+    /// Check whether keyboard ctrl key is pressed.
     #[inline]
     pub fn ctrl_key(&self) -> bool {
         self.dom_event.ctrl_key()
     }
 
-    /// Check whether keyboard meta key is pressed
+    /// Check whether keyboard meta key is pressed.
     #[inline]
     pub fn meta_key(&self) -> bool {
         self.dom_event.meta_key()
     }
 
-    /// Check whether keyboard shift key is pressed
+    /// Check whether keyboard shift key is pressed.
     #[inline]
     pub fn shift_key(&self) -> bool {
         self.dom_event.shift_key()
     }
 
-    /// Get the x-position reletive to the viewport
+    /// Get the x-position reletive to the viewport.
     #[inline]
     pub fn client_x(&self) -> i32 {
         self.dom_event.client_x()
     }
 
-    /// Get the y-position reletive to the viewport
+    /// Get the y-position reletive to the viewport.
     #[inline]
     pub fn client_y(&self) -> i32 {
         self.dom_event.client_y()

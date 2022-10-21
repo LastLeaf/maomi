@@ -198,7 +198,7 @@ impl TouchTracker {
     }
 }
 
-/// The tap event detail
+/// The tap event detail.
 ///
 /// Tap events are generated from DOM `touch*` or `mouse*` events automatically.
 #[derive(Debug, Clone, PartialEq)]
@@ -210,13 +210,13 @@ pub struct TapEvent {
 }
 
 impl TapEvent {
-    /// Get the x-position reletive to the viewport
+    /// Get the x-position reletive to the viewport.
     #[inline]
     pub fn client_x(&self) -> i32 {
         self.client_x
     }
 
-    /// Get the y-position reletive to the viewport
+    /// Get the y-position reletive to the viewport.
     #[inline]
     pub fn client_y(&self) -> i32 {
         self.client_y

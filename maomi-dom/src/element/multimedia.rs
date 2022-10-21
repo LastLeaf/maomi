@@ -1,3 +1,5 @@
+//! The DOM elements about multimedia.
+
 use super::*;
 
 #[dom_element_definition]

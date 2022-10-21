@@ -3,20 +3,20 @@ use wasm_bindgen::{prelude::*, JsCast};
 use super::{ColdEventItem, DomEventRegister};
 use crate::DomGeneralElement;
 
-/// The transition event detail
+/// The transition event detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransitionEvent {
     dom_event: web_sys::TransitionEvent,
 }
 
 impl TransitionEvent {
-    /// Get the property name that the transition runs on
+    /// Get the property name that the transition runs on.
     #[inline]
     pub fn property_name(&self) -> String {
         self.dom_event.property_name()
     }
 
-    /// Get the elapsed time of the transition
+    /// Get the elapsed time of the transition.
     #[inline]
     pub fn elapsed_time(&self) -> f32 {
         self.dom_event.elapsed_time()

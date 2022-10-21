@@ -3,14 +3,14 @@ use wasm_bindgen::{prelude::*, JsCast};
 use super::{ColdEventItem, DomEventRegister};
 use crate::DomGeneralElement;
 
-/// The animation event detail
+/// The animation event detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnimationEvent {
     dom_event: web_sys::AnimationEvent,
 }
 
 impl AnimationEvent {
-    /// Get the elapsed time of the animation
+    /// Get the elapsed time of the animation.
     #[inline]
     pub fn elapsed_time(&self) -> f32 {
         self.dom_event.elapsed_time()

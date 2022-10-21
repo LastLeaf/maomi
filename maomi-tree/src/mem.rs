@@ -11,6 +11,7 @@ pub(crate) struct SliceWeak<T, const N: usize> {
 }
 
 impl<T, const N: usize> Drop for SliceWeak<T, N> {
+    #[inline]
     fn drop(&mut self) {
         let mem = unsafe { &*self.mem };
         mem.weak.set(mem.weak.get() - 1);
@@ -71,6 +72,7 @@ impl SliceWeak<(), 1> {
 }
 
 impl<T, const N: usize> Clone for SliceWeak<T, N> {
+    #[inline]
     fn clone(&self) -> Self {
         let mem = unsafe { &*self.mem };
         mem.weak.set(mem.weak.get() + 1);
@@ -83,6 +85,7 @@ pub(crate) struct SliceRc<T, const N: usize> {
 }
 
 impl<T, const N: usize> Drop for SliceRc<T, N> {
+    #[inline]
     fn drop(&mut self) {
         let mem = unsafe { &*self.mem };
         mem.strong.set(mem.strong.get() - 1);
@@ -126,6 +129,7 @@ impl<T, const N: usize> SliceRc<T, N> {
 }
 
 impl<T, const N: usize> Clone for SliceRc<T, N> {
+    #[inline]
     fn clone(&self) -> Self {
         let mem = unsafe { &*self.mem };
         mem.strong.set(mem.strong.get() + 1);

@@ -19,7 +19,7 @@ fn trigger_ev_submit<T: DomEventRegister<Detail = SubmitEvent>>(dom_event: web_s
     }
 }
 
-/// The mouse-related event detail
+/// The mouse-related event detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SubmitEvent {
     dom_event: web_sys::SubmitEvent,
@@ -49,7 +49,7 @@ fn trigger_ev_change<T: DomEventRegister<Detail = ChangeEvent>>(dom_event: web_s
     }
 }
 
-/// The mouse-related event detail
+/// The mouse-related event detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChangeEvent {
     dom_event: web_sys::Event,

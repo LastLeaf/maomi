@@ -1,4 +1,4 @@
-//! The element definition
+//! The element definition.
 //!
 //! The element list is found in [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element) .
 

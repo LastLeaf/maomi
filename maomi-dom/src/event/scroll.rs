@@ -3,7 +3,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 use super::{BubbleEvent, ColdEventItem, DomEventRegister};
 use crate::DomGeneralElement;
 
-/// The scroll event detail
+/// The scroll event detail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScrollEvent {
     propagation_stopped: bool,

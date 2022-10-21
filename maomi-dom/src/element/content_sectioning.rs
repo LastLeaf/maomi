@@ -1,3 +1,5 @@
+//! The DOM elements about content sectioning.
+
 use maomi_dom_macro::dom_element_definition;
 
 use super::*;

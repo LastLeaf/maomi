@@ -352,7 +352,9 @@ pub(crate) trait DomElementBase {
     fn dom_element_lazy(&self) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)>;
 }
 
+/// Some helper functions for DOM elements.
 pub trait DomElementExt {
+    /// Get the underlying DOM element.
     fn dom_element(&self) -> &web_sys::Element;
 }
 
@@ -382,11 +384,11 @@ impl<T: DomElementBase> DomElementExt for T {
     }
 }
 
-#[inline]
-pub fn set_style(elem: &web_sys::HtmlElement, s: &str) {
+pub(crate) fn set_style(elem: &web_sys::HtmlElement, s: &str) {
     elem.style().set_css_text(s)
 }
 
+/// The attributes that accepts a string.
 pub struct DomStrAttr {
     pub(crate) inner: String,
     pub(crate) f: fn(&web_sys::HtmlElement, &str),
@@ -429,6 +431,10 @@ where
     }
 }
 
+/// The attributes that accepts a boolean value.
+/// 
+/// The boolean attributes are always default to `false` .
+/// In templates, they can be used without `=` like `<div hidden />` .
 pub struct DomBoolAttr {
     pub(crate) inner: bool,
     pub(crate) f: fn(&web_sys::HtmlElement, bool),
@@ -475,6 +481,7 @@ where
     }
 }
 
+/// The attributes that accepts a non-negative integer.
 pub struct DomU32Attr {
     pub(crate) inner: u32,
     pub(crate) f: fn(&web_sys::HtmlElement, u32),
@@ -517,6 +524,7 @@ where
     }
 }
 
+/// The attributes that accepts an integer.
 pub struct DomI32Attr {
     pub(crate) inner: i32,
     pub(crate) f: fn(&web_sys::HtmlElement, i32),
@@ -559,6 +567,7 @@ where
     }
 }
 
+/// The attributes that accepts a floating number.
 pub struct DomF64Attr {
     pub(crate) inner: f64,
     pub(crate) f: fn(&web_sys::HtmlElement, f64),

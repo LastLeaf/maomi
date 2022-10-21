@@ -4,8 +4,6 @@ use syn::*;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
-// TODO consider disable inline for optimize sizing
-
 fn add_global_attrs(
     fields: &mut Punctuated<Field, token::Comma>,
 ) {
@@ -24,7 +22,6 @@ fn add_global_attrs(
     add_attr("id", parse_quote! { attribute!(&str in web_sys::Element) });
     add_attr("title", parse_quote! { attribute!(&str in web_sys::HtmlElement) });
     add_attr("hidden", parse_quote! { attribute!(bool in web_sys::HtmlElement) });
-    add_attr("aria_hidden", parse_quote! { attribute!(&str) });
     add_attr("touch_start", parse_quote! { event!(event::touch::TouchStart) });
     add_attr("touch_move", parse_quote! { event!(event::touch::TouchMove) });
     add_attr("touch_end", parse_quote! { event!(event::touch::TouchEnd) });
@@ -47,6 +44,8 @@ fn add_global_attrs(
     add_attr("transition_start", parse_quote! { event!(event::transition::TransitionStart) });
     add_attr("transition_end", parse_quote! { event!(event::transition::TransitionEnd) });
     add_attr("transition_cancel", parse_quote! { event!(event::transition::TransitionCancel) });
+    // TODO add aria properties
+    add_attr("aria_hidden", parse_quote! { attribute!(&str) });
 }
 
 enum Attr {
@@ -164,11 +163,19 @@ impl Parse for DomElementDefinition {
                     let attr_name = field_name.to_string().trim_start_matches("r#").to_string();
                     field.ident = Some(field_name.clone());
                     if m.mac.path.is_ident("attribute") {
+                        let field_doc_comment = format!(r#"The `{}` attribute."#, attr_name);
+                        field.attrs.push(parse_quote! {
+                            #[doc = #field_doc_comment]
+                        });
                         let tokens = m.mac.tokens.clone();
                         let attr = Attr::parse.parse2(tokens)?;
                         field.ty = Type::Path(TypePath { qself: None, path: attr.ty() });
                         attrs.push((field_name, attr_name, attr));
                     } else if m.mac.path.is_ident("event") {
+                        let field_doc_comment = format!(r#"The `{}` event."#, attr_name.replace('_', ""));
+                        field.attrs.push(parse_quote! {
+                            #[doc = #field_doc_comment]
+                        });
                         let span = m.mac.span();
                         let tokens = m.mac.tokens.clone();
                         let p = Path::parse.parse2(tokens)?;
@@ -191,14 +198,18 @@ impl Parse for DomElementDefinition {
                 ty: parse_quote! { maomi::backend::tree::ForestToken },
             });
             fields.named.push(Field {
-                attrs: Vec::with_capacity(0),
+                attrs: vec![parse_quote! {
+                    #[doc = "The `class` of the element."]
+                }],
                 vis: parse_quote! { pub },
                 ident: Some(Ident::new("class", span)),
                 colon_token: Default::default(),
                 ty: parse_quote! { DomClassList },
             });
             fields.named.push(Field {
-                attrs: Vec::with_capacity(0),
+                attrs: vec![parse_quote! {
+                    #[doc = "The `style` of the element."]
+                }],
                 vis: parse_quote! { pub },
                 ident: Some(Ident::new("style", span)),
                 colon_token: Default::default(),
@@ -227,6 +238,7 @@ impl ToTokens for DomElementDefinition {
         let s = &self.s;
         let tag_name = &s.ident;
         let tag_name_str = tag_name.to_string();
+        let struct_doc_comment = format!("The HTML `<{}>` element.", tag_name);
         let attrs_init = self.attrs.iter().map(|(field_name, attr_name, attr)| {
             let dom_setter_name = attr.generate_dom_setter(tag_name, field_name, tokens);
             let ty = attr.ty();
@@ -240,9 +252,12 @@ impl ToTokens for DomElementDefinition {
             }
         }).collect::<Box<_>>();
         let events_init = self.events.iter().map(|(ev, _)| {
-            quote! { #ev: Default::default(), }
+            quote! {
+                #ev: Default::default(),
+            }
         });
         tokens.append_all(quote! {
+            #[doc = #struct_doc_comment]
             #[allow(non_camel_case_types)]
             #s
 
@@ -290,7 +305,7 @@ impl ToTokens for DomElementDefinition {
                     Ok((this, backend_element))
                 }
             
-                #[inline]
+                #[inline(never)]
                 fn create<'b>(
                     &'b mut self,
                     _backend_context: &'b BackendContext<DomBackend>,
@@ -308,7 +323,7 @@ impl ToTokens for DomElementDefinition {
                     Ok(())
                 }
             
-                #[inline]
+                #[inline(never)]
                 fn apply_updates<'b>(
                     &'b mut self,
                     _backend_context: &'b BackendContext<DomBackend>,

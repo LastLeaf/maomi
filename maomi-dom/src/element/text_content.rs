@@ -1,3 +1,5 @@
+//! The DOM elements about text content.
+
 use super::*;
 
 #[dom_element_definition]

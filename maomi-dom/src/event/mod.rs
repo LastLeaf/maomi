@@ -1,3 +1,12 @@
+//! The event definition.
+//! 
+//! Besides DOM events, this module also provides `tap` events,
+//! which are generated from mouse or touch events.
+//! * `tap` event refers to a finger tap (or mouse click);
+//! * `cancal_tap` event refers to a finger (or mouse) that moved;
+//! * `long_tap` event refers to a long finger tap (or mouse hold).
+//! Calling `detail.preventDefault()` in the `long_tap` handler will prevent the `tap` event.
+
 use maomi::event::EventHandler;
 use std::marker::PhantomData;
 use wasm_bindgen::{prelude::*, JsCast};
@@ -155,11 +164,18 @@ impl ColdEventItem {
     }
 }
 
-/// A DOM event that can be binded
+/// A DOM event that can be binded.
 pub trait DomEventRegister {
+    /// The event detailed type.
     type Detail;
 
+    /// Bind the event.
+    /// 
+    /// It is auto-managed by the `#[component]` .
+    /// Do not touch unless you know how it works exactly.
     fn bind(target: &mut DomElement, f: Box<dyn 'static + Fn(&mut Self::Detail)>);
+
+    /// Trigger the event.
     fn trigger(target: &mut DomElement, detail: &mut Self::Detail);
 }
 
@@ -190,10 +206,14 @@ impl<M: DomEventRegister> EventHandler<M::Detail> for DomEvent<M> {
     }
 }
 
-// A DOM event that bubbles
+/// A DOM event that bubbles.
 pub trait BubbleEvent {
+    /// Stop bubbling.
     fn stop_propagation(&mut self);
+    /// Get whether the bubbling is stopped.
     fn propagation_stopped(&self) -> bool;
+    /// Prevent the default DOM operation.
     fn prevent_default(&mut self);
+    /// Get whether the default DOM operation is prevented.
     fn default_prevented(&self) -> bool;
 }

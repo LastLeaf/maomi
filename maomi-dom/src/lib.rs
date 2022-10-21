@@ -64,7 +64,6 @@ use maomi::{
 use wasm_bindgen::{JsCast, JsValue};
 
 #[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
-#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t>
@@ -72,7 +71,6 @@ macro_rules! dom_state_ty {
 }
 
 #[cfg(all(not(feature = "prerendering"), feature = "prerendering-apply"))]
-#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $v>
@@ -80,7 +78,6 @@ macro_rules! dom_state_ty {
 }
 
 #[cfg(all(feature = "prerendering", not(feature = "prerendering-apply")))]
-#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $u>
@@ -88,29 +85,31 @@ macro_rules! dom_state_ty {
 }
 
 #[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
-#[macro_export]
 macro_rules! dom_state_ty {
     ($t:ty, $u:ty, $v:ty) => {
         DomState<$t, $u, $v>
     };
 }
 
-pub mod base_element;
+mod base_element;
 use base_element::DomElement;
 #[cfg(feature = "prerendering")]
 use base_element::PrerenderingElement;
 #[cfg(feature = "prerendering-apply")]
 use base_element::RematchedDomElem;
 pub mod element;
-pub mod virtual_element;
+mod virtual_element;
 use virtual_element::DomVirtualElement;
-pub mod text_node;
+mod text_node;
 use text_node::DomTextNode;
 pub mod class_list;
 mod composing;
 pub mod event;
 use event::DomListeners;
 
+/// The types that should usually be imported.
+/// 
+/// Usually, `use maomi_dom::prelude::*;` should be added in component files for convinience.
 pub mod prelude {
     pub use maomi_dom_macro::dom_css;
     pub use crate::DomBackend;
@@ -142,7 +141,7 @@ pub fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
 
 #[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum DomState<T> {
+pub(crate) enum DomState<T> {
     Normal(T),
 }
 
@@ -162,7 +161,7 @@ pub enum DomState<T, U> {
 
 #[cfg(all(feature = "prerendering", feature = "prerendering-apply"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum DomState<T, U, V> {
+enum DomState<T, U, V> {
     Normal(T),
     Prerendering(U),
     PrerenderingApply(V),
@@ -301,12 +300,14 @@ impl DomBackend {
 
     /// Attach the prerendering result with the specified DOM element
     #[cfg(feature = "prerendering-apply")]
+    #[inline]
     pub fn apply_prerendered_element(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
         self.apply_prerendered(dom_elem.into())
     }
 
     /// Attach the prerendering result with the DOM element with the `id`
     #[cfg(feature = "prerendering-apply")]
+    #[inline]
     pub fn apply_prerendered_element_id(&mut self, id: &str) -> Result<(), Error> {
         let dom_elem = DOCUMENT
             .with(|document| document.get_element_by_id(id))
@@ -319,6 +320,7 @@ impl DomBackend {
 
     /// Attach the prerendering result with the DOM `<body>`
     #[cfg(feature = "prerendering-apply")]
+    #[inline]
     pub fn apply_prerendered_document_body(&mut self) -> Result<(), Error> {
         let dom_elem =
             DOCUMENT
@@ -331,6 +333,7 @@ impl DomBackend {
     }
 
     #[cfg(feature = "prerendering-apply")]
+    #[inline]
     fn apply_prerendered(&mut self, dom_elem: web_sys::Element) -> Result<(), Error> {
         if self.backend_stage != BackendStage::PrerenderingApply {
             panic!("The backend is not in prerendering-apply stage");
@@ -426,18 +429,22 @@ impl Backend for DomBackend {
     type VirtualElement = DomVirtualElement;
     type TextNode = DomTextNode;
 
+    #[inline]
     fn async_task(fut: impl 'static + std::future::Future<Output = ()>) {
         async_task(fut)
     }
 
+    #[inline]
     fn backend_stage(&self) -> BackendStage {
         self.backend_stage
     }
 
+    #[inline]
     fn root(&self) -> ForestNode<Self::GeneralElement> {
         self.tree.borrow()
     }
 
+    #[inline]
     fn root_mut(&mut self) -> ForestNodeMut<Self::GeneralElement> {
         self.tree.borrow_mut()
     }

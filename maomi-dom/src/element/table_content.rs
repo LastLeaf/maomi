@@ -1,3 +1,5 @@
+//! The DOM elements about table contents.
+
 use super::*;
 
 #[dom_element_definition]

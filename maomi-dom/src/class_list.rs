@@ -1,3 +1,5 @@
+//! The utilities for DOM `ClassList` handling.
+
 use maomi::prop::{ListPropertyInit, ListPropertyItem, ListPropertyUpdate};
 use std::rc::Rc;
 use web_sys::DomTokenList;
@@ -36,7 +38,7 @@ fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &'static str, 
     }
 }
 
-/// The manager for DOM `ClassList`
+/// The manager for DOM `ClassList` .
 pub struct DomClassList {
     class_list: DomClassListTy,
     enabled: Box<[DomClassItem]>,
@@ -135,7 +137,7 @@ impl ListPropertyItem<DomClassList, DomExternalClasses> for DomExternalClasses {
     }
 }
 
-/// The external classes type used to pass class list between components
+/// The external classes type used to pass class list between components.
 ///
 /// This type has similar iterface to the `DomClassList` .
 /// It can be used as a property that accepts classes,
@@ -153,6 +155,7 @@ enum DomExternalClassItem {
 }
 
 impl DomExternalClasses {
+    /// Initialize an external class.
     pub fn new() -> Self {
         Self {
             id: Rc::new(()),

@@ -451,7 +451,7 @@ impl StyleSheetConstructor for DomStyleSheet {
             proc_macro2::Span::call_site(),
         );
         tokens.append_all(quote! {
-            mod fn_name {
+            mod #fn_name {
                 fn #fn_name() {
                     #inner_tokens
                 }

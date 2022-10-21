@@ -1,3 +1,5 @@
+//! The DOM elements about inline texts.
+
 use web_sys::HtmlAnchorElement;
 
 use super::*;
