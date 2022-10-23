@@ -91,7 +91,7 @@ macro_rules! dom_state_ty {
     };
 }
 
-mod base_element;
+pub mod base_element;
 use base_element::DomElement;
 #[cfg(feature = "prerendering")]
 use base_element::PrerenderingElement;

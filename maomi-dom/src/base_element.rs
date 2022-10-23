@@ -1,6 +1,8 @@
+//! Basic types for DOM elements.
+
 use maomi::{
     backend::tree::*,
-    prop::PropertyUpdate,
+    prop::{PropertyUpdate, BindingValue},
 };
 use std::{
     borrow::Borrow,
@@ -607,5 +609,54 @@ where
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => {}
         }
+    }
+}
+
+/// The attributes that accepts a binding string.
+/// 
+/// It should be set with a `BindingValue` .
+pub struct DomBindingStrAttr {
+    pub(crate) inner: BindingValue<String>,
+    pub(crate) f: fn(&web_sys::HtmlElement, &str),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl DomBindingStrAttr {
+    /// Get a referrence of the value.
+    pub fn with<R>(&self, f: impl FnOnce(&String) -> R) -> R {
+        self.inner.with(f)
+    }
+
+    /// Get the cloned value.
+    pub fn get(&self) -> String {
+        self.inner.get()
+    }
+}
+
+impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
+    type UpdateContext = DomElement;
+
+    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<String>, ctx: &mut Self::UpdateContext) {
+        if BindingValue::ptr_eq(&dest.inner, src) {
+            return;
+        }
+        let old = std::mem::replace(&mut dest.inner, src.clone_ref());
+        dest.inner.with(|inner| {
+            if old.with(|x| inner == x) {
+                return;
+            }
+            match &mut ctx.elem {
+                DomState::Normal(x) => {
+                    (dest.f)(x.unchecked_ref(), inner);
+                }
+                #[cfg(feature = "prerendering")]
+                DomState::Prerendering(x) => {
+                    x.set_attribute(dest.attr_name, inner.to_string());
+                }
+                #[cfg(feature = "prerendering-apply")]
+                DomState::PrerenderingApply(_) => {}
+            }
+        });
     }
 }

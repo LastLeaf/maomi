@@ -465,7 +465,7 @@ impl<C: Component> ComponentNode<C> {
     /// It is a weak ref which does not prevent dropping the component.
     #[inline]
     pub fn weak(&self) -> ComponentWeak<C> {
-        todo!() // TODO
+        self.rc.downgrade()
     }
 }
 

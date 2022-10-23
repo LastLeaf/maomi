@@ -2,6 +2,8 @@
 //! 
 //! The properties of components can be set through templates by component users.
 //! 
+//! ### Basic Usage
+//! 
 //! The following example show the basic usage of properties.
 //! 
 //! ```rust
@@ -34,6 +36,63 @@
 //!     },
 //! }
 //! ```
+//! 
+//! ### Two-way Property
+//! 
+//! Most property values are passing from the component user to the component.
+//! The component should not modify its own properties,
+//! otherwise the next updates of the component user will change them back.
+//! However, some properties (like `value` property in `<input>` ) should be passing back from the component to the component user.
+//! `BindingProp` is designed to solve this problem.
+//! 
+//! A `BindingProp` accepts a `BindingValue` .
+//! A `BindingValue` contains a value shared between the component and the component user.
+//! It can be visited on both ends.
+//! 
+//! ```rust
+//! use maomi::prelude::*;
+//! use maomi::prop::{BindingProp, BindingValue};
+//! 
+//! #[component]
+//! struct MyComponent {
+//!     template: template! {
+//!         /* ... */
+//!     },
+//!     // define a two-way property with the detailed type
+//!     my_prop: BindingProp<String>,
+//! }
+//! 
+//! impl Component for MyComponent {
+//!     fn new() -> Self {
+//!         Self {
+//!             template: Default::default(),
+//!             // init the two-way property
+//!             my_prop: BindingProp::new(String::new()),
+//!         }
+//!     }
+//! }
+//! 
+//! #[component]
+//! struct MyComponentUser {
+//!     template: template! {
+//!         // associate a binding value
+//!         <MyComponent my_prop={ &self.comp_value } />
+//!     },
+//!     comp_value: BindingValue<String>,
+//! }
+//! 
+//! impl Component for MyComponentUser {
+//!     fn new() -> Self {
+//!         Self {
+//!             template: Default::default(),
+//!             // init the binding value
+//!             comp_value: BindingValue::new(String::new()),
+//!         }
+//!     }
+//! }
+//! ```
+//! 
+//! ### List Property
 //! 
 //! `ListProp` is one special kind of properties.
 //! It can accepts one attribute more than once.
@@ -73,7 +132,7 @@
 //! }
 //! ```
 
-use std::{borrow::Borrow, ops::Deref, fmt::Display};
+use std::{borrow::Borrow, ops::Deref, fmt::Display, rc::Rc, cell::RefCell};
 
 /// The property updater.
 /// 
@@ -166,6 +225,104 @@ impl<S: ?Sized + PartialEq, T: PropAsRef<S>> PropertyUpdate<S> for Prop<T> {
         }
         dest.inner = PropAsRef::property_to_owned(src);
         *ctx = true;
+    }
+}
+
+/// A two-way property that can share a `BindingValue` between a component and its user.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct BindingProp<T> {
+    value: BindingValue<T>,
+}
+
+impl<T> BindingProp<T> {
+    /// Create the property with initial value.
+    pub fn new(default_value: T) -> Self {
+        Self { value: BindingValue::new(default_value) }
+    }
+
+    /// Set the value.
+    pub fn set(&mut self, v: T) {
+        self.value.set(v);
+    }
+
+    /// Get a referrence of the value.
+    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        self.value.with(f)
+    }
+
+    /// Get a referrence of the value.
+    pub fn update<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        self.value.update(f)
+    }
+}
+
+impl<T: Clone> BindingProp<T> {
+    /// Get the cloned value.
+    pub fn get(&self) -> T {
+        self.value.get()
+    }
+}
+
+impl<T> PropertyUpdate<BindingValue<T>> for BindingProp<T> {
+    type UpdateContext = bool;
+
+    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<T>, ctx: &mut Self::UpdateContext) {
+        if BindingValue::ptr_eq(&dest.value, src) {
+            return;
+        }
+        dest.value = src.clone_ref();
+        *ctx = true;
+    }
+}
+
+/// A value that can be associated to a `BindingProp` .
+/// 
+/// Note that the `BindingValue` should be exclusively associated to one `BindingProp` .
+/// Panics if the value is associated to more than one `BindingProp` .
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct BindingValue<T> {
+    inner: Rc<RefCell<T>>,
+}
+
+impl<T> BindingValue<T> {
+    /// Create the property with initial value.
+    pub fn new(default_value: T) -> Self {
+        Self { inner: Rc::new(RefCell::new(default_value)) }
+    }
+
+    #[doc(hidden)]
+    pub fn ptr_eq(a: &Self, b: &Self) -> bool {
+        Rc::ptr_eq(&a.inner, &b.inner)
+    }
+
+    #[doc(hidden)]
+    pub fn clone_ref(&self) -> Self {
+        if Rc::strong_count(&self.inner) > 1 {
+            panic!("A `BindingValue` cannot be associated to more than one `BindingProp`");
+        }
+        Self { inner: self.inner.clone() }
+    }
+
+    /// Set the value.
+    pub fn set(&mut self, v: T) {
+        *self.inner.borrow_mut() = v;
+    }
+
+    /// Get a referrence of the value.
+    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        f(&(*self.inner).borrow())
+    }
+
+    /// Get a referrence of the value.
+    pub fn update<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        f(&mut (*self.inner).borrow_mut())
+    }
+}
+
+impl<T: Clone> BindingValue<T> {
+    /// Get the cloned value.
+    pub fn get(&self) -> T {
+        (*self.inner).borrow().clone()
     }
 }
 
