@@ -58,6 +58,12 @@ enum Attr {
         ty_name: Type,
         ty: Path,
     },
+    Binding {
+        ty_name: Type,
+        dom_element_name: Path,
+        ty: Path,
+        event: LitStr,
+    },
 }
 
 impl Parse for Attr {
@@ -65,6 +71,17 @@ impl Parse for Attr {
         let ty_name: Type = input.parse()?;
         let span = ty_name.span();
         let s = ty_name.to_token_stream().to_string();
+        if input.is_empty() {
+            let ty = match s.as_str() {
+                "& str" => parse_quote_spanned! {span=> DomStrAttr },
+                _ => {
+                    return Err(Error::new(span, "unknown raw attribute type"))
+                }
+            };
+            return Ok(Self::Raw { ty_name, ty });
+        }
+        let _: token::In = input.parse()?;
+        let dom_element_name = input.parse()?;
         let ty = match s.as_str() {
             "& str" => parse_quote_spanned! {span=> DomStrAttr },
             "bool" => parse_quote_spanned! {span=> DomBoolAttr },
@@ -76,16 +93,29 @@ impl Parse for Attr {
             }
         };
         if input.is_empty() {
-            Ok(Self::Raw { ty_name, ty })
-        } else {
-            let _: token::In = input.parse()?;
-            let dom_element_name = input.parse()?;
-            Ok(Self::Normal {
+            return Ok(Self::Normal {
                 ty_name,
                 dom_element_name,
                 ty,
-            })
+            });
         }
+        let _: token::While = input.parse()?;
+        let event = input.parse()?;
+        let span = ty.span();
+        let ty = match s.as_str() {
+            "& str" => parse_quote_spanned! {span=> DomBindingStrAttr },
+            "bool" => parse_quote_spanned! {span=> DomBindingBoolAttr },
+            "f64" => parse_quote_spanned! {span=> DomBindingF64Attr },
+            _ => {
+                return Err(Error::new(span, "unknown binding attribute type"))
+            }
+        };
+        Ok(Self::Binding {
+            ty_name,
+            dom_element_name,
+            ty,
+            event,
+        })
     }
 }
 
@@ -94,6 +124,7 @@ impl Attr {
         match self {
             Self::Normal { ty, .. } => ty.clone(),
             Self::Raw { ty, .. } => ty.clone(),
+            Self::Binding { ty, .. } => ty.clone(),
         }
     }
 
@@ -104,7 +135,7 @@ impl Attr {
         tokens: &mut proc_macro2::TokenStream,
     ) -> Ident {
         match self {
-            Self::Normal { ty_name, dom_element_name, .. } => {
+            Self::Normal { ty_name, dom_element_name, .. } | Self::Binding { ty_name, dom_element_name, .. } => {
                 let span = field_name.span();
                 let dom_setter_name = Ident::new(&format!("dom_setter_{}_{}", tag_name.to_string(), field_name.to_string().trim_start_matches("r#")), span);
                 let dom_element_fn_name = Ident::new(&format!("set_{}", field_name.to_string().trim_start_matches("r#")), span);

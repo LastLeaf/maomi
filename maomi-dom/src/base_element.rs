@@ -232,6 +232,7 @@ impl DomElement {
             item.apply(e.unchecked_ref());
         }
         self.elem = DomState::Normal(e.unchecked_into());
+        // TODO init event for binding props
         if self.hot_event_list.is_some() || self.cold_event_list.is_some() {
             self.init_event_token();
         }
@@ -649,6 +650,108 @@ impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
             match &mut ctx.elem {
                 DomState::Normal(x) => {
                     (dest.f)(x.unchecked_ref(), inner);
+                }
+                #[cfg(feature = "prerendering")]
+                DomState::Prerendering(x) => {
+                    x.set_attribute(dest.attr_name, inner.to_string());
+                }
+                #[cfg(feature = "prerendering-apply")]
+                DomState::PrerenderingApply(_) => {}
+            }
+        });
+    }
+}
+
+/// The attributes that accepts a binding boolean value.
+/// 
+/// It should be set with a `BindingValue` .
+pub struct DomBindingBoolAttr {
+    pub(crate) inner: BindingValue<bool>,
+    pub(crate) f: fn(&web_sys::HtmlElement, bool),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl DomBindingBoolAttr {
+    /// Get a referrence of the value.
+    pub fn with<R>(&self, f: impl FnOnce(&bool) -> R) -> R {
+        self.inner.with(f)
+    }
+
+    /// Get the value.
+    pub fn get(&self) -> bool {
+        self.inner.get()
+    }
+}
+
+impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
+    type UpdateContext = DomElement;
+
+    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<bool>, ctx: &mut Self::UpdateContext) {
+        if BindingValue::ptr_eq(&dest.inner, src) {
+            return;
+        }
+        let old = std::mem::replace(&mut dest.inner, src.clone_ref());
+        dest.inner.with(|inner| {
+            if old.with(|x| inner == x) {
+                return;
+            }
+            match &mut ctx.elem {
+                DomState::Normal(x) => {
+                    (dest.f)(x.unchecked_ref(), *inner);
+                }
+                #[cfg(feature = "prerendering")]
+                DomState::Prerendering(x) => {
+                    if dest.inner.get() {
+                        x.set_attribute(dest.attr_name, String::with_capacity(0));
+                    } else {
+                        x.remove_attribute(dest.attr_name);
+                    }
+                }
+                #[cfg(feature = "prerendering-apply")]
+                DomState::PrerenderingApply(_) => {}
+            }
+        });
+    }
+}
+
+/// The attributes that accepts a floating number.
+/// 
+/// It should be set with a `BindingValue` .
+pub struct DomBindingF64Attr {
+    pub(crate) inner: BindingValue<f64>,
+    pub(crate) f: fn(&web_sys::HtmlElement, f64),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl DomBindingF64Attr {
+    /// Get a referrence of the value.
+    pub fn with<R>(&self, f: impl FnOnce(&f64) -> R) -> R {
+        self.inner.with(f)
+    }
+
+    /// Get the value.
+    pub fn get(&self) -> f64 {
+        self.inner.get()
+    }
+}
+
+impl PropertyUpdate<BindingValue<f64>> for DomBindingF64Attr {
+    type UpdateContext = DomElement;
+
+    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<f64>, ctx: &mut Self::UpdateContext) {
+        if BindingValue::ptr_eq(&dest.inner, src) {
+            return;
+        }
+        let old = std::mem::replace(&mut dest.inner, src.clone_ref());
+        dest.inner.with(|inner| {
+            if old.with(|x| inner == x) {
+                return;
+            }
+            match &mut ctx.elem {
+                DomState::Normal(x) => {
+                    (dest.f)(x.unchecked_ref(), *inner);
                 }
                 #[cfg(feature = "prerendering")]
                 DomState::Prerendering(x) => {

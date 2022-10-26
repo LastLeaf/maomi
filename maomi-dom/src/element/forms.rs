@@ -46,7 +46,7 @@ pub struct input {
     pub accept: attribute!(&str in HtmlInputElement),
     pub alt: attribute!(&str in HtmlInputElement),
     pub autocomplete: attribute!(&str in HtmlInputElement),
-    pub checked: attribute!(bool in HtmlInputElement),
+    pub checked: attribute!(bool in HtmlInputElement while "change"),
     pub disabled: attribute!(bool in HtmlInputElement),
     pub form_action: attribute!(&str in HtmlInputElement),
     pub form_enctype: attribute!(&str in HtmlInputElement),
@@ -69,9 +69,10 @@ pub struct input {
     pub step: attribute!(&str in HtmlInputElement),
     pub r#type: attribute!(&str in HtmlInputElement),
     pub spellcheck: attribute!(bool in web_sys::HtmlElement),
-    pub value: attribute!(&str in HtmlInputElement),
+    pub value: attribute!(&str in HtmlInputElement while "input"),
     pub width: attribute!(u32 in HtmlInputElement),
     pub change: event!(crate::event::form::Change),
+    pub input: event!(crate::event::form::Input),
 }
 
 #[dom_element_definition]
@@ -84,7 +85,7 @@ pub struct legend {}
 
 #[dom_element_definition]
 pub struct meter {
-    pub value: attribute!(f64 in web_sys::HtmlMeterElement),
+    pub value: attribute!(f64 in web_sys::HtmlMeterElement while "change"),
     pub min: attribute!(f64 in web_sys::HtmlMeterElement),
     pub max: attribute!(f64 in web_sys::HtmlMeterElement),
     pub low: attribute!(f64 in web_sys::HtmlMeterElement),
@@ -104,7 +105,7 @@ pub struct option {
     pub disabled: attribute!(bool in web_sys::HtmlOptionElement),
     pub label: attribute!(&str in web_sys::HtmlOptionElement),
     pub selected: attribute!(bool in web_sys::HtmlOptionElement),
-    pub value: attribute!(&str in web_sys::HtmlOptionElement),
+    pub value: attribute!(&str in web_sys::HtmlOptionElement while "change"),
     pub change: event!(crate::event::form::Change),
 }
 
@@ -117,7 +118,7 @@ pub struct output {
 #[dom_element_definition]
 pub struct progress {
     pub max: attribute!(f64 in web_sys::HtmlMeterElement),
-    pub value: attribute!(&str in web_sys::HtmlInputElement),
+    pub value: attribute!(&str in web_sys::HtmlInputElement while "change"),
     pub change: event!(crate::event::form::Change),
 }
 
@@ -144,5 +145,6 @@ pub struct textarea {
     pub required: attribute!(bool in web_sys::HtmlTextAreaElement),
     pub rows: attribute!(u32 in web_sys::HtmlTextAreaElement),
     pub spellcheck: attribute!(bool in web_sys::HtmlElement),
+    pub value: attribute!(&str in web_sys::HtmlInputElement while "keyup"),
     pub wrap: attribute!(&str in web_sys::HtmlTextAreaElement),
 }

@@ -28,7 +28,7 @@ pub use animation::AnimationEvent;
 pub(crate) mod transition;
 pub use transition::TransitionEvent;
 pub(crate) mod form;
-pub use form::{SubmitEvent, ChangeEvent};
+pub use form::{SubmitEvent, ChangeEvent, InputEvent};
 
 pub(crate) struct DomListeners {
     #[allow(dead_code)]
@@ -127,6 +127,10 @@ pub(crate) enum ColdEventItem {
         Box<dyn 'static + Fn(&mut ChangeEvent)>,
         Closure<dyn Fn(web_sys::Event)>,
     ),
+    Input(
+        Box<dyn 'static + Fn(&mut InputEvent)>,
+        Closure<dyn Fn(web_sys::InputEvent)>,
+    ),
 }
 
 impl ColdEventItem {
@@ -149,6 +153,7 @@ impl ColdEventItem {
             Self::TransitionCancel(_, cb) => ("transitioncancel", cb.as_ref()),
             Self::Submit(_, cb) => ("submit", cb.as_ref()),
             Self::Change(_, cb) => ("change", cb.as_ref()),
+            Self::Input(_, cb) => ("input", cb.as_ref()),
         };
         // Seriously, there should be a removal on the element dropped,
         // otherwise the closure is lost and a js error is displayed in console.

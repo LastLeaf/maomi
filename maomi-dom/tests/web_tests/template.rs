@@ -792,6 +792,102 @@ async fn event_handler() {
 }
 
 #[wasm_bindgen_test]
+async fn binding_prop() {
+    use maomi::prop::{BindingProp, BindingValue};
+    use maomi_dom::event::*;
+
+    #[component(Backend = DomBackend)]
+    struct Child {
+        template: template! {
+            <input value={ &self.input_value } change=@input_change() />
+        },
+        input_value: BindingValue<String>,
+        has_input_value: BindingProp<bool>,
+        change: Event<()>,
+    }
+
+    impl Component for Child {
+        fn new() -> Self {
+            Self {
+                template: Default::default(),
+                input_value: BindingValue::new(String::with_capacity(0)),
+                has_input_value: BindingProp::new(false),
+                change: Event::new(),
+            }
+        }
+
+        fn before_template_apply(&mut self) {
+            self.has_input_value.set(self.input_value.get().len() > 0)
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            this.task_with(|this, _| {
+                let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                simulate_event(
+                    dom_elem,
+                    "input",
+                    false,
+                    [],
+                );
+                simulate_event(
+                    dom_elem,
+                    "change",
+                    false,
+                    [],
+                );
+            });
+        }
+    }
+
+    impl Child {
+        fn input_change(this: ComponentRc<Self>, _: &mut ChangeEvent) {
+            this.task_with(|this, _| {
+                this.change.trigger(&mut ());
+            });
+        }
+    }
+
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div>
+                <Child has_input_value={ &self.has_input_value } change=@child_change() />
+            </div>
+        },
+        has_input_value: BindingValue<bool>,
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+                has_input_value: BindingValue::new(false),
+            }
+        }
+    }
+
+    impl Parent {
+        fn child_change(this: ComponentRc<Self>, _: &mut ()) {
+            this.task_with(|this, _| {
+                assert_eq!(this.has_input_value.get(), true);
+                (this.callback.take().unwrap())();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
 async fn list_prop() {
     use maomi::prop::ListProp;
 

@@ -46,6 +46,7 @@ features = [
   "TouchList",
   "Touch",
   "KeyboardEvent",
+  "InputEvent",
   "AnimationEvent",
   "TransitionEvent",
   "HtmlAnchorElement",

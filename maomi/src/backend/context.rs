@@ -115,11 +115,16 @@ impl<B: Backend> BackendContext<B> {
         let inner = self.inner.clone();
         B::async_task(async move {
             let entered = &mut inner.entered.borrow_mut();
-            while let Some(ev) = inner.event_queue.borrow_mut().pop_front() {
-                match ev {
-                    BackendContextEvent::General(f) => {
-                        f(entered);
+            loop {
+                let ev = inner.event_queue.borrow_mut().pop_front();
+                if let Some(ev) = ev {
+                    match ev {
+                        BackendContextEvent::General(f) => {
+                            f(entered);
+                        }
                     }
+                } else {
+                    break;
                 }
             }
         });
