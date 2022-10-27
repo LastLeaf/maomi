@@ -817,13 +817,14 @@ async fn binding_prop() {
         }
 
         fn before_template_apply(&mut self) {
-            self.has_input_value.set(self.input_value.get().len() > 0)
+            self.update_has_input_value();
         }
 
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
                 let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                dom_elem.dyn_ref::<web_sys::HtmlInputElement>().unwrap().set_value("abc");
                 simulate_event(
                     dom_elem,
                     "input",
@@ -841,8 +842,12 @@ async fn binding_prop() {
     }
 
     impl Child {
+        fn update_has_input_value(&mut self) {
+            self.has_input_value.set(self.input_value.get().len() > 0);
+        }
+
         fn input_change(this: ComponentRc<Self>, _: &mut ChangeEvent) {
-            this.task_with(|this, _| {
+            this.task(|this| {
                 this.change.trigger(&mut ());
             });
         }

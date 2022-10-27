@@ -63,6 +63,7 @@ enum Attr {
         dom_element_name: Path,
         ty: Path,
         event: LitStr,
+        cb: ExprClosure,
     },
 }
 
@@ -101,6 +102,7 @@ impl Parse for Attr {
         }
         let _: token::While = input.parse()?;
         let event = input.parse()?;
+        let cb = input.parse()?;
         let span = ty.span();
         let ty = match s.as_str() {
             "& str" => parse_quote_spanned! {span=> DomBindingStrAttr },
@@ -115,6 +117,7 @@ impl Parse for Attr {
             dom_element_name,
             ty,
             event,
+            cb,
         })
     }
 }
@@ -287,10 +290,33 @@ impl ToTokens for DomElementDefinition {
                 #ev: Default::default(),
             }
         });
+        let binding_props_init = self.attrs.iter().filter_map(|(field_name, _attr_name, attr)| {
+            if let Attr::Binding { ty_name, event, cb, .. } = attr {
+                let span = ty_name.span();
+                Some(quote_spanned! {span=>
+                    let binding_value_rc = self.#field_name.inner.clone();
+                    let cb = #cb;
+                    init_binding_prop(dom_element, #event, move |ev: web_sys::Event| {
+                        if let Some(target) = ev.target() {
+                            let binding_value: &mut BindingValue<_> = &mut binding_value_rc.borrow_mut();
+                            cb(binding_value, ev.unchecked_ref(), target.unchecked_ref());
+                        }
+                    });
+                })
+            } else {
+                None
+            }
+        });
         tokens.append_all(quote! {
             #[doc = #struct_doc_comment]
             #[allow(non_camel_case_types)]
             #s
+
+            impl #tag_name {
+                fn init_binding_props(&mut self, dom_element: &mut DomElement) {
+                    #(#binding_props_init)*
+                }
+            }
 
             impl DomElementBase for #tag_name {
                 fn dom_element_lazy(&self) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)> {
@@ -349,7 +375,9 @@ impl ToTokens for DomElementDefinition {
                     ) -> Result<(), Error>,
                 ) -> Result<(), Error> {
                     let mut node = owner.borrow_mut_token(&self.backend_element_token).ok_or(Error::TreeNodeReleased)?;
-                    update_fn(self, &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap());
+                    let dom_element = &mut DomGeneralElement::as_dom_element_mut(&mut node).unwrap();
+                    self.init_binding_props(dom_element);
+                    update_fn(self, dom_element);
                     slot_fn(&mut node, &self.backend_element_token, &())?;
                     Ok(())
                 }

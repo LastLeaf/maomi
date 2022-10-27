@@ -59,6 +59,10 @@ pub(crate) struct HotEventList {
 pub(crate) type ColdEventList = Vec<ColdEventItem>;
 
 pub(crate) enum ColdEventItem {
+    BindingEventListener(
+        &'static str,
+        Closure<dyn Fn(web_sys::Event)>,
+    ),
     MouseDown(
         Box<dyn 'static + Fn(&mut MouseEvent)>,
         Closure<dyn Fn(web_sys::MouseEvent)>,
@@ -136,6 +140,7 @@ pub(crate) enum ColdEventItem {
 impl ColdEventItem {
     pub(crate) fn apply(&self, elem: &web_sys::Element) {
         let (ev_name, cb): (&str, &JsValue) = match self {
+            Self::BindingEventListener(name, cb) => (name, cb.as_ref()),
             Self::MouseDown(_, cb) => ("mousedown", cb.as_ref()),
             Self::MouseUp(_, cb) => ("mouseup", cb.as_ref()),
             Self::MouseMove(_, cb) => ("mousemove", cb.as_ref()),

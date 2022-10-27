@@ -7,12 +7,12 @@ use maomi::{
 use std::{
     borrow::Borrow,
     mem::{ManuallyDrop, MaybeUninit},
-    ops::Deref,
+    ops::Deref, rc::Rc, cell::RefCell,
 };
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
-    event::{ColdEventList, HotEventList},
+    event::{ColdEventList, ColdEventItem, HotEventList},
     DomGeneralElement, DomState, WriteHtmlState,
 };
 
@@ -232,7 +232,6 @@ impl DomElement {
             item.apply(e.unchecked_ref());
         }
         self.elem = DomState::Normal(e.unchecked_into());
-        // TODO init event for binding props
         if self.hot_event_list.is_some() || self.cold_event_list.is_some() {
             self.init_event_token();
         }
@@ -617,7 +616,7 @@ where
 /// 
 /// It should be set with a `BindingValue` .
 pub struct DomBindingStrAttr {
-    pub(crate) inner: BindingValue<String>,
+    pub(crate) inner: Rc<RefCell<BindingValue<String>>>,
     pub(crate) f: fn(&web_sys::HtmlElement, &str),
     #[cfg(feature = "prerendering")]
     pub(crate) attr_name: &'static str,
@@ -626,12 +625,12 @@ pub struct DomBindingStrAttr {
 impl DomBindingStrAttr {
     /// Get a referrence of the value.
     pub fn with<R>(&self, f: impl FnOnce(&String) -> R) -> R {
-        self.inner.with(f)
+        (*self.inner).borrow().with(f)
     }
 
-    /// Get the cloned value.
+    /// Get the value.
     pub fn get(&self) -> String {
-        self.inner.get()
+        (*self.inner).borrow().get()
     }
 }
 
@@ -639,11 +638,12 @@ impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
     type UpdateContext = DomElement;
 
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<String>, ctx: &mut Self::UpdateContext) {
-        if BindingValue::ptr_eq(&dest.inner, src) {
+        let inner = &mut dest.inner.borrow_mut();
+        if BindingValue::ptr_eq(inner, src) {
             return;
         }
-        let old = std::mem::replace(&mut dest.inner, src.clone_ref());
-        dest.inner.with(|inner| {
+        let old = std::mem::replace(&mut **inner, src.clone_ref());
+        inner.with(|inner| {
             if old.with(|x| inner == x) {
                 return;
             }
@@ -666,7 +666,7 @@ impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
 /// 
 /// It should be set with a `BindingValue` .
 pub struct DomBindingBoolAttr {
-    pub(crate) inner: BindingValue<bool>,
+    pub(crate) inner: Rc<RefCell<BindingValue<bool>>>,
     pub(crate) f: fn(&web_sys::HtmlElement, bool),
     #[cfg(feature = "prerendering")]
     pub(crate) attr_name: &'static str,
@@ -675,12 +675,12 @@ pub struct DomBindingBoolAttr {
 impl DomBindingBoolAttr {
     /// Get a referrence of the value.
     pub fn with<R>(&self, f: impl FnOnce(&bool) -> R) -> R {
-        self.inner.with(f)
+        (*self.inner).borrow().with(f)
     }
 
     /// Get the value.
     pub fn get(&self) -> bool {
-        self.inner.get()
+        (*self.inner).borrow().get()
     }
 }
 
@@ -688,11 +688,12 @@ impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
     type UpdateContext = DomElement;
 
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<bool>, ctx: &mut Self::UpdateContext) {
-        if BindingValue::ptr_eq(&dest.inner, src) {
+        let inner = &mut dest.inner.borrow_mut();
+        if BindingValue::ptr_eq(inner, src) {
             return;
         }
-        let old = std::mem::replace(&mut dest.inner, src.clone_ref());
-        dest.inner.with(|inner| {
+        let old = std::mem::replace(&mut **inner, src.clone_ref());
+        inner.with(|inner| {
             if old.with(|x| inner == x) {
                 return;
             }
@@ -702,7 +703,7 @@ impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
                 }
                 #[cfg(feature = "prerendering")]
                 DomState::Prerendering(x) => {
-                    if dest.inner.get() {
+                    if *inner {
                         x.set_attribute(dest.attr_name, String::with_capacity(0));
                     } else {
                         x.remove_attribute(dest.attr_name);
@@ -719,7 +720,7 @@ impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
 /// 
 /// It should be set with a `BindingValue` .
 pub struct DomBindingF64Attr {
-    pub(crate) inner: BindingValue<f64>,
+    pub(crate) inner: Rc<RefCell<BindingValue<f64>>>,
     pub(crate) f: fn(&web_sys::HtmlElement, f64),
     #[cfg(feature = "prerendering")]
     pub(crate) attr_name: &'static str,
@@ -728,12 +729,12 @@ pub struct DomBindingF64Attr {
 impl DomBindingF64Attr {
     /// Get a referrence of the value.
     pub fn with<R>(&self, f: impl FnOnce(&f64) -> R) -> R {
-        self.inner.with(f)
+        (*self.inner).borrow().with(f)
     }
 
     /// Get the value.
     pub fn get(&self) -> f64 {
-        self.inner.get()
+        (*self.inner).borrow().get()
     }
 }
 
@@ -741,11 +742,12 @@ impl PropertyUpdate<BindingValue<f64>> for DomBindingF64Attr {
     type UpdateContext = DomElement;
 
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<f64>, ctx: &mut Self::UpdateContext) {
-        if BindingValue::ptr_eq(&dest.inner, src) {
+        let inner = &mut dest.inner.borrow_mut();
+        if BindingValue::ptr_eq(inner, src) {
             return;
         }
-        let old = std::mem::replace(&mut dest.inner, src.clone_ref());
-        dest.inner.with(|inner| {
+        let old = std::mem::replace(&mut **inner, src.clone_ref());
+        inner.with(|inner| {
             if old.with(|x| inner == x) {
                 return;
             }
@@ -762,4 +764,27 @@ impl PropertyUpdate<BindingValue<f64>> for DomBindingF64Attr {
             }
         });
     }
+}
+
+pub(crate) fn init_binding_prop(
+    target: &mut DomElement,
+    name: &'static str,
+    f: impl 'static + Fn(web_sys::Event),
+) {
+    #[cfg(feature = "prerendering")]
+    if let crate::DomState::Prerendering(_) = &target.elem {
+        return;
+    }
+    let c = Closure::new(move |e| f(e));
+    let item = ColdEventItem::BindingEventListener(name, c);
+    match &target.elem {
+        crate::DomState::Normal(x) => {
+            item.apply(x)
+        }
+        #[cfg(feature = "prerendering")]
+        crate::DomState::Prerendering(_) => unreachable!(),
+        #[cfg(feature = "prerendering-apply")]
+        crate::DomState::PrerenderingApply(_) => {}
+    }
+    target.cold_event_list_mut().push(item);
 }
