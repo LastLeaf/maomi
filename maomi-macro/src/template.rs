@@ -70,6 +70,7 @@ pub(super) enum TemplateNode {
     },
     Slot {
         tag_lt_token: token::Lt,
+        #[allow(dead_code)]
         tag_name: Path,
         data: Option<TemplateAttribute>,
         #[allow(dead_code)]
@@ -135,14 +136,14 @@ impl TemplateNode {
                 let span = brace_token.span;
                 parse_quote_spanned!(span=> maomi::text_node::TextNode )
             }
-            Self::Slot { tag_name, .. } => {
-                let span = tag_name.span();
+            Self::Slot { tag_lt_token, .. } => {
+                let span = tag_lt_token.span();
                 parse_quote_spanned!(span=> maomi::node::ControlNode<()> )
             }
             Self::Tag {
-                tag_name, children, ..
+                tag_lt_token, tag_name, children, ..
             } => {
-                let span = tag_name.span();
+                let span = tag_lt_token.span();
                 let children = children.iter().map(|c| c.gen_type());
                 parse_quote_spanned!(span=> maomi::node::Node<#tag_name, (#(#children,)*)> )
             }
@@ -173,9 +174,9 @@ impl TemplateNode {
                 let span = brace_token.span;
                 let children = children.iter().map(|c| c.gen_type());
                 let ty = if let Some((_, _, _, key_ty)) = key.as_ref() {
-                    quote!(maomi::diff::key::KeyList<#key_ty, (#(#children,)*)>)
+                    quote_spanned!(span=> maomi::diff::key::KeyList<#key_ty, (#(#children,)*)>)
                 } else {
-                    quote!(maomi::diff::keyless::KeylessList<(#(#children,)*)>)
+                    quote_spanned!(span=> maomi::diff::keyless::KeylessList<(#(#children,)*)>)
                 };
                 parse_quote_spanned!(span=> maomi::node::ControlNode<#ty> )
             }
@@ -438,7 +439,7 @@ impl Parse for TemplateNode {
             let in_token = input.parse()?;
             let expr = Box::new(Expr::parse_without_eager_brace(input)?);
             let key = if input.peek(token::Use) {
-                let use_token = input.parse()?;
+                let use_token: token::Use = input.parse()?;
                 let la = input.lookahead1();
                 let (paren, key_expr) = if la.peek(token::Paren) {
                     let content;
@@ -446,7 +447,7 @@ impl Parse for TemplateNode {
                     (Some(paren), content.parse()?)
                 } else if let Pat::Ident(x) = &pat {
                     let ident = &x.ident;
-                    let span = ident.span();
+                    let span = use_token.span();
                     (None, parse_quote_spanned! {span=> #ident })
                 } else {
                     return Err(la.error());
@@ -668,9 +669,9 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         let s = LitStr::new(x, span);
                         quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }
                     }
-                    TransRes::NotNeeded => quote_spanned! {span=> maomi::locale_string::LocaleStaticStr::translated(#content) },
+                    TransRes::NotNeeded => quote! { maomi::locale_string::LocaleStaticStr::translated(#content) },
                 };
-                quote_spanned! {span=>
+                quote! {
                     let (__m_child, __m_backend_element) =
                         maomi::text_node::TextNode::create::<#backend_param>(
                             __m_parent_element,
@@ -702,15 +703,15 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     None => quote_spanned! {span=> &() },
                     Some(attr) => {
                         match attr {
-                            TemplateAttribute::StaticProperty { value, .. } => {
-                                let span = value.span();
+                            TemplateAttribute::StaticProperty { eq_token, value, .. } => {
+                                let span = eq_token.span();
                                 match value {
-                                    Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
+                                    Lit::Str(_) | Lit::ByteStr(_) => quote_spanned! {span=> #value },
                                     _ => quote_spanned! {span=> & #value },
                                 }
                             }
-                            TemplateAttribute::DynamicProperty { expr, ref_token, .. } => {
-                                let span = expr.span();
+                            TemplateAttribute::DynamicProperty { eq_token, expr, ref_token, .. } => {
+                                let span = eq_token.span();
                                 match ref_token {
                                     Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
                                     None => quote_spanned!(span=> #expr),
@@ -722,9 +723,9 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     },
                 };
                 let create_slot = if inside_update {
-                    quote! { __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &__m_slot_data))?; }
+                    quote_spanned! {span=> __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &__m_slot_data))?; }
                 } else {
-                    quote! { __m_slot_fn(__m_parent_element, &__m_backend_element_token, &__m_slot_data)?; }
+                    quote_spanned! {span=> __m_slot_fn(__m_parent_element, &__m_backend_element_token, &__m_slot_data)?; }
                 };
                 quote_spanned! {span=>
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
@@ -768,8 +769,8 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 };
                 let children = children.into_iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                 let slot_var_name = match slot_var_name {
-                    Some(x) => quote! { #x },
-                    None => quote! { __m_slot_data },
+                    Some(x) => quote_spanned! {span=> #x },
+                    None => quote_spanned! {span=> __m_slot_data },
                 };
                 quote_spanned! {span=>
                     let (mut __m_child, __m_backend_element) =
@@ -806,7 +807,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                     let TemplateIfElse { else_token, if_cond, children, .. } = x;
                     let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
                     let if_cond = match if_cond {
-                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        Some((if_token, cond)) => quote_spanned! {span=> #if_token #cond },
                         None => quote! {},
                     };
                     let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
@@ -832,6 +833,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
             }
             TemplateNode::Match { match_token, expr, arms, .. } => {
                 let branch_ty = get_branch_ty(arms.len());
+                let span = match_token.span();
                 let branches = arms.iter().enumerate().map(|(index, x)| {
                     let branch_selected = get_branch_selected(index);
                     let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
@@ -840,13 +842,12 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         None => quote! {},
                     };
                     let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
-                    quote! {
+                    quote_spanned! {span=>
                         #pat #guard #fat_arrow_token {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
                         } #comma
                     }
                 });
-                let span = match_token.span();
                 quote_spanned! {span=>
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_slot_children = {
@@ -868,12 +869,12 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let children = children.iter().map(|x| TemplateNodeCreate { inside_update, template_node: x, backend_param, locale_group });
                 let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
                     (
-                        quote!(maomi::diff::key::KeyList::<#key_ty, _>),
-                        quote!(#key_expr,),
+                        quote_spanned!(span=> maomi::diff::key::KeyList::<#key_ty, _>),
+                        quote_spanned!(span=> #key_expr,),
                     )
                 } else {
                     (
-                        quote!(maomi::diff::keyless::KeylessList::<_>),
+                        quote_spanned!(span=> maomi::diff::keyless::KeylessList::<_>),
                         quote!(),
                     )
                 };
@@ -964,7 +965,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
                 let translated = match locale_group.need_trans() {
-                    true => quote_spanned! {span=> #expr },
+                    true => quote! { #expr },
                     false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
                 };
                 quote_spanned! {span=>
@@ -978,15 +979,15 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     None => quote_spanned! {span=> &() },
                     Some(attr) => {
                         match attr {
-                            TemplateAttribute::StaticProperty { value, .. } => {
-                                let span = value.span();
+                            TemplateAttribute::StaticProperty { eq_token, value, .. } => {
+                                let span = eq_token.span();
                                 match value {
                                     Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
                                     _ => quote_spanned! {span=> & #value },
                                 }
                             }
-                            TemplateAttribute::DynamicProperty { expr, ref_token, .. } => {
-                                let span = expr.span();
+                            TemplateAttribute::DynamicProperty { eq_token, expr, ref_token, .. } => {
+                                let span = eq_token.span();
                                 match ref_token {
                                     Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
                                     None => quote_spanned!(span=> #expr),
@@ -1048,7 +1049,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     });
                 let slot_var_name = match slot_var_name {
                     Some(x) => quote! { #x },
-                    None => quote! { __m_slot_data },
+                    None => quote_spanned! {span=> __m_slot_data },
                 };
                 quote_spanned! {span=>
                     let maomi::node::Node {
@@ -1092,8 +1093,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let branches = branches.iter().enumerate().map(|(index, x)| {
                     let branch_selected = get_branch_selected(index);
                     let TemplateIfElse { else_token, if_cond, children, .. } = x;
+                    let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
                     let if_cond = match if_cond {
-                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        Some((if_token, cond)) => quote_spanned! {span=> #if_token #cond },
                         None => quote! {},
                     };
                     let create_children = children.iter().map(|x| TemplateNodeCreate { inside_update: true, template_node: x, backend_param, locale_group });
@@ -1105,7 +1107,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             backend_param,
                             locale_group,
                         });
-                    quote! {
+                    quote_spanned! {span=>
                         #else_token #if_cond {
                             if let maomi::node::#branch_ty::#branch_selected(__m_children) = __m_slot_children {
                                 let __m_parent_element = &mut __m_backend_element;
@@ -1138,6 +1140,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
             TemplateNode::Match { match_token, expr, arms, .. } => {
                 let branch_ty = get_branch_ty(arms.len());
+                let span = match_token.span();
                 let branches = arms.iter().enumerate().map(|(index, x)| {
                     let branch_selected = get_branch_selected(index);
                     let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
@@ -1154,7 +1157,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             backend_param,
                             locale_group,
                         });
-                    quote! {
+                    quote_spanned! {span=>
                         #pat #guard #fat_arrow_token {
                             if let maomi::node::#branch_ty::#branch_selected(__m_children) = __m_slot_children {
                                 let __m_parent_element = &mut __m_backend_element;
@@ -1175,7 +1178,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         } #comma
                     }
                 });
-                quote! {
+                quote_spanned! {span=>
                     let maomi::node::ControlNode {
                         forest_token: ref mut __m_backend_element_token,
                         content: ref mut __m_slot_children,
@@ -1205,7 +1208,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         locale_group,
                     });
                 let next_arg = if let Some((_, _, key_expr, _)) = key.as_ref() {
-                    quote!(#key_expr,)
+                    quote_spanned!(span=> #key_expr,)
                 } else {
                     quote!()
                 };
@@ -1254,11 +1257,11 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self { attr, list_index } = self;
         match attr {
-            TemplateAttribute::StaticProperty { name, list_updater, value, .. } => {
-                let span = value.span();
+            TemplateAttribute::StaticProperty { name, list_updater, value, eq_token, .. } => {
+                let span = eq_token.span();
                 let ref_sign = match value {
                     Lit::Str(_) | Lit::ByteStr(_) => quote! {},
-                    _ => quote!{ & },
+                    _ => quote_spanned!{span=> & },
                 };
                 if let Some((_, updater)) = list_updater {
                     let index = Index::from(*list_index);
@@ -1280,8 +1283,8 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                     }
                 }
             }
-            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, .. } => {
-                let span = expr.span();
+            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, eq_token, .. } => {
+                let span = eq_token.span();
                 let expr = match ref_token {
                     Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
                     None => quote_spanned!(span=> #expr),
@@ -1352,9 +1355,10 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                 name,
                 list_updater,
                 expr,
+                eq_token,
                 ..
             } => {
-                let span = expr.span();
+                let span = eq_token.span();
                 let expr = match ref_token {
                     Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
                     None => quote_spanned!(span=> #expr),

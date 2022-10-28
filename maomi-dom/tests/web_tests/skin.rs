@@ -24,7 +24,6 @@ async fn skin_const() {
     struct MyComp {
         callback: Option<ComponentTestCb>,
         template: template! {
-            // FIXME fix over-spanned (influences finding ref)
             <div class:a_class></div>
         },
     }
