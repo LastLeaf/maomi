@@ -12,7 +12,7 @@ pub trait ToLocaleStr {
 }
 
 /// A translated static str.
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Hash)]
 pub struct LocaleStaticStr(&'static str);
 
 impl LocaleStaticStr {
@@ -42,7 +42,7 @@ impl Display for LocaleStaticStr {
 }
 
 /// A translated string.
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Hash)]
 pub struct LocaleString(String);
 
 impl LocaleString {
