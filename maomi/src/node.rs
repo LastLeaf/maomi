@@ -100,13 +100,50 @@ gen_branch_node!(Branch14, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12
 gen_branch_node!(Branch15, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14);
 gen_branch_node!(Branch16, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15);
 
-/// A helper type for store slot children.
+/// A helper trait for managing slot list and slot content.
 /// 
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
-// Since rust GAT is not stable yet, we cannot make it a trait - use enum instead
+pub trait SlotKindTrait<K, C> {
+    #[doc(hidden)]
+    /// Add a slot with the slot content.
+    fn add(&mut self, k: K, c: C);
+    #[doc(hidden)]
+    /// Remove a slot and return the slot content.
+    fn remove(&mut self, k: K) -> Result<C, Error>;
+    #[doc(hidden)]
+    /// Get a reference of the slot content.
+    fn get(&self, k: K) -> Result<&C, Error>;
+    #[doc(hidden)]
+    /// Get a mutable reference of the slot content.
+    fn get_mut(&mut self, k: K) -> Result<&mut C, Error>;
+    #[doc(hidden)]
+    /// Start an update for all slots.
+    fn update(&mut self) -> SlotChildrenUpdate<K, C>;
+    /// Iterator over all slots.
+    fn iter(&self) -> SlotChildrenIter<K, C>;
+    /// If there is only one slot, returns it.
+    fn single_slot(&self) -> Option<&C>;
+}
+
+/// A slot list that is always empty.
+pub struct NoneSlot {}
+
+/// A slot list that always contains a single slot.
+pub struct StaticSingleSlot<K, C> {
+    k: K,
+    c: C,
+}
+
+/// A slot list that can contain any number of slots.
+pub struct DynamicSlot<K, C> {
+    slots: HashMap<K, C>,
+}
+
+// TODO impl GAT
+
 #[derive(Debug)]
-pub enum SlotChildren<K: Hash + Eq, C> {
+pub enum SlotChildren<K, C> {
     /// There is no children.
     None,
     /// There is only one child.
@@ -116,7 +153,6 @@ pub enum SlotChildren<K: Hash + Eq, C> {
 }
 
 impl<K: Hash + Eq, C> SlotChildren<K, C> {
-    #[doc(hidden)]
     #[inline]
     pub fn add(&mut self, k: K, v: C) {
         if let Self::Single(..) = self {
@@ -132,7 +168,6 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         }
     }
 
-    #[doc(hidden)]
     #[inline]
     pub fn remove(&mut self, k: K) -> Result<C, Error> {
         if let Self::Single(k2, _) = self {
@@ -152,7 +187,6 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         }
     }
 
-    #[doc(hidden)]
     #[inline]
     pub fn get(&self, k: K) -> Result<&C, Error> {
         if let Self::Single(k2, v2) = self {
@@ -168,7 +202,6 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         }
     }
 
-    #[doc(hidden)]
     #[inline]
     pub fn get_mut(&mut self, k: K) -> Result<&mut C, Error> {
         if let Self::Single(k2, v2) = self {
@@ -184,7 +217,6 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         }
     }
 
-    #[doc(hidden)]
     #[inline]
     pub fn update(&mut self) -> SlotChildrenUpdate<K, C> {
         SlotChildrenUpdate {
@@ -199,13 +231,11 @@ impl<K: Hash + Eq, C> SlotChildren<K, C> {
         }
     }
 
-    /// Iterator over slots.
     #[inline]
     pub fn iter(&self) -> SlotChildrenIter<K, C> {
         (&self).into_iter()
     }
 
-    /// If there is only one slot, returns it.
     #[inline]
     pub fn single_slot(&self) -> Option<&C> {
         match self {
@@ -236,7 +266,7 @@ impl<'a, K: Hash + Eq, C> IntoIterator for &'a SlotChildren<K, C> {
 /// 
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
-pub enum SlotChildrenIter<'a, K: Hash + Eq, C> {
+pub enum SlotChildrenIter<'a, K, C> {
     /// There is no children.
     None,
     /// There is only one child.
@@ -263,7 +293,7 @@ impl<'a, K: Hash + Eq, C> Iterator for SlotChildrenIter<'a, K, C> {
 }
 
 #[doc(hidden)]
-pub struct SlotChildrenUpdate<'a, K: Hash + Eq, C> {
+pub struct SlotChildrenUpdate<'a, K, C> {
     cur_map: Option<HashMap<K, C>>,
     old: &'a mut SlotChildren<K, C>,
     old_single_matched: bool,
@@ -353,7 +383,6 @@ impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
 /// 
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
-// Since rust GAT is not stable yet, we cannot make it a trait - use enum instead
 #[derive(Debug, Clone, PartialEq)]
 pub enum SlotChange<N, M, T> {
     /// The slot is not changed.
