@@ -6,7 +6,7 @@ use crate::{
     backend::{tree::*, Backend},
     component::*,
     error::Error,
-    node::{OwnerWeak, SlotChange, SlotChildren},
+    node::{OwnerWeak, SlotChange, SlotKindTrait},
     prop::Prop,
     BackendContext,
 };
@@ -20,7 +20,7 @@ pub struct TemplateInit<C> {
 }
 
 /// Some helper functions for the template type.
-pub trait TemplateHelper<C: ?Sized, S, D>: Default {
+pub trait TemplateHelper<C: ?Sized, S, L>: Default {
     /// Mark the template that update is needed.
     ///
     /// It is auto-managed by the `#[component]` .
@@ -54,7 +54,7 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
         C: 'static + Sized;
 
     #[doc(hidden)]
-    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)>;
+    fn slot_scopes(&self) -> &L;
 
     #[doc(hidden)]
     fn pending_slot_changes(
@@ -70,7 +70,7 @@ pub trait TemplateHelper<C: ?Sized, S, D>: Default {
 ///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
-pub struct Template<C, S, D> {
+pub struct Template<C, S, L: Default> {
     #[doc(hidden)]
     pub __m_self_owner_weak: Option<Box<dyn OwnerWeak>>,
     updater: Option<ComponentWeak<C>>,
@@ -78,25 +78,25 @@ pub struct Template<C, S, D> {
     #[doc(hidden)]
     pub __m_structure: Option<S>,
     #[doc(hidden)]
-    pub __m_slot_scopes: SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)>,
+    pub __m_slot_scopes: L,
     #[doc(hidden)]
     pub __m_pending_slot_changes: Vec<SlotChange<(), ForestToken, ()>>,
 }
 
-impl<C, S, D> Default for Template<C, S, D> {
+impl<C, S, L: Default> Default for Template<C, S, L> {
     fn default() -> Self {
         Self {
             __m_self_owner_weak: None,
             updater: None,
             dirty: false,
             __m_structure: None,
-            __m_slot_scopes: SlotChildren::None,
+            __m_slot_scopes: L::default(),
             __m_pending_slot_changes: Vec::with_capacity(0),
         }
     }
 }
 
-impl<C: 'static, S, D> Template<C, S, D> {
+impl<C: 'static, S, L: Default> Template<C, S, L> {
     #[doc(hidden)]
     #[inline]
     pub fn init(&mut self, init: TemplateInit<C>) {
@@ -105,7 +105,7 @@ impl<C: 'static, S, D> Template<C, S, D> {
     }
 }
 
-impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
+impl<C, S, L: Default> TemplateHelper<C, S, L> for Template<C, S, L> {
     #[inline]
     fn mark_dirty(&mut self)
     where
@@ -161,7 +161,7 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     }
 
     #[inline]
-    fn slot_scopes(&self) -> &SlotChildren<ForestTokenAddr, (ForestToken, Prop<D>)> {
+    fn slot_scopes(&self) -> &L {
         &self.__m_slot_scopes
     }
 
@@ -179,17 +179,32 @@ impl<C, S, D> TemplateHelper<C, S, D> for Template<C, S, D> {
     }
 }
 
+/// The slot types which is associated with the template.
+///
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub trait ComponentSlotKind {
+    /// The slot list type.
+    type SlotChildren<SlotContent>: SlotKindTrait<ForestTokenAddr, SlotContent>;
+
+    /// The type of the slot data, specified through `#[component(SlotData = ...)]`.
+    type SlotData: 'static;
+}
+
 /// A component template
 ///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
-pub trait ComponentTemplate<B: Backend> {
+pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
     /// The type of the template field.
-    type TemplateField: TemplateHelper<Self, Self::TemplateStructure, Self::SlotData>;
+    type TemplateField: TemplateHelper<
+        Self,
+        Self::TemplateStructure,
+        Self::SlotChildren<(ForestToken, Prop<Self::SlotData>)>,
+    >;
+
     /// The type of the template inner structure.
     type TemplateStructure;
-    /// The type of the slot data, specified through `#[component(SlotData = ...)]`.
-    type SlotData: 'static;
 
     /// Get a reference of the template field of the component.
     fn template(&self) -> &Self::TemplateField;

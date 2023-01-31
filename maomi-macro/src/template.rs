@@ -16,6 +16,13 @@ fn get_branch_selected(index: usize) -> Ident {
     Ident::new(&format!("B{}", index), proc_macro2::Span::call_site())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum SlotType {
+    None,
+    StaticSingle,
+    Dynamic,
+}
+
 pub(super) struct Template {
     children: Vec<TemplateNode>,
 }
@@ -30,6 +37,64 @@ impl Template {
         };
         let children = children.iter().map(|c| c.gen_type());
         parse_quote_spanned!(span=> (#(#children,)*) )
+    }
+
+    pub(super) fn slot_type(&self) -> SlotType {
+        fn rec(children: &Vec<TemplateNode>, st: &mut SlotType, in_list: bool) {
+            for n in children {
+                match n {
+                    TemplateNode::StaticText { .. }
+                    | TemplateNode::DynamicText { .. } => {
+                        continue;
+                    }
+                    TemplateNode::Tag { children, .. } => {
+                        rec(children, st, in_list);
+                        if *st == SlotType::Dynamic {
+                            return;
+                        }
+                    }
+                    TemplateNode::Slot { .. } => {
+                        *st = match *st {
+                            SlotType::None => {
+                                if in_list {
+                                    SlotType::Dynamic
+                                } else {
+                                    SlotType::StaticSingle
+                                }
+                            },
+                            SlotType::StaticSingle => SlotType::Dynamic,
+                            SlotType::Dynamic => unreachable!(),
+                        };
+                        continue;
+                    }
+                    TemplateNode::IfElse { branches, .. } => {
+                        for branch in branches {
+                            rec(&branch.children, st, in_list);
+                            if *st == SlotType::Dynamic {
+                                return;
+                            }
+                        }
+                    }
+                    TemplateNode::Match { arms, .. } => {
+                        for arm in arms {
+                            rec(&arm.children, st, in_list);
+                            if *st == SlotType::Dynamic {
+                                return;
+                            }
+                        }
+                    }
+                    TemplateNode::ForLoop { children, .. } => {
+                        rec(children, st, true);
+                        if *st == SlotType::Dynamic {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        let mut ret = SlotType::None;
+        rec(&self.children, &mut ret, false);
+        ret
     }
 
     pub(super) fn to_create<'a>(&'a self, backend_param: &'a TokenStream, locale_group: &'a LocaleGroup) -> TemplateCreate<'a> {
@@ -734,7 +799,11 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
                         let __m_slot_data = maomi::prop::Prop::new(maomi::prop::PropAsRef::property_to_owned(#data_expr));
                         #create_slot
-                        __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data));
+                        {
+                            #[allow(unused_imports)]
+                            use maomi::node::{SlotKindTrait, SlotKindUpdateTrait};
+                            __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data))?;
+                        }
                     }
                     let __m_backend_element_token = __m_backend_element.token();
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
@@ -779,7 +848,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             __m_parent_element,
                             __m_self_owner_weak,
                         )?;
-                    let mut __m_slot_children = maomi::node::SlotChildren::None;
+                    let mut __m_slot_children = <<#tag_name as maomi::backend::SupportBackend>::SlotChildren<_> as Default>::default();
                     <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
                         &mut __m_child,
                         __m_backend_context,
@@ -789,7 +858,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                             #(#attrs)*
                         },
                         #[inline] |__m_parent_element, __m_backend_element_token, #slot_var_name| {
-                            __m_slot_children.add(__m_backend_element_token.stable_addr(), (#({#children},)*));
+                            maomi::node::SlotKindTrait::add(&mut __m_slot_children, __m_backend_element_token.stable_addr(), (#({#children},)*))?;
                             Ok(())
                         },
                     )?;
@@ -1005,7 +1074,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     } = __m_children.#child_index;
                     let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                         .ok_or(maomi::error::Error::ListChangeWrong)?;
-                    let __m_slot_data = &mut __m_slot_scopes.reuse(__m_backend_element_token.stable_addr())?.1;
+                    let __m_slot_data = &mut maomi::node::SlotKindUpdateTrait::reuse(__m_slot_scopes, __m_backend_element_token.stable_addr())?.1;
                     let mut __m_slot_data_changed = false;
                     maomi::prop::PropertyUpdate::compare_and_set_ref(
                         __m_slot_data,
@@ -1070,17 +1139,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             match __m_slot_change {
                                 maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
                                     let __m_children = (#({#create_children},)*);
-                                    __m_slot_children.add(__m_backend_element_token.stable_addr(), __m_children);
+                                    maomi::node::SlotKindTrait::add(__m_slot_children, __m_backend_element_token.stable_addr(), __m_children)?;
                                 }
                                 maomi::node::SlotChange::DataChanged(__m_parent_element, __m_backend_element_token, #slot_var_name)
                                     | maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name)
                                     => {
                                     let __m_children =
-                                        __m_slot_children.get_mut(__m_backend_element_token.stable_addr())?;
+                                        maomi::node::SlotKindTrait::get_mut(__m_slot_children, __m_backend_element_token.stable_addr())?;
                                     #({#update_children})*
                                 }
                                 maomi::node::SlotChange::Removed(__m_backend_element_token) => {
-                                    __m_slot_children.remove(__m_backend_element_token.stable_addr())?;
+                                    maomi::node::SlotKindTrait::remove(__m_slot_children, __m_backend_element_token.stable_addr())?;
                                 }
                             }
                             Ok(())

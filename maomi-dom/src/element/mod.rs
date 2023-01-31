@@ -5,7 +5,7 @@
 use maomi::{
     backend::{BackendComponent, SupportBackend},
     error::Error,
-    node::{OwnerWeak, SlotChange},
+    node::{OwnerWeak, SlotChange, StaticSingleSlot},
     BackendContext,
 };
 use maomi_dom_macro::dom_element_definition;

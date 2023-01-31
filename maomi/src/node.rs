@@ -1,6 +1,6 @@
 //! Helper types for node trees.
 
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 
 use crate::{
     backend::{tree, SupportBackend},
@@ -25,19 +25,19 @@ pub struct Node<N: SupportBackend, C> {
     /// The node itself.
     pub tag: N::Target,
     /// The child nodes of the node.
-    pub child_nodes: SlotChildren<ForestTokenAddr, C>,
+    pub child_nodes: N::SlotChildren<C>,
 }
 
 impl<N: SupportBackend, C> Node<N, C> {
     /// Create a node with specified children.
     #[inline(always)]
-    pub fn new(tag: N::Target, child_nodes: SlotChildren<ForestTokenAddr, C>) -> Self {
+    pub fn new(tag: N::Target, child_nodes: N::SlotChildren<C>) -> Self {
         Self { tag, child_nodes }
     }
 
     /// Iterator over slots of the node.
     #[inline]
-    pub fn iter_slots(&self) -> SlotChildrenIter<ForestTokenAddr, C> {
+    pub fn iter_slots(&self) -> <N::SlotChildren::<C> as SlotKindTrait<ForestTokenAddr, C>>::Iter<'_> {
         self.child_nodes.iter()
     }
 
@@ -104,276 +104,330 @@ gen_branch_node!(Branch16, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12
 /// 
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
-pub trait SlotKindTrait<K, C> {
-    #[doc(hidden)]
+pub trait SlotKindTrait<K, C>: Default {
+    /// The updater type.
+    type Update<'a>: SlotKindUpdateTrait<'a, K, C>
+    where
+        Self: 'a,
+        K: 'a,
+        C: 'a;
+
+    /// The iterator type.
+    type Iter<'a>: Iterator<Item = (&'a K, &'a C)>
+    where
+        Self: 'a,
+        K: 'a,
+        C: 'a;
+
     /// Add a slot with the slot content.
-    fn add(&mut self, k: K, c: C);
     #[doc(hidden)]
+    fn add(&mut self, k: K, c: C) -> Result<(), Error>;
+
     /// Remove a slot and return the slot content.
+    #[doc(hidden)]
     fn remove(&mut self, k: K) -> Result<C, Error>;
-    #[doc(hidden)]
+
     /// Get a reference of the slot content.
+    #[doc(hidden)]
     fn get(&self, k: K) -> Result<&C, Error>;
-    #[doc(hidden)]
+
     /// Get a mutable reference of the slot content.
-    fn get_mut(&mut self, k: K) -> Result<&mut C, Error>;
     #[doc(hidden)]
+    fn get_mut(&mut self, k: K) -> Result<&mut C, Error>;
+    
     /// Start an update for all slots.
-    fn update(&mut self) -> SlotChildrenUpdate<K, C>;
+    #[doc(hidden)]
+    fn update<'a>(&'a mut self) -> Self::Update<'a>;
+
     /// Iterator over all slots.
-    fn iter(&self) -> SlotChildrenIter<K, C>;
+    fn iter<'a>(&'a self) -> Self::Iter<'a>;
+
     /// If there is only one slot, returns it.
     fn single_slot(&self) -> Option<&C>;
 }
 
+/// A helper trait for a group of slot list updates.
+pub trait SlotKindUpdateTrait<'a, K: 'a, C: 'a> {
+    /// Add a slot with the slot content.
+    #[doc(hidden)]
+    fn add(&mut self, k: K, c: C) -> Result<(), Error>;
+
+    /// Reuse a slot, returning it.
+    #[doc(hidden)]
+    fn reuse(&mut self, k: K) -> Result<&mut C, Error>;
+
+    /// Finish update, handling unused items
+    #[doc(hidden)]
+    fn finish(self, remove_item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error>;
+}
+
 /// A slot list that is always empty.
-pub struct NoneSlot {}
+#[derive(Debug)]
+pub struct NoneSlot<K, C> {
+    phantom: PhantomData<(K, C)>,
+}
+
+impl<K, C> Default for NoneSlot<K, C> {
+    #[inline]
+    fn default() -> Self {
+        Self { phantom: PhantomData }
+    }
+}
+
+impl<K, C> SlotKindTrait<K, C> for NoneSlot<K, C> {
+    type Update<'a> = NoneSlotUpdate<'a, K, C> where K: 'a, C: 'a;
+    type Iter<'a> = std::iter::Empty<(&'a K, &'a C)> where K: 'a, C: 'a;
+
+    #[inline]
+    fn add(&mut self, _: K, _: C) -> Result<(), Error> {
+        Err(Error::ListChangeWrong)
+    }
+
+    #[inline]
+    fn remove(&mut self, _: K) -> Result<C, Error> {
+        Err(Error::ListChangeWrong)
+    }
+
+    #[inline]
+    fn get(&self, _: K) -> Result<&C, Error> {
+        Err(Error::ListChangeWrong)
+    }
+
+    #[inline]
+    fn get_mut(&mut self, _: K) -> Result<&mut C, Error> {
+        Err(Error::ListChangeWrong)
+    }
+
+    #[inline]
+    fn update<'a>(&'a mut self) -> Self::Update<'a> {
+        NoneSlotUpdate {
+            phantom: PhantomData,
+        }
+    }
+
+    #[inline]
+    fn iter(&self) -> Self::Iter<'_> {
+        std::iter::empty()
+    }
+
+    #[inline]
+    fn single_slot(&self) -> Option<&C> {
+        None
+    }
+}
+
+#[doc(hidden)]
+pub struct NoneSlotUpdate<'a, K, C> {
+    phantom: PhantomData<&'a (K, C)>,
+}
+
+impl<'a, K: 'a, C: 'a> SlotKindUpdateTrait<'a, K, C> for NoneSlotUpdate<'a, K, C> {
+    #[inline]
+    fn add(&mut self, _: K, _: C) -> Result<(), Error> {
+        Err(Error::ListChangeWrong)
+    }
+
+    #[inline]
+    fn reuse(&mut self, _: K) -> Result<&mut C, Error> {
+        Err(Error::ListChangeWrong)
+    }
+
+    #[inline]
+    fn finish(self, _: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
+        Ok(())
+    }
+}
 
 /// A slot list that always contains a single slot.
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+#[derive(Debug)]
 pub struct StaticSingleSlot<K, C> {
-    k: K,
-    c: C,
+    kc: Option<(K, C)>,
+}
+
+impl<K, C> Default for StaticSingleSlot<K, C> {
+    #[inline]
+    fn default() -> Self where Self: Sized {
+        Self { kc: None }
+    }
+}
+
+impl<K, C> SlotKindTrait<K, C> for StaticSingleSlot<K, C> {
+    type Update<'a> = StaticSingleSlotUpdate<'a, K, C> where K: 'a, C: 'a;
+    type Iter<'a> = std::option::IntoIter<(&'a K, &'a C)> where K: 'a, C: 'a;
+
+    #[inline]
+    fn add(&mut self, k: K, c: C) -> Result<(), Error> {
+        if self.kc.is_some() {
+            return Err(Error::ListChangeWrong);
+        }
+        self.kc = Some((k, c));
+        Ok(())
+    }
+
+    #[inline]
+    fn remove(&mut self, _: K) -> Result<C, Error> {
+        if self.kc.is_none() {
+            return Err(Error::ListChangeWrong);
+        }
+        match self.kc.take() {
+            Some((_, c)) => Ok(c),
+            None => Err(Error::ListChangeWrong),
+        }
+    }
+
+    #[inline]
+    fn get(&self, _: K) -> Result<&C, Error> {
+        self.kc.as_ref().ok_or(Error::ListChangeWrong).map(|(_, c)| c)
+    }
+
+    #[inline]
+    fn get_mut(&mut self, _: K) -> Result<&mut C, Error> {
+        self.kc.as_mut().ok_or(Error::ListChangeWrong).map(|(_, c)| c)
+    }
+
+    #[inline]
+    fn update<'a>(&'a mut self) -> Self::Update<'a> {
+        StaticSingleSlotUpdate { s: self, visited: false }
+    }
+
+    #[inline]
+    fn iter<'a>(&'a self) -> Self::Iter<'a> {
+        self.kc.as_ref().map(|(k, c)| (k, c)).into_iter()
+    }
+
+    #[inline]
+    fn single_slot(&self) -> Option<&C> {
+        self.kc.as_ref().map(|(_, c)| c)
+    }
+}
+
+#[doc(hidden)]
+pub struct StaticSingleSlotUpdate<'a, K, C> {
+    s: &'a mut StaticSingleSlot<K, C>,
+    visited: bool,
+}
+
+impl<'a, K, C> SlotKindUpdateTrait<'a, K, C> for StaticSingleSlotUpdate<'a, K, C> {
+    #[inline]
+    fn add(&mut self, k: K, c: C) -> Result<(), Error> {
+        let ret = self.s.add(k, c);
+        if ret.is_ok() {
+            self.visited = true;
+        }
+        ret
+    }
+
+    #[inline]
+    fn reuse(&mut self, k: K) -> Result<&mut C, Error> {
+        let ret = self.s.get_mut(k);
+        if ret.is_ok() {
+            self.visited = true;
+        }
+        ret
+    }
+
+    #[inline]
+    fn finish(self, mut remove_item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
+        if !self.visited {
+            if let Some((k, c)) = self.s.kc.take() {
+                return remove_item_fn(k, c);
+            }
+        }
+        Ok(())
+    }
 }
 
 /// A slot list that can contain any number of slots.
+/// 
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+#[derive(Debug)]
 pub struct DynamicSlot<K, C> {
     slots: HashMap<K, C>,
 }
 
-// TODO impl GAT
-
-#[derive(Debug)]
-pub enum SlotChildren<K, C> {
-    /// There is no children.
-    None,
-    /// There is only one child.
-    Single(K, C),
-    /// There are multiple children.
-    Multiple(HashMap<K, C>),
+impl<K, C> Default for DynamicSlot<K, C> {
+    #[inline]
+    fn default() -> Self where Self: Sized {
+        Self { slots: HashMap::new() }
+    }
 }
 
-impl<K: Hash + Eq, C> SlotChildren<K, C> {
+impl<K: Hash + Eq, C> SlotKindTrait<K, C> for DynamicSlot<K, C> {
+    type Update<'a> = DynamicSlotUpdate<'a, K, C> where K: 'a, C: 'a;
+    type Iter<'a> = std::collections::hash_map::Iter<'a, K, C> where K: 'a, C: 'a;
+
     #[inline]
-    pub fn add(&mut self, k: K, v: C) {
-        if let Self::Single(..) = self {
-            if let Self::Single(k2, v2) = std::mem::replace(self, Self::None) {
-                *self = Self::Multiple(HashMap::from_iter([(k2, v2), (k, v)]));
-            } else {
-                unreachable!();
-            }
-        } else if let Self::Multiple(map) = self {
-            map.insert(k, v);
-        } else {
-            *self = Self::Single(k, v);
-        }
+    fn add(&mut self, k: K, v: C) -> Result<(), Error> {
+        self.slots.insert(k, v);
+        Ok(())
     }
 
     #[inline]
-    pub fn remove(&mut self, k: K) -> Result<C, Error> {
-        if let Self::Single(k2, _) = self {
-            if *k2 == k {
-                if let Self::Single(_, v2) = std::mem::replace(self, Self::None) {
-                    Ok(v2)
-                } else {
-                    unreachable!()
-                }
-            } else {
-                Err(Error::ListChangeWrong)
-            }
-        } else if let Self::Multiple(map) = self {
-            map.remove(&k).ok_or(Error::ListChangeWrong)
-        } else {
-            Err(Error::ListChangeWrong)
-        }
+    fn remove(&mut self, k: K) -> Result<C, Error> {
+        self.slots.remove(&k).ok_or(Error::ListChangeWrong)
     }
 
     #[inline]
-    pub fn get(&self, k: K) -> Result<&C, Error> {
-        if let Self::Single(k2, v2) = self {
-            if *k2 == k {
-                Ok(v2)
-            } else {
-                Err(Error::ListChangeWrong)
-            }
-        } else if let Self::Multiple(vec) = self {
-            vec.get(&k).ok_or(Error::ListChangeWrong)
-        } else {
-            Err(Error::ListChangeWrong)
-        }
+    fn get(&self, k: K) -> Result<&C, Error> {
+        self.slots.get(&k).ok_or(Error::ListChangeWrong)
     }
 
     #[inline]
-    pub fn get_mut(&mut self, k: K) -> Result<&mut C, Error> {
-        if let Self::Single(k2, v2) = self {
-            if *k2 == k {
-                Ok(v2)
-            } else {
-                Err(Error::ListChangeWrong)
-            }
-        } else if let Self::Multiple(vec) = self {
-            vec.get_mut(&k).ok_or(Error::ListChangeWrong)
-        } else {
-            Err(Error::ListChangeWrong)
-        }
+    fn get_mut(&mut self, k: K) -> Result<&mut C, Error> {
+        self.slots.get_mut(&k).ok_or(Error::ListChangeWrong)
     }
 
     #[inline]
-    pub fn update(&mut self) -> SlotChildrenUpdate<K, C> {
-        SlotChildrenUpdate {
-            cur_map: match self {
-                Self::None => None,
-                Self::Single(_, _) => None,
-                Self::Multiple(map) => Some(HashMap::with_capacity(map.len())),
-            },
+    fn update(&mut self) -> Self::Update<'_> {
+        DynamicSlotUpdate {
+            cur_map: HashMap::with_capacity(self.slots.len()),
             old: self,
-            old_single_matched: false,
-            removed_old_single: None,
         }
     }
 
     #[inline]
-    pub fn iter(&self) -> SlotChildrenIter<K, C> {
-        (&self).into_iter()
+    fn iter(&self) -> Self::Iter<'_> {
+        self.slots.iter()
     }
 
     #[inline]
-    pub fn single_slot(&self) -> Option<&C> {
-        match self {
-            Self::None => None,
-            Self::Single(_, c) => Some(c),
-            Self::Multiple(map) => match map.len() {
-                1 => map.values().next(),
-                _ => None,
-            },
-        }
-    }
-}
-
-impl<'a, K: Hash + Eq, C> IntoIterator for &'a SlotChildren<K, C> {
-    type Item = (&'a K, &'a C);
-    type IntoIter = SlotChildrenIter<'a, K, C>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            SlotChildren::None => SlotChildrenIter::None,
-            SlotChildren::Single(k, x) => SlotChildrenIter::Single(k, x),
-            SlotChildren::Multiple(x) => SlotChildrenIter::Multiple(x.iter()),
-        }
-    }
-}
-
-/// The iterator of `SlotChildren` .
-/// 
-/// It is auto-managed by the `#[component]` .
-/// Do not touch unless you know how it works exactly.
-pub enum SlotChildrenIter<'a, K, C> {
-    /// There is no children.
-    None,
-    /// There is only one child.
-    Single(&'a K, &'a C),
-    /// There are multiple children.
-    Multiple(std::collections::hash_map::Iter<'a, K, C>),
-}
-
-impl<'a, K: Hash + Eq, C> Iterator for SlotChildrenIter<'a, K, C> {
-    type Item = (&'a K, &'a C);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Self::Single(k, x) = self {
-            let x = *x;
-            let k = *k;
-            *self = Self::None;
-            Some((k, x))
-        } else if let Self::Multiple(x) = self {
-            x.next()
-        } else {
-            None
+    fn single_slot(&self) -> Option<&C> {
+        match self.slots.len() {
+            1 => self.slots.values().next(),
+            _ => None,
         }
     }
 }
 
 #[doc(hidden)]
-pub struct SlotChildrenUpdate<'a, K, C> {
-    cur_map: Option<HashMap<K, C>>,
-    old: &'a mut SlotChildren<K, C>,
-    old_single_matched: bool,
-    removed_old_single: Option<(K, C)>,
+pub struct DynamicSlotUpdate<'a, K, C> {
+    cur_map: HashMap<K, C>,
+    old: &'a mut DynamicSlot<K, C>,
 }
 
-impl<'a, K: Hash + Eq, C> SlotChildrenUpdate<'a, K, C> {
-    #[doc(hidden)]
+impl<'a, K: Hash + Eq, C> SlotKindUpdateTrait<'a, K, C> for DynamicSlotUpdate<'a, K, C> {
     #[inline]
-    pub fn add(&mut self, k: K, v: C) {
-        if let Some(map) = self.cur_map.as_mut() {
-            map.insert(k, v);
-        } else if let SlotChildren::Single(_, _) = self.old {
-            if self.old_single_matched {
-                if let SlotChildren::Single(k2, v2) =
-                    std::mem::replace(self.old, SlotChildren::None)
-                {
-                    *self.old = SlotChildren::Multiple(HashMap::from_iter([(k2, v2), (k, v)]));
-                } else {
-                    unreachable!();
-                }
-            } else {
-                if let SlotChildren::Single(k2, v2) =
-                    std::mem::replace(self.old, SlotChildren::Single(k, v))
-                {
-                    self.removed_old_single = Some((k2, v2));
-                }
-                self.old_single_matched = true;
-            }
-        } else if let SlotChildren::Multiple(map) = self.old {
-            map.insert(k, v);
-        } else {
-            *self.old = SlotChildren::Single(k, v);
-            self.old_single_matched = true;
-        }
+    fn add(&mut self, k: K, v: C) -> Result<(), Error> {
+        self.cur_map.insert(k, v);
+        Ok(())
     }
 
-    #[doc(hidden)]
     #[inline]
-    pub fn reuse(&mut self, k: K) -> Result<&mut C, Error> {
-        let ret = if let Some(map) = self.cur_map.as_mut() {
-            let v = if let SlotChildren::Multiple(map) = self.old {
-                map.remove(&k)
-            } else {
-                unreachable!();
-            }
-            .ok_or(Error::ListChangeWrong)?;
-            map.entry(k).or_insert(v)
-        } else if let SlotChildren::Single(k2, v) = self.old {
-            if self.old_single_matched || *k2 != k {
-                return Err(Error::ListChangeWrong);
-            } else {
-                self.old_single_matched = true;
-                v
-            }
-        } else {
-            return Err(Error::ListChangeWrong);
-        };
+    fn reuse(&mut self, k: K) -> Result<&mut C, Error> {
+        let c = self.old.slots.remove(&k).ok_or(Error::ListChangeWrong)?;
+        let ret = self.cur_map.entry(k).or_insert(c);
         Ok(ret)
     }
 
-    #[doc(hidden)]
     #[inline]
-    pub fn finish(self, mut item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
-        if let Some(map) = self.cur_map {
-            if let SlotChildren::Multiple(map) =
-                std::mem::replace(self.old, SlotChildren::Multiple(map))
-            {
-                for (k, c) in map {
-                    item_fn(k, c)?;
-                }
-            } else {
-                unreachable!();
-            }
-        } else if let Some((k, c)) = self.removed_old_single {
+    fn finish(self, mut item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
+        let r = std::mem::replace(&mut self.old.slots, self.cur_map);
+        for (k, c) in r {
             item_fn(k, c)?;
-        } else if !self.old_single_matched {
-            if let SlotChildren::Single(k, c) = std::mem::replace(self.old, SlotChildren::None) {
-                item_fn(k, c)?;
-            }
         }
         Ok(())
     }

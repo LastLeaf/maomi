@@ -5,6 +5,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::*;
 
+use crate::template::SlotType;
+
 use super::template::Template;
 use super::i18n::LocaleGroup;
 
@@ -74,6 +76,7 @@ struct ComponentBody {
     component_name: proc_macro2::TokenStream,
     backend_param: proc_macro2::TokenStream,
     backend_param_in_impl: Option<GenericParam>,
+    slot_kind: proc_macro2::TokenStream,
     slot_data_ty: proc_macro2::TokenStream,
     template: Result<Template>,
     template_field: Ident,
@@ -189,6 +192,11 @@ impl ComponentBody {
             }
         };
 
+        // set a default component slot kind
+        let mut slot_kind = quote! {
+            maomi::node::NoneSlot
+        };
+
         // find `template!` invoke
         let mut template = None;
         let mut template_field = None;
@@ -219,8 +227,27 @@ impl ComponentBody {
                             Ok(x) => x.gen_type(&m.mac.delimiter),
                             Err(_) => parse_quote! { () },
                         };
+                        if let Ok(x) = &t {
+                            match x.slot_type() {
+                                SlotType::None => {}
+                                SlotType::StaticSingle => {
+                                    slot_kind = quote! {
+                                        maomi::node::StaticSingleSlot
+                                    };
+                                }
+                                SlotType::Dynamic => {
+                                    slot_kind = quote! {
+                                        maomi::node::DynamicSlot
+                                    };
+                                }
+                            }
+                        }
                         field.ty = parse_quote! {
-                            maomi::template::Template<#component_name, #structure_ty, #slot_data_ty>
+                            maomi::template::Template<
+                                #component_name,
+                                #structure_ty,
+                                #slot_kind<maomi::backend::tree::ForestTokenAddr, (maomi::backend::tree::ForestToken, maomi::prop::Prop<#slot_data_ty>)>,
+                            >
                         };
                         template_ty = Some(structure_ty);
                         template = Some(t);
@@ -250,6 +277,7 @@ impl ComponentBody {
             component_name,
             backend_param,
             backend_param_in_impl,
+            slot_kind,
             slot_data_ty,
             template,
             template_field: template_field.unwrap(),
@@ -266,6 +294,7 @@ impl ToTokens for ComponentBody {
             component_name,
             backend_param,
             backend_param_in_impl,
+            slot_kind,
             slot_data_ty,
             template,
             template_field,
@@ -284,6 +313,15 @@ impl ToTokens for ComponentBody {
                 <#(#items),*>
             }
         };
+        let impl_type_params_without_backend_param = {
+            let items = inner
+                .generics
+                .params
+                .iter();
+            quote! {
+                <#(#items),*>
+            }
+        };
 
         // impl the component template
         let impl_component_template = match template.as_ref() {
@@ -291,10 +329,18 @@ impl ToTokens for ComponentBody {
                 let template_create = template.to_create(backend_param, locale_group);
                 let template_update = template.to_update(backend_param, locale_group);
                 quote! {
-                    impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
-                        type TemplateField = maomi::template::Template<Self, Self::TemplateStructure, Self::SlotData>;
-                        type TemplateStructure = #template_ty;
+                    impl #impl_type_params_without_backend_param maomi::template::ComponentSlotKind for #component_name {
+                        type SlotChildren<C> = #slot_kind<maomi::backend::tree::ForestTokenAddr, C>;
                         type SlotData = #slot_data_ty;
+                    }
+
+                    impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
+                        type TemplateField = maomi::template::Template<
+                            Self,
+                            Self::TemplateStructure,
+                            Self::SlotChildren<(maomi::backend::tree::ForestToken, maomi::prop::Prop<Self::SlotData>)>,
+                        >;
+                        type TemplateStructure = #template_ty;
 
                         #[inline]
                         fn template(&self) -> &Self::TemplateField {
@@ -362,16 +408,19 @@ impl ToTokens for ComponentBody {
                             let __m_event_self_weak = maomi::template::TemplateHelper::component_weak(
                                 &self.#template_field,
                             ).unwrap();
-                            let mut __m_slot_scopes = self.#template_field.__m_slot_scopes.update();
-                            let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
-                            let __m_parent_element = __m_backend_element;
-                            let __m_children = self
-                                .#template_field
-                                .__m_structure
-                                .as_mut()
-                                .ok_or(maomi::error::Error::TreeNotCreated)?;
-                            #template_update
-                            __m_slot_scopes.finish(|_, (n, _)| {
+                            let mut __m_slot_scopes = maomi::node::SlotKindTrait::update(&mut self.#template_field.__m_slot_scopes);
+                            {
+                                let __m_slot_scopes = &mut __m_slot_scopes;
+                                let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
+                                let __m_parent_element = __m_backend_element;
+                                let __m_children = self
+                                    .#template_field
+                                    .__m_structure
+                                    .as_mut()
+                                    .ok_or(maomi::error::Error::TreeNotCreated)?;
+                                #template_update
+                            }
+                            maomi::node::SlotKindUpdateTrait::finish(__m_slot_scopes, |_, (n, _)| {
                                 __m_slot_fn(maomi::node::SlotChange::Removed(&n))?;
                                 Ok(())
                             })?;

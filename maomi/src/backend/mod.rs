@@ -7,7 +7,7 @@ use tree::*;
 
 use crate::{
     error::Error,
-    node::{OwnerWeak, SlotChange},
+    node::{OwnerWeak, SlotChange, SlotKindTrait},
 };
 pub mod context;
 use context::BackendContext;
@@ -226,4 +226,6 @@ pub trait BackendComponent<B: Backend> {
 pub trait SupportBackend {
     /// The converted `BackendComponent` type.
     type Target;
+    /// The slot list type.
+    type SlotChildren<C>: SlotKindTrait<ForestTokenAddr, C>;
 }
