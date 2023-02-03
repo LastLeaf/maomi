@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 // import maomi core module
 use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleStr}};
 // using DOM backend
-use maomi_dom::{async_task, element::*, event::*, prelude::dom_css, DomBackend};
+use maomi_dom::{async_task, element::*, event::*, prelude::*, DomBackend};
 
 // write limited CSS
 dom_css!(
@@ -13,6 +13,32 @@ dom_css!(
         font-size: 16.px;
     }
 );
+
+styles! {
+    use crate::glabal_css;
+
+    const v: value = Em(1);
+
+    macro_rules! m {
+
+    }
+
+    #[no_name_mangling]
+    pub(self) class c {
+        color = Orange;
+        font_size = Em(1);
+        display = Block;
+
+        if (width > Px(1)) {
+            
+        }
+    }
+
+    style s(v: &str) {
+        color = Color("00d2ff");
+        color = Color(v);
+    }
+}
 
 // declare a component
 #[component(Backend = DomBackend)]

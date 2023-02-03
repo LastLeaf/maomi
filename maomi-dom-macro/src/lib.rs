@@ -9,6 +9,13 @@ mod element;
 use element::{DomElementDefinition, DomElementDefinitionAttribute};
 
 #[proc_macro]
+pub fn styles(attr: TokenStream) -> TokenStream {
+    quote::quote! {
+    }
+    .into()
+}
+
+#[proc_macro]
 pub fn dom_css(item: TokenStream) -> TokenStream {
     let ss = syn::parse_macro_input!(item as StyleSheet<DomStyleSheet>);
     quote::quote! {
