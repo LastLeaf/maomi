@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
-use quote::{quote, TokenStreamExt};
+use quote::{quote, TokenStreamExt, quote_spanned};
 use std::cell::Cell;
-use std::collections::VecDeque;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::Write;
@@ -89,11 +88,9 @@ fn generate_span_hash(span: proc_macro2::Span) -> String {
     ret
 }
 
-fn generate_css_name(full_ident: &CssIdent, name_mangling: bool, debug_mode: bool) -> String {
-    let class_id = generate_span_hash(full_ident.span);
-    if !name_mangling {
-        full_ident.css_name()
-    } else if debug_mode {
+fn generate_css_name(full_ident: &VarName, debug_mode: bool) -> String {
+    let class_id = generate_span_hash(full_ident.span());
+    if debug_mode {
         full_ident.css_name() + "_" + &class_id
     } else {
         class_id
@@ -102,7 +99,7 @@ fn generate_css_name(full_ident: &CssIdent, name_mangling: bool, debug_mode: boo
 
 pub(crate) struct DomStyleSheet {
     name_mangling: bool,
-    key_frames_def: Vec<(CssIdent, Vec<(CssPercentage, CssBrace<Repeat<Property<property::DomCssProperty>>>)>)>,
+    key_frames_def: Vec<(CssIdent, Vec<KeyFrame<DomCssProperty>>)>,
 }
 
 impl StyleSheetConstructor for DomStyleSheet {
@@ -119,45 +116,19 @@ impl StyleSheetConstructor for DomStyleSheet {
         }
     }
 
-    fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> Result<(), ParseError> {
-        match name.formal_name.as_str() {
-            "name_mangling" => {
-                let v = tokens.expect_ident()?;
-                match v.formal_name.as_str() {
-                    "off" => {
-                        self.name_mangling = false;
-                    }
-                    "on" => {
-                        self.name_mangling = true;
-                    }
-                    _ => {
-                        return Err(ParseError::new(name.span, "unsupported config value"));
-                    }
-                }
-            }
-            _ => {
-                return Err(ParseError::new(name.span, "unknown config item"));
-            }
-        }
-        Ok(())
-    }
-
     fn define_key_frames(
         &mut self,
-        name: &CssVarRef,
-        content: Vec<(CssPercentage, CssBrace<Repeat<Property<property::DomCssProperty>>>)>,
-    ) -> Result<VecDeque<CssToken>, ParseError> {
+        name: &VarName,
+        content: Vec<KeyFrame<Self::PropertyValue>>,
+    ) -> Result<CssToken, ParseError> {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
-        let formal_name = generate_css_name(&name.ident, self.name_mangling, debug_mode);
-        let generated_ident = CssIdent {
-            span: name.ident.span,
-            formal_name,
-        };
+        let formal_name = generate_css_name(&name, debug_mode);
+        let generated_ident = CssIdent::new(name.span(), &formal_name);
         self.key_frames_def.push((
             generated_ident.clone(),
             content,
         ));
-        Ok(vec![CssToken::Ident(generated_ident)].into())
+        Ok(CssToken::Ident(generated_ident).into())
     }
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
@@ -170,8 +141,8 @@ impl StyleSheetConstructor for DomStyleSheet {
         // generate proc macro output for a class
         fn write_proc_macro_class(
             tokens: &mut proc_macro2::TokenStream,
-            _span: proc_macro2::Span,
-            struct_name: &syn::Ident,
+            vis: &Option<syn::Visibility>,
+            struct_name: &VarName,
             class_name: &str,
         ) {
             tokens.append_all(quote! {
@@ -204,20 +175,6 @@ impl StyleSheetConstructor for DomStyleSheet {
             });
         }
 
-        // generate proc macro output for a definition
-        fn write_proc_macro_def(
-            _tokens: &mut proc_macro2::TokenStream,
-            _span: proc_macro2::Span,
-            _name: &syn::Ident,
-        ) {
-            // Currently, rust-analyzer cannot handle this properly.
-            // Just skip for now.
-            // tokens.append_all(quote_spanned! {span=>
-            //     #[allow(dead_code, non_camel_case_types)]
-            //     struct #name();
-            // });
-        }
-
         // generate @keyframes output
         if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
             for (generated_ident, content) in self.key_frames_def.iter() {
@@ -226,9 +183,11 @@ impl StyleSheetConstructor for DomStyleSheet {
                 cssw.write_at_keyword("keyframes").unwrap();
                 generated_ident.write_css(cssw).unwrap();
                 cssw.write_brace_block(|cssw| {
-                    for (p, item) in content.iter() {
-                        p.write_css(cssw)?;
-                        item.write_css(cssw)?;
+                    for kf in content.iter() {
+                        kf.progress.write_css(cssw)?;
+                        cssw.write_brace_block(|cssw| {
+                            kf.progress.write_css(cssw)
+                        })?;
                     }
                     Ok(())
                 })
@@ -240,51 +199,60 @@ impl StyleSheetConstructor for DomStyleSheet {
         // generate css output
         for item in ss.items.iter() {
             match item {
-                // generate config ref
-                StyleSheetItem::ConfigDefinition { .. } => {
-                    // empty
+                // generate compilation error
+                StyleSheetItem::CompilationError { err } => {
+                    tokens.append_all(err.to_compile_error());
                 }
 
-                // generate macro def
-                StyleSheetItem::MacroDefinition { name, .. } => {
-                    write_proc_macro_def(
-                        inner_tokens,
-                        name.span,
-                        &syn::Ident::new(&name.formal_name, name.span),
-                    );
+                // generate const def
+                StyleSheetItem::ConstValue { name, .. }
+                    | StyleSheetItem::KeyFrames { name, .. } => {
+                    tokens.append_all(quote! {
+                        const #name: () = ();
+                    })
                 }
 
-                // generate const def and ref
-                StyleSheetItem::ConstDefinition { name, .. }
-                    | StyleSheetItem::KeyFramesDefinition { name, .. } => {
-                    write_proc_macro_def(
-                        inner_tokens,
-                        name.ident.span,
-                        &syn::Ident::new(&name.ident.formal_name, name.ident.span),
-                    );
+                // style as const def
+                StyleSheetItem::Style {
+                    extern_vis,
+                    error_css_output,
+                    name,
+                    args,
+                    props,
+                    ..
+                } => {
+                    tokens.append_all(quote! {
+                        const #name: () = ();
+                    })
                 }
 
                 // generate common rule
-                StyleSheetItem::Rule { ident, content, .. } => {
-                    // rec to generate all CSS rules
+                StyleSheetItem::Class {
+                    extern_vis,
+                    error_css_output,
+                    css_name,
+                    name,
+                    content,
+                    ..
+                } => {
+                    let class_name = css_name.clone().unwrap_or_else(|| generate_css_name(name, debug_mode));
+
+                    // generate proc macro output
+                    write_proc_macro_class(
+                        tokens,
+                        extern_vis,
+                        &name,
+                        &class_name,
+                    );
+
+                    // generate all CSS rules
                     fn handle_rule_content(
                         tokens: &mut proc_macro2::TokenStream,
-                        name_mangling: bool,
                         debug_mode: bool,
-                        full_ident: &CssIdent,
+                        class_name: &str,
                         content: &RuleContent<DomStyleSheet>,
                         cssw: &mut Option<CssWriter<String>>,
                     ) -> Result<(), std::fmt::Error> {
-                        let class_name = generate_css_name(full_ident, name_mangling, debug_mode);
-
-                        // generate proc macro output
-                        write_proc_macro_class(
-                            tokens,
-                            full_ident.span,
-                            &syn::Ident::new(&full_ident.formal_name, full_ident.span),
-                            &class_name,
-                        );
-
                         // a helper for write css name
                         let write_selector = |cssw: &mut CssWriter<String>| {
                             cssw.write_delim(".", true)?;
@@ -297,10 +265,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                             |cssw: &mut CssWriter<String>, props: &[Property<DomCssProperty>]| {
                                 for (index, prop) in props.iter().enumerate() {
                                     prop.name.write_css(cssw)?;
-                                    prop.colon_token.write_css(cssw)?;
+                                    cssw.write_colon()?;
                                     prop.value.write_css(cssw)?;
                                     if debug_mode || index + 1 < content.props.len() {
-                                        prop.semi_token.write_css(cssw)?;
+                                        cssw.write_semi()?;
                                         if debug_mode {
                                             cssw.line_wrap()?;
                                         }
@@ -310,11 +278,15 @@ impl StyleSheetConstructor for DomStyleSheet {
                             };
 
                         // a helper for write at-blocks
-                        let write_main_rule_and_at_blocks =
+                        let mut write_main_rule_and_at_blocks =
                             |cssw: &mut CssWriter<String>,
+                             compilation_errors: &Vec<syn::Error>,
                              pseudo: Option<&pseudo::Pseudo>,
                              props: &[Property<DomCssProperty>],
                              at_blocks: &[AtBlock<DomStyleSheet>]| {
+                                for err in compilation_errors {
+                                    tokens.append_all(err.to_compile_error());
+                                }
                                 if props.len() > 0 {
                                     write_selector(cssw)?;
                                     if let Some(pseudo) = pseudo {
@@ -326,32 +298,31 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 for block in at_blocks {
                                     let items = match block {
                                         AtBlock::Media {
-                                            at_keyword,
                                             expr,
                                             content,
                                         } => {
-                                            if content.block.props.len() > 0 {
-                                                at_keyword.write_css(cssw)?;
+                                            if content.props.len() > 0 {
+                                                cssw.write_at_keyword("media")?;
                                                 for (index, q) in expr.iter().enumerate() {
                                                     if index > 0 {
                                                         cssw.write_delim(",", false)?;
                                                     }
                                                     q.write_css(cssw)?;
                                                 }
-                                                Some(&content.block.props)
+                                                // TODO write cascaded
+                                                Some(&content.props)
                                             } else {
                                                 None
                                             }
                                         }
                                         AtBlock::Supports {
-                                            at_keyword,
                                             expr,
                                             content,
                                         } => {
-                                            if content.block.props.len() > 0 {
-                                                at_keyword.write_css(cssw)?;
+                                            if content.props.len() > 0 {
+                                                cssw.write_at_keyword("supports")?;
                                                 expr.write_css(cssw)?;
-                                                Some(&content.block.props)
+                                                Some(&content.props)
                                             } else {
                                                 None
                                             }
@@ -378,6 +349,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                         if let Some(cssw) = cssw.as_mut() {
                             write_main_rule_and_at_blocks(
                                 cssw,
+                                &content.compilation_errors,
                                 None,
                                 &content.props,
                                 &content.at_blocks,
@@ -385,9 +357,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                             for c in content.pseudo_classes.iter() {
                                 write_main_rule_and_at_blocks(
                                     cssw,
+                                    &content.compilation_errors,
                                     Some(&c.pseudo),
-                                    c.content.block.props.as_slice(),
-                                    c.content.block.at_blocks.as_slice(),
+                                    c.content.props.as_slice(),
+                                    c.content.at_blocks.as_slice(),
                                 )?;
                             }
                         }
@@ -396,15 +369,31 @@ impl StyleSheetConstructor for DomStyleSheet {
                     }
 
                     // write generated string to file
-                    if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
+                    if let Some(span) = error_css_output {
+                        let span = *span;
                         let mut s = String::new();
                         let cssw = CssWriter::new(&mut s, debug_mode);
                         handle_rule_content(
                             tokens,
-                            self.name_mangling,
                             debug_mode,
-                            ident,
-                            &content.block,
+                            &class_name,
+                            &content,
+                            &mut Some(cssw),
+                        )
+                        .unwrap();
+                        if content.compilation_errors.len() == 0 {
+                            tokens.append_all(quote_spanned! {span=>
+                                compile_error!(#s);
+                            });
+                        }
+                    } else if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
+                        let mut s = String::new();
+                        let cssw = CssWriter::new(&mut s, debug_mode);
+                        handle_rule_content(
+                            tokens,
+                            debug_mode,
+                            &class_name,
+                            &content,
                             &mut Some(cssw),
                         )
                         .unwrap();
@@ -412,10 +401,9 @@ impl StyleSheetConstructor for DomStyleSheet {
                     } else {
                         handle_rule_content(
                             tokens,
-                            self.name_mangling,
                             debug_mode,
-                            ident,
-                            &content.block,
+                            &class_name,
+                            &content,
                             &mut None,
                         )
                         .unwrap();
@@ -425,25 +413,11 @@ impl StyleSheetConstructor for DomStyleSheet {
         }
 
         // write refs
-        // Currently, rust-analyzer cannot handle this properly.
-        // Just skip for now.
-        // fn write_proc_macro_ref(
-        //     tokens: &mut proc_macro2::TokenStream,
-        //     span: proc_macro2::Span,
-        //     name: &syn::Ident,
-        // ) {
-        //     tokens.append_all(quote_spanned! {span=>
-        //         #[allow(dead_code)]
-        //         #name();
-        //     });
-        // }
-        // ss.for_each_ref(&mut |r| {
-        //     write_proc_macro_ref(
-        //         inner_tokens,
-        //         r.span,
-        //         &syn::Ident::new(&r.formal_name, r.span),
-        //     );
-        // });
+        for r in &ss.var_refs {
+            inner_tokens.append_all(quote! {
+                #r;
+            });
+        }
 
         // write extra tokens
         let fn_name = syn::Ident::new(
@@ -490,7 +464,7 @@ mod test {
         std::env::set_var("MAOMI_CSS_OUT_DIR", out_dir.to_str().unwrap());
         let import_dir = tmp_path.join("maomi-dom-macro").join("test-import");
         std::fs::create_dir_all(&import_dir).unwrap();
-        std::env::set_var("MAOMI_CSS_IMPORT_DIR", import_dir.to_str().unwrap());
+        std::env::set_var("MAOMI_CSS_MOD_ROOT", import_dir.join("mod.mcss").to_str().unwrap());
         (out_dir, import_dir)
     });
 

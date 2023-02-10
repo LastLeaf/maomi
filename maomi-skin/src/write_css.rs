@@ -95,6 +95,7 @@ impl<'a, W: Write> CssWriter<'a, W> {
                 WriteCssSepCond::Ident
                 | WriteCssSepCond::NonIdentAlpha
                 | WriteCssSepCond::Digit
+                | WriteCssSepCond::PlusOrMinus
                 | WriteCssSepCond::At => {
                     write!(w, " ")?;
                 }
@@ -124,6 +125,30 @@ impl<'a, W: Write> CssWriter<'a, W> {
         }
         write!(w, "@{}", ident)?;
         *sc = WriteCssSepCond::NonIdentAlpha;
+        Ok(())
+    }
+
+    pub fn write_colon(&mut self) -> Result {
+        self.prepare_write()?;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = self;
+        write!(w, ":")?;
+        *sc = WriteCssSepCond::Other;
+        Ok(())
+    }
+
+    pub fn write_semi(&mut self) -> Result {
+        self.prepare_write()?;
+        let CssWriter {
+            ref mut w,
+            ref mut sc,
+            ..
+        } = self;
+        write!(w, ";")?;
+        *sc = WriteCssSepCond::Other;
         Ok(())
     }
 
@@ -158,7 +183,8 @@ impl<'a, W: Write> CssWriter<'a, W> {
         write!(w, "{}", s)?;
         *sc = match s {
             "@" => WriteCssSepCond::At,
-            "." | "+" => WriteCssSepCond::DotOrPlus,
+            "." => WriteCssSepCond::Dot,
+            "+" | "-" => WriteCssSepCond::PlusOrMinus,
             "$" | "^" | "~" | "*" => WriteCssSepCond::Equalable,
             "|" => WriteCssSepCond::Bar,
             "/" => WriteCssSepCond::Slash,
@@ -343,24 +369,28 @@ pub trait WriteCss {
 pub enum WriteCssSepCond {
     /// The CSS string ends with `CssIdent`
     ///
-    /// It should not be followed by alphabets, digits, `-`, or `(` .
+    /// It should not be followed by alphabets, digits, `+`, `-`, or `(` .
     Ident,
     /// The CSS string ends with alphabets or digits (but not an ident nor number), `-` or `#`
     ///
-    /// It should not be followed by alphabets, digits, or `-` .
+    /// It should not be followed by alphabets, digits, `+`, or `-` .
     NonIdentAlpha,
     /// The CSS string ends with `CssNumber`
     ///
-    /// It should not be followed by alphabets, digits, `.`, `-`, or `%` .
+    /// It should not be followed by alphabets, digits, `.`, `+`, `-`, or `%` .
     Digit,
     /// The CSS string ends with `@`
     ///
     /// It should not be followed by alphabets or `-` .
     At,
-    /// The CSS string ends with `.` `+`
+    /// The CSS string ends with `.`
     ///
     /// It should not be followed by digits.
-    DotOrPlus,
+    Dot,
+    /// The CSS string ends with `+` `-`
+    ///
+    /// It should not be followed by alphabets or digits.
+    PlusOrMinus,
     /// The CSS string ends with `$` `^` `~` `*`
     ///
     /// It should not be followed by `=` .

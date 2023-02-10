@@ -5,38 +5,43 @@ use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleSt
 // using DOM backend
 use maomi_dom::{async_task, element::*, event::*, prelude::*, DomBackend};
 
-// write limited CSS
-dom_css!(
-    // only single class selectors are allowed
-    .warn {
-        color: orange;
-        font-size: 16.px;
-    }
-);
+stylesheet! {
+    const FONT_SIZE: value = Px(16);
 
-styles! {
-    use crate::glabal_css;
-
-    const v: value = Em(1);
-
-    macro_rules! m {
-
-    }
-
-    #[no_name_mangling]
-    pub(self) class c {
-        color = Orange;
-        font_size = Em(1);
-        display = Block;
-
-        if (width > Px(1)) {
-            
+    const KEY_FRAMES: keyframes = {
+        from {
+            transfrom = translateX(Px(10));
         }
-    }
+        to {
+            transfrom = translateX(0);
+        }
+    };
 
-    style s(v: &str) {
-        color = Color("00d2ff");
-        color = Color(v);
+    // #[error_css_output]
+    // style s(v: &str) {
+    //     color = Color("00d2ff");
+    //     color = Color(v);
+    // }
+
+    #[css_name("c")]
+    #[error_css_output]
+    pub(self) class c {
+        color = orange;
+        // font_size = FONT_SIZE;
+        // display = block;
+        // s("fff");
+
+        // if media (max_width = Px(1)) {
+            
+        // }
+
+        // if supports (width = Px(0)) {
+
+        // }
+
+        // if lang(zh_CN) {
+
+        // }
     }
 }
 

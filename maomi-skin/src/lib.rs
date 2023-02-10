@@ -1,7 +1,5 @@
 #![recursion_limit = "128"]
 
-use std::collections::VecDeque;
-
 use rustc_hash::FxHashMap;
 use proc_macro2::Span;
 
@@ -11,54 +9,84 @@ use css_token::*;
 pub mod write_css;
 pub mod style_sheet;
 pub mod pseudo;
-pub mod mac;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
-    pub span: Span,
-    pub message: String,
+    err: syn::Error,
 }
 
 impl ParseError {
     pub fn new(span: Span, message: impl ToString) -> Self {
         Self {
-            span,
-            message: message.to_string(),
+            err: syn::Error::new(span, message.to_string()),
         }
     }
 
     pub fn into_syn_error(self) -> syn::Error {
-        syn::Error::new(self.span, self.message)
+        self.err
     }
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
+        f.write_str(&self.err.to_string())
+    }
+}
+
+impl From<syn::Error> for ParseError {
+    fn from(err: syn::Error) -> Self {
+        Self {
+            err,
+        }
     }
 }
 
 pub trait ParseWithVars: Sized {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
+        input: syn::parse::ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError>;
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef));
+    ) -> Result<Self, syn::Error>;
 }
 
-#[derive(Default)]
-pub struct StyleSheetVars {
-    macros: FxHashMap<CssIdent, mac::MacroDefinition>,
-    consts: FxHashMap<CssVarRef, ConstOrKeyframe>,
+#[derive(Debug)]
+pub struct ScopeVars {
+    cur_mod: Option<ModPath>,
+    vars: FxHashMap<VarName, ScopeVarValue>,
+    var_refs: Vec<VarRef>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ConstOrKeyframe {
-    pub tokens: VecDeque<CssToken>,
+pub enum ScopeVarValue {
+    Token(CssToken),
+    Str(syn::Ident),
+    U32(syn::Ident),
+    I32(syn::Ident),
+    F32(syn::Ident),
+    StyleDefinition(Vec<(VarName, ArgType)>),
 }
 
-#[derive(Debug, Default)]
-pub struct ScopeVars<'a> {
-    pat_var_values: Option<&'a mut mac::PatVarValues>,
+impl ScopeVarValue {
+    fn type_name(&self) -> &'static str {
+        match self {
+            Self::Token(_) => "value",
+            Self::Str(_) => "&str",
+            Self::U32(_) => "u32",
+            Self::I32(_) => "i32",
+            Self::F32(_) => "f32",
+            Self::StyleDefinition(_) => "StyleDefinition",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ArgType {
+    Str,
+    U32,
+    I32,
+    F32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ModPath {
+    segs: Vec<syn::Ident>,
 }

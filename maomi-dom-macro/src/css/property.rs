@@ -5,7 +5,7 @@ use maomi_skin::style_sheet::*;
 
 pub(crate) struct DomCssProperty {
     // TODO really parse the value
-    inner: Repeat<CssToken>,
+    inner: Vec<CssToken>,
 }
 
 impl ParseStyleSheetValue for DomCssProperty {
@@ -15,7 +15,7 @@ impl ParseStyleSheetValue for DomCssProperty {
             v.push(tokens.next().unwrap())
         }
         Ok(Self {
-            inner: Repeat::from_vec(v),
+            inner: v,
         })
     }
 }
@@ -25,6 +25,9 @@ impl WriteCss for DomCssProperty {
         &self,
         cssw: &mut CssWriter<W>,
     ) -> std::fmt::Result {
-        self.inner.write_css(cssw)
+        for token in &self.inner {
+            token.write_css(cssw)?;
+        }
+        Ok(())
     }
 }

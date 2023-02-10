@@ -111,7 +111,7 @@ use event::DomListeners;
 /// 
 /// Usually, `use maomi_dom::prelude::*;` should be added in component files for convinience.
 pub mod prelude {
-    pub use maomi_dom_macro::styles;
+    pub use maomi_dom_macro::stylesheet;
     pub use crate::DomBackend;
     pub use crate::base_element::DomElementExt;
 }

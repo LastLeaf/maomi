@@ -1,4 +1,4 @@
-use crate::{ParseWithVars, ParseError};
+use crate::ParseWithVars;
 use crate::css_token::*;
 use super::write_css::WriteCss;
 
@@ -27,8 +27,8 @@ pub enum Pseudo {
     Required,
     Optional,
     UserInvalid,
-    Dir(CssParen<PseudoDir>),
-    Lang(CssParen<CssIdent>),
+    Dir(PseudoDir),
+    Lang(CssIdent),
     AnyLink,
     Link,
     Visited,
@@ -55,12 +55,11 @@ pub enum PseudoDir {
 
 impl ParseWithVars for Pseudo {
     fn parse_with_vars(
-        input: &mut crate::css_token::CssTokenStream,
-        _vars: &crate::StyleSheetVars,
+        input: syn::parse::ParseStream,
         _scope: &mut crate::ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let ident = input.expect_ident()?;
-        let ret = match ident.formal_name.as_str() {
+    ) -> Result<Self, syn::Error> {
+        let ident: syn::Ident = input.parse()?;
+        let ret = match ident.to_string().as_str() {
             "fullscreen" => Self::Fullscreen,
             "modal" => Self::Modal,
             "picture_in_picture" => Self::PictureInPicture,
@@ -81,24 +80,24 @@ impl ParseWithVars for Pseudo {
             "optional" => Self::Optional,
             "user_invalid" => Self::UserInvalid,
             "dir" => {
-                let dir = input.parse_paren(|input| {
-                    let s = input.expect_ident()?;
-                    let ret = match s.formal_name.as_str() {
-                        "ltr" => PseudoDir::Ltr,
-                        "rtl" => PseudoDir::Rtl,
-                        _ => {
-                            return Err(ParseError::new(s.span, "unknown dir"))
-                        }
-                    };
-                    Ok(ret)
-                })?;
-                Self::Dir(dir)
+                let content;
+                syn::parenthesized!(content in input);
+                let input = content;
+                let s: syn::Ident = input.parse()?;
+                let ret = match s.to_string().as_str() {
+                    "ltr" => PseudoDir::Ltr,
+                    "rtl" => PseudoDir::Rtl,
+                    _ => {
+                        return Err(syn::Error::new(s.span(), "unknown dir"))
+                    }
+                };
+                Self::Dir(ret)
             }
             "lang" => {
-                let lang = input.parse_paren(|input| {
-                    input.expect_ident()
-                })?;
-                Self::Lang(lang)
+                let content;
+                syn::parenthesized!(content in input);
+                let input = content;
+                Self::Lang(input.parse()?)
             }
             "any_link" => Self::AnyLink,
             "link" => Self::Link,
@@ -118,14 +117,10 @@ impl ParseWithVars for Pseudo {
             "focus_visible" => Self::FocusVisible,
             "focus_within" => Self::FocusWithin,
             _ => {
-                return Err(ParseError::new(ident.span, "unknown pseudo class"))
+                return Err(syn::Error::new(ident.span(), "unknown pseudo class"))
             }
         };
         Ok(ret)
-    }
-
-    fn for_each_ref(&self, _f: &mut impl FnMut(&crate::css_token::CssRef)) {
-        // empty
     }
 }
 
@@ -153,7 +148,7 @@ impl WriteCss for Pseudo {
             Self::UserInvalid => cssw.write_ident("user-invalid", false),
             Self::Dir(dir) => {
                 cssw.write_function_block(false, "dir", |cssw| {
-                    match &dir.block {
+                    match &dir {
                         PseudoDir::Ltr => cssw.write_ident("ltr", true),
                         PseudoDir::Rtl => cssw.write_ident("rtl", true),
                     }
@@ -161,7 +156,7 @@ impl WriteCss for Pseudo {
             }
             Self::Lang(lang) => {
                 cssw.write_function_block(false, "lang", |cssw| {
-                    cssw.write_ident(lang.block.css_name().as_str(), true)
+                    cssw.write_ident(lang.css_name().as_str(), true)
                 })
             }
             Self::AnyLink => cssw.write_ident("any-link", false),

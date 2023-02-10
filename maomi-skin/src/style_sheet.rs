@@ -1,20 +1,32 @@
-use std::{path::PathBuf, collections::VecDeque, str::FromStr};
-use quote::TokenStreamExt;
+use std::{path::PathBuf, collections::VecDeque};
+use proc_macro2::{TokenTree, Span};
+use syn::{Token, parse::ParseStream, Attribute, Visibility, Ident, ext::IdentExt, braced, parenthesized, spanned::Spanned};
 
-use crate::{ParseError, css_token::*, StyleSheetVars, ScopeVars, ParseWithVars, write_css::*, mac::MacroDefinition};
+use crate::{ParseError, css_token::*, ScopeVars, ParseWithVars, write_css::*, ModPath, ScopeVarValue, ArgType};
 
 // TODO consider a proper way to handle global styling (font, css-reset, etc.)
 
 thread_local! {
-    static CSS_IMPORT_DIR: Option<PathBuf> = {
-        std::env::var("MAOMI_CSS_IMPORT_DIR")
+    static CSS_MOD_ROOT: Option<PathBuf> = {
+        std::env::var("MAOMI_CSS_MOD_ROOT")
             .map(|s| PathBuf::from(&s))
             .or_else(|_| {
                 std::env::var("CARGO_MANIFEST_DIR")
-                    .map(|s| PathBuf::from(&s).join("src"))
+                    .map(|s| PathBuf::from(&s).join("src").join("styles.mcss"))
             })
             .ok()
     };
+}
+
+mod kw {
+    syn::custom_keyword!(style);
+    syn::custom_keyword!(class);
+    syn::custom_keyword!(media);
+    syn::custom_keyword!(supports);
+    syn::custom_keyword!(only);
+    syn::custom_keyword!(not);
+    syn::custom_keyword!(and);
+    syn::custom_keyword!(or);
 }
 
 fn get_import_content(src: &CssString) -> Result<String, ParseError> {
@@ -30,10 +42,10 @@ fn get_import_content(src: &CssString) -> Result<String, ParseError> {
             "Currently only paths started with `/` are supported (which means the path relative to crate `src` or MAOMI_CSS_IMPORT_DIR)",
         ));
     }
-    let mut target = CSS_IMPORT_DIR.with(|import_dir| match import_dir {
+    let mut target = CSS_MOD_ROOT.with(|import_dir| match import_dir {
         None => Err(ParseError::new(
             src.span,
-            "no MAOMI_CSS_IMPORT_DIR or CARGO_MANIFEST_DIR environment variables provided",
+            "no MAOMI_CSS_MOD_ROOT or CARGO_MANIFEST_DIR environment variables provided",
         )),
         Some(s) => Ok(s.clone()),
     })?;
@@ -52,6 +64,96 @@ fn get_import_content(src: &CssString) -> Result<String, ParseError> {
         .map_err(|_| ParseError::new(src.span, &format!("cannot open file {:?}", target)))
 }
 
+fn try_parse_input<T>(
+    input: ParseStream,
+    f: impl FnOnce(ParseStream) -> Result<T, syn::Error>,
+    or_else: impl FnOnce(syn::Error) -> Result<T, syn::Error>,
+) -> Result<T, syn::Error> {
+    f(input).or_else(or_else)
+}
+
+fn try_parse_until_semi<T>(
+    input: ParseStream,
+    f: impl FnOnce(ParseStream) -> Result<T, syn::Error>,
+    or_else: impl FnOnce(syn::Error) -> Result<T, syn::Error>,
+) -> Result<T, syn::Error> {
+    try_parse_input(input, |input| {
+        f(input).and_then(|ret| {
+            if !input.peek(Token![;]) {
+                return Err(input.error("expected `;`"));
+            }
+            input.parse::<Token![;]>()?;
+            Ok(ret)
+        })
+    }, |err| {
+        loop {
+            if input.peek(Token![;]) {
+                input.parse::<Token![;]>()?;
+                break;
+            }
+            input.parse::<TokenTree>()?;
+        }
+        or_else(err)
+    })
+}
+
+fn try_parse_paren<T>(
+    input: ParseStream,
+    f: impl FnOnce(ParseStream) -> Result<T, syn::Error>,
+    or_else: impl FnOnce(syn::Error) -> Result<T, syn::Error>,
+) -> Result<T, syn::Error> {
+    let content;
+    parenthesized!(content in input);
+    try_parse_input(&content, |input| {
+        f(input).and_then(|ret| {
+            if !input.is_empty() {
+                return Err(input.error("unexpected token"));
+            }
+            Ok(ret)
+        })
+    }, |err| {
+        while !content.is_empty() {
+            content.parse::<TokenTree>()?;
+        }
+        or_else(err)
+    })
+}
+
+fn try_parse_brace<T>(
+    input: ParseStream,
+    f: impl FnOnce(ParseStream) -> Result<T, syn::Error>,
+    or_else: impl FnOnce(syn::Error) -> Result<T, syn::Error>,
+) -> Result<T, syn::Error> {
+    let content;
+    braced!(content in input);
+    try_parse_input(&content, |input| {
+        f(input).and_then(|ret| {
+            if !input.is_empty() {
+                return Err(input.error("unexpected token"));
+            }
+            Ok(ret)
+        })
+    }, |err| {
+        while !content.is_empty() {
+            content.parse::<TokenTree>()?;
+        }
+        or_else(err)
+    })
+}
+
+struct Paren<T: syn::parse::Parse> {
+    inner: T
+}
+
+impl<T: syn::parse::Parse> syn::parse::Parse for Paren<T> {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let content;
+        parenthesized!(content in input);
+        let inner = content.parse()?;
+        Ok(Self { inner })
+    }
+}
+
 /// Handlers for CSS details (varies between backends)
 pub trait StyleSheetConstructor {
     type PropertyValue: ParseStyleSheetValue;
@@ -61,16 +163,11 @@ pub trait StyleSheetConstructor {
     where
         Self: Sized;
 
-    fn set_config(&mut self, name: &CssIdent, tokens: &mut CssTokenStream) -> Result<(), ParseError>;
-
     fn define_key_frames(
         &mut self,
-        name: &CssVarRef,
-        content: Vec<(
-            CssPercentage,
-            CssBrace<Repeat<Property<Self::PropertyValue>>>,
-        )>,
-    ) -> Result<VecDeque<CssToken>, ParseError>;
+        name: &VarName,
+        content: Vec<KeyFrame<Self::PropertyValue>>,
+    ) -> Result<CssToken, ParseError>;
 
     fn to_tokens(&self, ss: &StyleSheet<Self>, tokens: &mut proc_macro2::TokenStream)
     where
@@ -87,462 +184,471 @@ pub trait ParseStyleSheetValue {
 pub struct StyleSheet<T: StyleSheetConstructor> {
     ssc: T,
     pub items: Vec<StyleSheetItem<T>>,
-}
-
-pub enum StyleSheetItem<T: StyleSheetConstructor> {
-    ConfigDefinition {
-        name: CssIdent,
-        refs: Vec<CssRef>,
-    },
-    MacroDefinition {
-        name: CssIdent,
-    },
-    ConstDefinition {
-        name: CssVarRef,
-        refs: Vec<CssRef>,
-    },
-    KeyFramesDefinition {
-        name: CssVarRef,
-    },
-    Rule {
-        dot_token: CssDelim,
-        ident: CssIdent,
-        content: CssBrace<RuleContent<T>>,
-    },
+    pub var_refs: Vec<VarRef>,
 }
 
 impl<T: StyleSheetConstructor> syn::parse::Parse for StyleSheet<T> {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let tokens = &mut CssTokenStream::parse(input)?;
-        let vars = &mut StyleSheetVars::default();
-        let scope = &mut ScopeVars::default();
-        let ss = StyleSheet::parse_with_vars(tokens, vars, scope)
-            .map_err(|x| x.into_syn_error())?;
-        tokens.expect_ended().map_err(|x| x.into_syn_error())?;
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let scope = &mut ScopeVars {
+            cur_mod: None,
+            vars: Default::default(),
+            var_refs: vec![],
+        };
+        let ss = StyleSheet::parse_with_vars(input, scope)?;
         Ok(ss)
     }
 }
 
 impl<T: StyleSheetConstructor> quote::ToTokens for StyleSheet<T> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        if let Err(err) = crate::css_token::detect_byte_offset_compatibility() {
-            let desc = err.message.as_str();
-            tokens.append_all(quote::quote!(
-                compile_error!(#desc);
-            ));
-        }
         self.ssc.to_tokens(self, tokens)
-    }
-}
-
-impl<T: StyleSheetConstructor> StyleSheet<T> {
-    fn do_parsing(
-        input: &mut CssTokenStream,
-        ssc: &mut T,
-        vars: &mut StyleSheetVars,
-        scope: &mut ScopeVars,
-        items: &mut Vec<StyleSheetItem<T>>,
-        in_imports: bool,
-    ) -> Result<(), ParseError> {
-        while !input.is_ended() {
-            if let Ok(dot_token) = input.expect_delim(".") {
-                if in_imports {
-                    return Err(ParseError::new(input.span(), "common rule is not allowed in imports"));
-                }
-                let item = StyleSheetItem::Rule {
-                    dot_token,
-                    ident: input.expect_ident()?,
-                    content: ParseWithVars::parse_with_vars(input, vars, scope)?,
-                };
-                items.push(item);
-            } else if let Ok(at_keyword) = input.expect_at_keyword() {
-                match at_keyword.formal_name.as_str() {
-                    "import" => {
-                        // IDEA considering a proper cache to avoid parsing during every import
-                        let name = input.expect_string()?;
-                        let content = get_import_content(&name)?;
-                        let ts = proc_macro2::TokenStream::from_str(&content)
-                            .map_err(|err| ParseError::new(
-                                name.span,
-                                format_args!(
-                                    "when tokenizing {}: {}",
-                                    name.value(),
-                                    err,
-                                )),
-                            )?;
-                        let mut tokens = syn::parse2(ts).map_err(|err| {
-                            let original_span = err.span();
-                            let start = original_span.start();
-                            ParseError::new(
-                                name.span,
-                                format_args!(
-                                    "when parsing {}:{}:{}: {}",
-                                    name.value(),
-                                    start.line,
-                                    start.column,
-                                    err,
-                                ),
-                            )
-                        })?;
-                        StyleSheet::do_parsing(&mut tokens, ssc, vars, scope, items, true)?;
-                        tokens.expect_ended()?;
-                        input.expect_semi()?;
-                    }
-                    "config" => {
-                        let name = input.expect_ident()?;
-                        let _: CssColon = input.expect_colon()?;
-                        let (tokens, refs) = input.resolve_until_semi(vars, scope)?;
-                        let ts = &mut CssTokenStream::new(input.span(), tokens);
-                        ssc.set_config(&name, ts)?;
-                        ts.expect_ended()?;
-                        input.expect_semi()?;
-                        items.push(StyleSheetItem::ConfigDefinition { name, refs });
-                    }
-                    "macro" => {
-                        let name = input.expect_ident()?;
-                        let mac_def = MacroDefinition::parse_with_vars(input, vars, scope)?;
-                        if vars.macros.insert(name.clone(), mac_def).is_some() {
-                            return Err(ParseError::new(name.span, "redefined macro"));
-                        }
-                        items.push(StyleSheetItem::MacroDefinition { name });
-                    }
-                    "const" => {
-                        let name = input.expect_var_ref()?;
-                        let _: CssColon = input.expect_colon()?;
-                        let (tokens, refs) = input.resolve_until_semi(vars, scope)?;
-                        if vars.consts.insert(name.clone(), crate::ConstOrKeyframe { tokens }).is_some() {
-                            return Err(ParseError::new(name.ident.span, "redefined const or keyframes"));
-                        }
-                        input.expect_semi()?;
-                        items.push(StyleSheetItem::ConstDefinition { name, refs });
-                    }
-                    "keyframes" => {
-                        if in_imports {
-                            return Err(ParseError::new(at_keyword.span, "`@keyframes` is not allowed in imports"));
-                        }
-                        let name = input.expect_var_ref()?;
-                        let content = input.parse_brace(|input| {
-                            let mut content = vec![];
-                            while !input.is_ended() {
-                                let percentage = if let Ok(ident) = input.expect_ident() {
-                                    match ident.formal_name.as_str() {
-                                        "from" => CssPercentage::new_int(ident.span, 0),
-                                        "to" => CssPercentage::new_int(ident.span, 100),
-                                        _ => return Err(ParseError::new(ident.span, "illegal ident")),
-                                    }
-                                } else if let Ok(n) = input.expect_percentage() {
-                                    n
-                                } else {
-                                    return Err(ParseError::new(input.span(), "unexpected token"));
-                                };
-                                content.push((percentage, ParseWithVars::parse_with_vars(input, vars, scope)?));
-                            }
-                            Ok(content)
-                        })?;
-                        let tokens = ssc.define_key_frames(&name, content.block)?;
-                        if vars.consts.insert(name.clone(), crate::ConstOrKeyframe { tokens }).is_some() {
-                            return Err(ParseError::new(name.ident.span, "redefined const or keyframes"));
-                        }
-                        items.push(StyleSheetItem::KeyFramesDefinition { name })
-                    }
-                    _ => {
-                        return Err(ParseError::new(at_keyword.span, "unknown at-keyword"));
-                    }
-                }
-            } else {
-                return Err(ParseError::new(input.span(), "unexpected CSS token"));
-            };
-        }
-        Ok(())
     }
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        _vars: &StyleSheetVars,
+        input: ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
+    ) -> Result<Self, syn::Error> {
         let mut ssc = T::new();
         let mut items = vec![];
-        let vars = &mut StyleSheetVars::default();
-        Self::do_parsing(input, &mut ssc, vars, scope, &mut items, false)?;
-        Ok(Self { ssc, items })
+        while !input.is_empty() {
+            items.push(StyleSheetItem::parse_with_vars(input, scope, &mut ssc)?);
+        }
+        Ok(Self {
+            ssc,
+            items,
+            var_refs: std::mem::replace(&mut scope.var_refs, Vec::with_capacity(0)),
+        })
     }
+}
 
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        for item in self.items.iter() {
-            match item {
-                StyleSheetItem::ConfigDefinition { refs, .. } => {
-                    for r in refs {
-                        f(r);
+pub enum StyleSheetItem<T: StyleSheetConstructor> {
+    CompilationError {
+        err: syn::Error,
+    },
+    ConstValue {
+        vis: Option<ModPath>,
+        name: VarName,
+    },
+    KeyFrames {
+        vis: Option<ModPath>,
+        name: VarName,
+    },
+    Style {
+        vis: Option<ModPath>,
+        extern_vis: Option<Visibility>,
+        error_css_output: Option<Span>,
+        name: VarName,
+        args: Vec<(VarName, ArgType)>,
+        props: Vec<Property<T::PropertyValue>>,
+    },
+    Class {
+        vis: Option<ModPath>,
+        extern_vis: Option<Visibility>,
+        error_css_output: Option<Span>,
+        css_name: Option<String>,
+        name: VarName,
+        content: RuleContent<T>,
+    },
+}
+
+pub struct KeyFrame<V> {
+    pub progress: CssPercentage,
+    pub props: Vec<Property<V>>,
+}
+
+impl<T: StyleSheetConstructor> StyleSheetItem<T> {
+    fn parse_with_vars(
+        input: ParseStream,
+        scope: &mut ScopeVars,
+        ssc: &mut T,
+    ) -> Result<Self, syn::Error> {
+        // `#[xxx(xxx)]`
+        let attrs = Attribute::parse_outer(input)?;
+
+        // `pub(xxx)`
+        let (vis, extern_vis): (Option<ModPath>, Option<Visibility>) = if input.peek(Token![pub]) {
+            let extern_vis: Visibility = input.parse()?;
+            let vis = if let Some(mod_path) = &scope.cur_mod {
+                match &extern_vis {
+                    Visibility::Inherited => Some(mod_path.clone()),
+                    Visibility::Public(_) => Some(ModPath::default()),
+                    Visibility::Crate(_) => Some(ModPath::default()),
+                    Visibility::Restricted(x) => {
+                        let segs = x.path.segments.iter().map(|seg| {
+                            assert!(seg.arguments.is_empty());
+                            seg.ident.clone()
+                        }).collect();
+                        Some(ModPath { segs })
+                    },
+                }
+            } else {
+                None
+            };
+            (vis, Some(extern_vis))
+        } else {
+            (None, None)
+        };
+
+        let la = input.lookahead1();
+        if la.peek(Token![mod]) {
+            // `mod xxx;`
+            unimplemented!()
+        } else if la.peek(Token![use]) {
+            // `use xxx;`
+            unimplemented!()
+        } else if la.peek(Token![const]) {
+            // `const xxx: xxx = xxx;`
+            input.parse::<Token![const]>()?;
+            let name: VarName = input.parse()?;
+            input.parse::<Token![:]>()?;
+            let ty = Ident::parse_any(input)?;
+            input.parse::<Token![=]>()?;
+            try_parse_until_semi(input, |input| {
+                for attr in attrs {
+                    return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+                }
+                if vis.is_none() {
+                    if let Some(x) = extern_vis {
+                        return Err(syn::Error::new_spanned(x, "constants are always private in inline stylesheets"));
                     }
                 }
-                StyleSheetItem::MacroDefinition { .. } => {}
-                StyleSheetItem::ConstDefinition { refs, .. } => {
-                    for r in refs {
-                        f(r);
+                match ty.to_string().as_str() {
+                    "value" => {
+                        let value = ParseWithVars::parse_with_vars(input, scope)?;
+                        scope.vars.insert(name.clone(), ScopeVarValue::Token(value));
+                        Ok(Self::ConstValue { vis, name })
+                    }
+                    "keyframes" => {
+                        let content;
+                        braced!(content in input);
+                        let input = &content;
+                        let mut frames = vec![];
+                        while !input.is_empty() {
+                            let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
+                            let progress = match token {
+                                CssToken::Ident(x) => {
+                                    match x.formal_name.as_str() {
+                                        "from" => CssPercentage::new_int(x.span, 0),
+                                        "to" => CssPercentage::new_int(x.span, 100),
+                                        _ => {
+                                            return Err(syn::Error::new(x.span, "invalid keyframe progress token"));
+                                        }
+                                    }
+                                }
+                                CssToken::Percentage(x) => x,
+                                x => {
+                                    return Err(syn::Error::new(x.span(), "invalid keyframe progress token"));
+                                }
+                            };
+                            let content;
+                            braced!(content in input);
+                            let input = &content;
+                            let mut props = vec![];
+                            while !input.is_empty() {
+                                props.push(Property::parse_with_vars(input, scope)?);
+                            }
+                            frames.push(KeyFrame { progress, props });
+                        }
+                        let converted_token = ssc.define_key_frames(&name, frames).map_err(|e| e.into_syn_error())?;
+                        scope.vars.insert(name.clone(), ScopeVarValue::Token(converted_token));
+                        Ok(Self::KeyFrames { vis, name })
+                    }
+                    _ => Err(syn::Error::new_spanned(ty, "invalid type")),
+                }
+            }, |err| {
+                Ok(Self::CompilationError { err })
+            })
+        } else if la.peek(kw::style) {
+            // `style xxx(xxx: xxx) { xxx }`
+            input.parse::<kw::style>()?;
+            let name = input.parse()?;
+            let mut error_css_output = None;
+            let args_result = try_parse_paren(input, |input| {
+                for attr in attrs {
+                    if attr.path.is_ident("error_css_output") {
+                        if !attr.tokens.is_empty() {
+                            return Err(syn::Error::new_spanned(attr.tokens, "unknown attribute arguments"));
+                        }
+                        error_css_output = Some(attr.path.span());
+                    } else {
+                        return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                     }
                 }
-                StyleSheetItem::KeyFramesDefinition { .. } => {}
-                StyleSheetItem::Rule { content, .. } => {
-                    content.block.for_each_ref(f);
+                let mut args = vec![];
+                while !input.is_empty() {
+                    let var_name: VarName = input.parse()?;
+                    input.parse::<Token![:]>()?;
+                    let ty: syn::Type = input.parse()?;
+                    let arg_type: ArgType = match &ty {
+                        syn::Type::Reference(r) if r.lifetime.is_none() && r.mutability.is_none() => {
+                            match &*r.elem {
+                                syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident("str") => {
+                                    ArgType::Str
+                                }
+                                _ => Err(syn::Error::new_spanned(ty, "invalid type"))?
+                            }
+                        }
+                        syn::Type::Path(p) if p.qself.is_none() => {
+                            if p.path.is_ident("u32") {
+                                ArgType::U32
+                            } else if p.path.is_ident("i32") {
+                                ArgType::I32
+                            } else if p.path.is_ident("f32") {
+                                ArgType::F32
+                            } else {
+                                Err(syn::Error::new_spanned(ty, "invalid type"))?
+                            }
+                        }
+                        _ => Err(syn::Error::new_spanned(ty, "invalid type"))?
+                    };
+                    args.push((var_name, arg_type));
+                    if !input.is_empty() {
+                        input.parse::<Token![,]>()?;
+                    }
                 }
-            }
+                Ok(args)
+            }, |err| Err(err));
+            args_result.and_then(|args| {
+                try_parse_brace(input, |input| {
+                    let mut props = vec![];
+                    while !input.is_empty() {
+                        if input.peek(Ident) {
+                            if input.peek2(Token![=]) {
+                                let prop = Property::parse_with_vars(input, scope)?;
+                                props.push(prop);
+                            } else if input.peek2(syn::token::Paren) {
+                                let v: VarName = input.parse()?;
+                                if let Some(x) = scope.vars.get(&v) {
+                                    if let ScopeVarValue::StyleDefinition(x) = x {
+                                        scope.var_refs.push(v.into_ref());
+                                        // TODO handling style ref
+                                        unimplemented!()
+                                    } else {
+                                        return Err(syn::Error::new_spanned(&v.ident, format!("expected StyleDefinition, found {}", x.type_name())));
+                                    }
+                                } else {
+                                    return Err(syn::Error::new_spanned(&v.ident, "expected StyleDefinition"));
+                                }
+                            } else {
+                                input.parse::<Ident>()?;
+                                return Err(input.error("expected `=` (as property) or `(...)` (as style reference)"));
+                            }
+                        } else {
+                            return Err(input.error("expected identifier"));
+                        }
+                    }
+                    Ok(Self::Style { vis, extern_vis, error_css_output, name, args, props })
+                }, |err| Ok(Self::CompilationError { err }))
+            }).or_else(|err| {
+                try_parse_brace::<()>(input, |input| Err(input.error("")), |_| Ok(()))?;
+                Ok(Self::CompilationError { err })
+            })
+        } else if la.peek(kw::class) {
+            // `class xxx { xxx }`
+            input.parse::<kw::class>()?;
+            let name = input.parse()?;
+            let mut error_css_output = None;
+            let mut css_name = None;
+            try_parse_brace(input, |input| {
+                for attr in attrs {
+                    if attr.path.is_ident("error_css_output") {
+                        if !attr.tokens.is_empty() {
+                            return Err(syn::Error::new_spanned(attr.tokens, "unknown attribute arguments"));
+                        }
+                        error_css_output = Some(attr.path.span());
+                    } else if attr.path.is_ident("css_name") {
+                        let name = syn::parse2::<Paren<syn::LitStr>>(attr.tokens)?;
+                        css_name = Some(name.inner.value());
+                    } else {
+                        return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+                    }
+                }
+                let content = RuleContent::parse_with_vars(input, scope, false)?;
+                Ok(Self::Class { vis, extern_vis, error_css_output, css_name, name, content })
+            }, |err| Ok(Self::CompilationError { err }))
+        } else {
+            return Err(la.error());
         }
     }
 }
 
 pub struct RuleContent<T: StyleSheetConstructor> {
+    pub compilation_errors: Vec<syn::Error>,
     pub props: Vec<Property<T::PropertyValue>>,
     pub at_blocks: Vec<AtBlock<T>>,
     pub pseudo_classes: Vec<PseudoClass<T>>,
-    pub refs: Vec<CssRef>,
 }
 
-impl<T: StyleSheetConstructor> ParseWithVars for RuleContent<T> {
+impl<T: StyleSheetConstructor> RuleContent<T> {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
+        input: ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
+        inside_sub_rule: bool,
+    ) -> Result<Self, syn::Error> {
+        let mut compilation_errors = vec![];
         let mut props = vec![];
-        let mut at_blocks = vec![];
-        let mut pseudo_classes = vec![];
-        let mut refs = vec![];
-        fn rec<T: StyleSheetConstructor>(
-            input: &mut CssTokenStream,
-            vars: &StyleSheetVars,
-            scope: &mut ScopeVars,
-            props: &mut Vec<Property<T::PropertyValue>>,
-            at_blocks: &mut Vec<AtBlock<T>>,
-            pseudo_classes: &mut Vec<PseudoClass<T>>,
-            refs: &mut Vec<CssRef>,
-        ) -> Result<(), ParseError> {
-            while !input.is_ended() {
-                enum NextKind {
-                    Mac,
-                    Prop,
-                    At,
-                    Pseudo,
-                }
-                let next_kind = match input.peek()? {
-                    CssToken::MacroRef(_) => NextKind::Mac,
-                    CssToken::Ident(_) => NextKind::Prop,
-                    CssToken::AtKeyword(_) => NextKind::At,
-                    CssToken::Colon(_) => NextKind::Pseudo,
-                    x => {
-                        return Err(ParseError::new(x.span(), "unexpected token"));
-                    }
-                };
-                match next_kind {
-                    NextKind::Mac => {
-                        if let CssToken::MacroRef(x) = input.next()? {
-                            let mut tokens = VecDeque::new();
-                            x.resolve_append(&mut tokens, vars, scope)?;
-                            let expanded = &mut CssTokenStream::new(input.span(), tokens);
-                            rec(expanded, vars, scope, props, at_blocks, pseudo_classes, refs)?;
-                            if !x.is_brace {
-                                input.expect_semi()?;
+        while !input.is_empty() {
+            if input.peek(Ident) {
+                try_parse_until_semi(input, |input| {
+                    if input.peek2(Token![=]) {
+                        let prop = Property::parse_with_vars(input, scope)?;
+                        props.push(prop);
+                    } else if input.peek2(syn::token::Paren) {
+                        let v: VarName = input.parse()?;
+                        if let Some(x) = scope.vars.get(&v) {
+                            if let ScopeVarValue::StyleDefinition(x) = x {
+                                scope.var_refs.push(v.into_ref());
+                                // TODO handling style ref
+                                unimplemented!()
+                            } else {
+                                return Err(syn::Error::new_spanned(&v.ident, format!("expected StyleDefinition, found {}", x.type_name())));
                             }
                         } else {
-                            unreachable!()
+                            return Err(syn::Error::new_spanned(&v.ident, "expected StyleDefinition"));
                         }
+                    } else {
+                        input.parse::<Ident>()?;
+                        return Err(input.error("expected `=` (as property) or `(...)` (as style reference)"));
                     }
-                    NextKind::Prop => {
-                        props.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
+                    Ok(())
+                }, |err| {
+                    compilation_errors.push(err);
+                    Ok(())
+                })?;
+            } else if input.peek(Token![if]) {
+                break;
+            } else {
+                return Err(input.error("expected identifier or `if` condition"));
+            }
+        }
+        let mut at_blocks = vec![];
+        let mut pseudo_classes = vec![];
+        while !input.is_empty() {
+            input.parse::<Token![if]>()?;
+            if input.peek(kw::media) {
+                input.parse::<kw::media>()?;
+                let mut expr = vec![];
+                loop {
+                    expr.push(ParseWithVars::parse_with_vars(input, scope)?);
+                    if input.peek(Token![,]) {
+                        input.parse::<Token![,]>()?;
+                        continue;
                     }
-                    NextKind::At => {
-                        at_blocks.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                    }
-                    NextKind::Pseudo => {
-                        pseudo_classes.push(ParseWithVars::parse_with_vars(input, vars, scope)?);
-                    }
-                    
+                    break;
+                }
+                let content = {
+                    let content;
+                    braced!(content in input);
+                    RuleContent::parse_with_vars(&content, scope, true)?
+                };
+                if pseudo_classes.len() > 0 {
+                    compilation_errors.push(input.error("media conditions should be put before pseudo conditions"));
+                } else {
+                    at_blocks.push(AtBlock::Media {
+                        expr,
+                        content,
+                    })
+                }
+            } else if input.peek(kw::supports) {
+                input.parse::<kw::supports>()?;
+                let expr = ParseWithVars::parse_with_vars(input, scope)?;
+                let content = {
+                    let content;
+                    braced!(content in input);
+                    RuleContent::parse_with_vars(&content, scope, true)?
+                };
+                if pseudo_classes.len() > 0 {
+                    compilation_errors.push(input.error("media conditions should be put before pseudo conditions"));
+                } else {
+                    at_blocks.push(AtBlock::Supports {
+                        expr,
+                        content,
+                    })
+                }
+            } else {
+                let p = ParseWithVars::parse_with_vars(input, scope)?;
+                if inside_sub_rule {
+                    compilation_errors.push(input.error("pseudo conditions should not be put inside other conditions"));
+                } else {
+                    pseudo_classes.push(p);
                 }
             }
-            Ok(())
         }
-        rec(input, vars, scope, &mut props, &mut at_blocks, &mut pseudo_classes, &mut refs)?;
         Ok(Self {
+            compilation_errors,
             props,
             at_blocks,
             pseudo_classes,
-            refs,
         })
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        for r in self.refs.iter() {
-            f(r);
-        }
-        for i in &self.at_blocks {
-            i.for_each_ref(f);
-        }
-        for i in &self.pseudo_classes {
-            i.for_each_ref(f);
-        }
-        for p in &self.props {
-            p.for_each_ref(f);
-        }
     }
 }
 
 /// A CSS property (name-value pair)
 pub struct Property<V> {
     pub name: CssIdent,
-    pub colon_token: CssColon,
     pub value: V,
-    pub semi_token: CssSemi,
-    pub refs: Vec<CssRef>,
+}
+
+impl<V: ParseStyleSheetValue> Property<V> {
+    fn parse_value(
+        input: ParseStream,
+        scope: &mut ScopeVars,
+        name: &CssIdent,
+    ) -> Result<V, syn::Error> {
+        let mut tokens = VecDeque::new();
+        while !input.is_empty() && !input.peek(Token![;]) {
+            let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
+            tokens.push_back(token);
+        }
+        let mut tokens = CssTokenStream::new(input.span(), tokens);
+        let value = V::parse_value(&name, &mut tokens).map_err(|err| err.into_syn_error())?;
+        tokens.expect_ended().map_err(|err| err.into_syn_error())?;
+        Ok(value)
+    }
 }
 
 impl<V: WriteCss> WriteCss for Property<V> {
     fn write_css<W: std::fmt::Write>(&self, cssw: &mut CssWriter<W>) -> std::fmt::Result {
         self.name.write_css(cssw)?;
-        self.colon_token.write_css(cssw)?;
+        cssw.write_colon()?;
         self.value.write_css(cssw)?;
-        self.semi_token.write_css(cssw)?;
+        cssw.write_semi()?;
         Ok(())
     }
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
+        input: ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let name = input.expect_ident()?;
-        let colon_token = input.expect_colon()?;
-        let (value_tokens, refs) = input.resolve_until_semi(vars, scope)?;
-        let ts = &mut CssTokenStream::new(input.span(), value_tokens);
-        let value = V::parse_value(&name, ts)?;
-        ts.expect_ended()?;
-        let semi_token = input.expect_semi()?;
-        Ok(Property { name, colon_token, value, semi_token, refs })
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        for r in &self.refs {
-            f(r);
-        }
+    ) -> Result<Self, syn::Error> {
+        try_parse_until_semi(input, |input| {
+            let name: CssIdent = input.parse()?;
+            input.parse::<Token![=]>()?;
+            let value = Self::parse_value(input, scope, &name)?;
+            Ok(Self { name, value })
+        }, |err| Err(err))
     }
 }
 
 /// A CSS at-rule inside a class
 pub enum AtBlock<T: StyleSheetConstructor> {
     Media {
-        at_keyword: CssAtKeyword,
         expr: Vec<MediaQuery<T::MediaCondValue>>,
-        content: CssBrace<AtBlockContent<T>>,
+        content: RuleContent<T>,
     },
     Supports {
-        at_keyword: CssAtKeyword,
         expr: SupportsQuery<T::PropertyValue>,
-        content: CssBrace<AtBlockContent<T>>,
+        content: RuleContent<T>,
     },
-}
-
-impl<T: StyleSheetConstructor> ParseWithVars for AtBlock<T> {
-    fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let at_keyword = input.expect_at_keyword()?;
-        let ret = if at_keyword.is("media") {
-            let mut expr = vec![];
-            loop {
-                let q = ParseWithVars::parse_with_vars(input, vars, scope)?;
-                expr.push(q);
-                if input.expect_comma().is_err() {
-                    break;
-                }
-            }
-            Self::Media {
-                at_keyword,
-                expr,
-                content: ParseWithVars::parse_with_vars(input, vars, scope)?,
-            }
-        } else if at_keyword.is("supports") {
-            Self::Supports {
-                at_keyword,
-                expr: ParseWithVars::parse_with_vars(input, vars, scope)?,
-                content: ParseWithVars::parse_with_vars(input, vars, scope)?,
-            }
-        } else {
-            return Err(ParseError::new(at_keyword.span, "unknown at-keyword"));
-        };
-        Ok(ret)
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        match self {
-            Self::Media { expr, content, .. } => {
-                for e in expr {
-                    e.for_each_ref(f);
-                }
-                content.for_each_ref(f);
-            }
-            Self::Supports { expr, content, .. } => {
-                expr.for_each_ref(f);
-                content.for_each_ref(f);
-            }
-        }
-    }
-}
-
-pub struct AtBlockContent<T: StyleSheetConstructor> {
-    pub props: Vec<Property<T::PropertyValue>>,
-    pub refs: Vec<CssRef>,
-}
-
-impl<T: StyleSheetConstructor> ParseWithVars for AtBlockContent<T> {
-    fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars, scope)?;
-        let RuleContent {
-            props,
-            at_blocks,
-            pseudo_classes,
-            refs,
-        } = content;
-        if let Some(x) = at_blocks.get(0) {
-            return Err(ParseError::new(
-                match x {
-                    AtBlock::Media { at_keyword, .. } => at_keyword.span,
-                    AtBlock::Supports { at_keyword, .. } => at_keyword.span,
-                },
-                "pseudo classes are not allowed inside pseudo classes",
-            ));
-        }
-        if let Some(x) = pseudo_classes.get(0) {
-            return Err(ParseError::new(
-                x.colon_token.span,
-                "pseudo classes are not allowed inside pseudo classes",
-            ));
-        }
-        Ok(Self { props, refs })
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        for r in self.refs.iter() {
-            f(r);
-        }
-        for item in &self.props {
-            item.for_each_ref(f);
-        }
-    }
 }
 
 pub struct MediaQuery<V> {
     pub only: Option<CssIdent>,
     pub media_type: MediaType,
-    pub cond_list: Vec<CssParen<MediaCond<V>>>,
+    pub cond_list: Vec<MediaCond<V>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -555,37 +661,36 @@ pub enum MediaType {
 pub struct MediaCond<V> {
     pub not: Option<CssIdent>,
     pub name: CssIdent,
-    pub colon_token: CssColon,
     pub cond: V,
-    pub refs: Vec<CssRef>,
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
+        input: ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let only = input.expect_keyword("only").ok();
+    ) -> Result<Self, syn::Error> {
+        let only = if input.peek(kw::only) {
+            Some(input.parse()?)
+        } else {
+            None
+        };
         let (media_type, has_media_feature) = {
             let need_media_type = if only.is_some() {
                 true
-            } else if let CssToken::Ident(x) = input.peek()? {
-                !x.is("not")
             } else {
-                false
+                input.peek(Ident) && !input.peek(kw::not)
             };
             if need_media_type {
-                let ident = input.expect_ident()?;
+                let ident: CssIdent = input.parse()?;
                 let media_type = match ident.formal_name.as_str() {
                     "all" => MediaType::All,
                     "screen" => MediaType::Screen,
                     "print" => MediaType::Print,
                     _ => {
-                        return Err(ParseError::new(ident.span, "unknown media type"));
+                        return Err(syn::Error::new(ident.span, "unknown media type"));
                     }
                 };
-                let has_media_feature = input.expect_keyword("and").is_ok();
+                let has_media_feature = input.peek(kw::and);
                 (media_type, has_media_feature)
             } else {
                 (MediaType::All, true)
@@ -594,25 +699,27 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
         let mut cond_list = vec![];
         if has_media_feature {
             loop {
-                let not = input.expect_keyword("not").ok();
-                let cond = input.parse_paren(|input| {
-                    let name = input.expect_ident()?;
-                    let colon_token = input.expect_colon()?;
-                    let (value_tokens, refs) = input.resolve_until_semi(vars, scope)?;
-                    let ts = &mut CssTokenStream::new(input.span(), value_tokens);
-                    let cond = V::parse_value(&name, ts)?;
-                    ts.expect_ended()?;
-                    Ok(MediaCond {
+                let not = if input.peek(kw::not) {
+                    Some(input.parse()?)
+                } else {
+                    None
+                };
+                let cond = {
+                    let content;
+                    parenthesized!(content in input);
+                    let input = &content;
+                    let name = input.parse()?;
+                    input.parse::<Token![=]>()?;
+                    let cond = Property::<V>::parse_value(input, scope, &name)?;
+                    MediaCond {
                         not,
                         name,
-                        colon_token,
                         cond,
-                        refs,
-                    })
-                })?;
+                    }
+                };
                 cond_list.push(cond);
-                if let Ok(_) = input.expect_keyword("and") {
-                    // empty
+                if input.peek(kw::and) {
+                    input.parse::<kw::and>()?;
                 } else {
                     break;
                 }
@@ -623,14 +730,6 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
             media_type,
             cond_list,
         })
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        for cond in &self.cond_list {
-            for r in &cond.block.refs {
-                f(r);
-            }
-        }
     }
 }
 
@@ -661,11 +760,11 @@ impl<V: WriteCss> WriteCss for MediaQuery<V> {
             } else {
                 need_and = true;
             }
-            item.block.not.write_css(cssw)?;
+            item.not.write_css(cssw)?;
             cssw.write_paren_block(|cssw| {
-                item.block.name.write_css(cssw)?;
-                item.block.colon_token.write_css(cssw)?;
-                item.block.cond.write_css(cssw)?;
+                item.name.write_css(cssw)?;
+                cssw.write_colon()?;
+                item.cond.write_css(cssw)?;
                 Ok(())
             })?;
         }
@@ -683,31 +782,32 @@ pub enum SupportsQuery<V> {
 
 pub struct SupportsCond<V> {
     pub name: CssIdent,
-    pub colon_token: CssColon,
     pub value: V,
-    pub refs: Vec<CssRef>,
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
+        input: ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let ret = if let Ok(_) = input.expect_keyword("not") {
+    ) -> Result<Self, syn::Error> {
+        let la = input.lookahead1();
+        let ret = if la.peek(kw::not) {
+            input.parse::<kw::not>()?;
             let item: CssParen<SupportsQuery<V>> =
-                ParseWithVars::parse_with_vars(input, vars, scope)?;
+                ParseWithVars::parse_with_vars(input, scope)?;
             if let Self::Sub(item) = item.block {
                 Self::Not(item)
             } else {
                 Self::Not(Box::new(item))
             }
-        } else if let Ok(CssToken::Paren(_)) = input.peek() {
+        } else if la.peek(syn::token::Paren) {
             let first: CssParen<SupportsQuery<V>> =
-                ParseWithVars::parse_with_vars(input, vars, scope)?;
-            let is_and = input.expect_keyword("and").is_ok();
-            let is_or = input.expect_keyword("or").is_ok();
-            if is_and || is_or {
+                ParseWithVars::parse_with_vars(input, scope)?;
+            let next_is_and = input.peek(kw::and);
+            let next_is_or = input.peek(kw::or);
+            if next_is_and || next_is_or {
+                if next_is_and { input.parse::<kw::and>()?; }
+                if next_is_or { input.parse::<kw::or>()?; }
                 let mut list = vec![if let Self::Sub(item) = first.block {
                     *item
                 } else {
@@ -715,26 +815,21 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
                 }];
                 loop {
                     let item: CssParen<SupportsQuery<V>> =
-                        ParseWithVars::parse_with_vars(input, vars, scope)?;
+                        ParseWithVars::parse_with_vars(input, scope)?;
                     if let Self::Sub(item) = item.block {
                         list.push(*item);
                     } else {
                         list.push(item);
                     }
-                    let next_is_and = input.expect_keyword("and").ok();
-                    let next_is_or = input.expect_keyword("or").ok();
-                    if next_is_and.is_some() || next_is_or.is_some() {
-                        if is_and && next_is_or.is_some() {
-                            return Err(ParseError::new(next_is_or.as_ref().unwrap().span, "cannot mix `and` and `or`"));
-                        }
-                        if is_or && next_is_and.is_some() {
-                            return Err(ParseError::new(next_is_and.as_ref().unwrap().span, "cannot mix `and` and `or`"));
-                        }
+                    if next_is_and && input.peek(kw::and) {
+                        // empty
+                    } else if next_is_or && input.peek(kw::or) {
+                        // empty
                     } else {
                         break;
                     }
                 }
-                if is_and {
+                if next_is_and {
                     Self::And(list)
                 } else {
                     Self::Or(list)
@@ -746,40 +841,18 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
                     Self::Sub(Box::new(first))
                 }
             }
-        } else if let Ok(name) = input.expect_ident() {
-            let colon_token = input.expect_colon()?;
-            let (value_tokens, refs) = input.resolve_until_semi(vars, scope)?;
-            let ts = &mut CssTokenStream::new(input.span(), value_tokens);
-            let value = V::parse_value(&name, ts)?;
-            ts.expect_ended()?;
+        } else if la.peek(Ident) {
+            let name = input.parse()?;
+            input.parse::<Token![=]>()?;
+            let value = Property::<V>::parse_value(input, scope, &name)?;
             Self::Cond(SupportsCond {
                 name,
-                colon_token,
                 value,
-                refs,
             })
         } else {
-            return Err(ParseError::new(input.span(), "unexpected token"));
+            return Err(la.error());
         };
         Ok(ret)
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        match self {
-            Self::And(list) | Self::Or(list) => {
-                for item in list {
-                    item.block.for_each_ref(f);
-                }
-            }
-            Self::Not(item) | Self::Sub(item) => {
-                item.for_each_ref(f);
-            }
-            Self::Cond(cond) => {
-                for r in cond.refs.iter() {
-                    f(r);
-                }
-            }
-        }
     }
 }
 
@@ -788,7 +861,7 @@ impl<V: WriteCss> WriteCss for SupportsQuery<V> {
         match self {
             Self::Cond(cond) => {
                 cond.name.write_css(cssw)?;
-                cond.colon_token.write_css(cssw)?;
+                cssw.write_colon()?;
                 cond.value.write_css(cssw)?;
             }
             Self::And(list) => {
@@ -820,65 +893,19 @@ impl<V: WriteCss> WriteCss for SupportsQuery<V> {
 }
 
 pub struct PseudoClass<T: StyleSheetConstructor> {
-    pub colon_token: CssColon,
     pub pseudo: crate::pseudo::Pseudo,
-    pub content: CssBrace<PseudoClassContent<T>>,
+    pub content: RuleContent<T>,
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClass<T> {
     fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
+        input: ParseStream,
         scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let colon_token = input.expect_colon()?;
-        let pseudo = ParseWithVars::parse_with_vars(input, vars, scope)?;
-        let content = ParseWithVars::parse_with_vars(input, vars, scope)?;
-        Ok(Self { colon_token, pseudo, content })
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        self.content.for_each_ref(f);
-    }
-}
-
-pub struct PseudoClassContent<T: StyleSheetConstructor> {
-    pub props: Vec<Property<T::PropertyValue>>,
-    pub at_blocks: Vec<AtBlock<T>>,
-    pub refs: Vec<CssRef>,
-}
-
-impl<T: StyleSheetConstructor> ParseWithVars for PseudoClassContent<T> {
-    fn parse_with_vars(
-        input: &mut CssTokenStream,
-        vars: &StyleSheetVars,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, ParseError> {
-        let content: RuleContent<T> = ParseWithVars::parse_with_vars(input, vars, scope)?;
-        let RuleContent {
-            props,
-            at_blocks,
-            pseudo_classes,
-            refs,
-        } = content;
-        if let Some(x) = pseudo_classes.get(0) {
-            return Err(ParseError::new(
-                x.colon_token.span,
-                "pseudo classes are not allowed inside pseudo classes",
-            ));
-        }
-        Ok(Self { props, at_blocks, refs })
-    }
-
-    fn for_each_ref(&self, f: &mut impl FnMut(&CssRef)) {
-        for r in self.refs.iter() {
-            f(r);
-        }
-        for item in &self.props {
-            item.for_each_ref(f);
-        }
-        for item in &self.at_blocks {
-            item.for_each_ref(f);
-        }
+    ) -> Result<Self, syn::Error> {
+        let pseudo = ParseWithVars::parse_with_vars(input, scope)?;
+        try_parse_brace(input, |input| {
+            let content = RuleContent::parse_with_vars(input, scope, true)?;
+            Ok(Self { pseudo, content })
+        }, |err| Err(err))
     }
 }
