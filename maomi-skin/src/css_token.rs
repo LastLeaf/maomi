@@ -2,7 +2,7 @@ use std::{num::NonZeroU32, collections::VecDeque};
 use proc_macro2::Span;
 use quote::TokenStreamExt;
 
-use crate::ScopeVarValue;
+use crate::{ScopeVarValue, VarDynValue, MaybeDyn, Number, style_sheet::ParseStyleSheetValue};
 
 use super::{
     write_css::{CssWriter, WriteCss, WriteCssSepCond},
@@ -56,9 +56,10 @@ impl syn::parse::Parse for CssIdent {
 }
 
 impl WriteCss for CssIdent {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        _values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.write_ident(&self.css_name(), true)
     }
@@ -88,12 +89,12 @@ impl std::fmt::Debug for Keyword {
 #[derive(Clone)]
 pub struct CssString {
     pub span: Span,
-    pub s: String,
+    pub s: MaybeDyn<String>,
 }
 
 impl CssString {
-    pub fn value(&self) -> String {
-        self.s.to_string()
+    pub fn value(&self, values: &[VarDynValue]) -> String {
+        self.s.value(values).unwrap().to_string()
     }
 }
 
@@ -107,9 +108,10 @@ impl std::fmt::Debug for CssString {
 }
 
 impl WriteCss for CssString {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
@@ -120,7 +122,8 @@ impl WriteCss for CssString {
                     }
                 }
             }
-            write!(w, "{:?}", self.s)?;
+            let s = self.s.value(values).unwrap();
+            write!(w, "{:?}", s)?;
             Ok(WriteCssSepCond::Other)
         })
     }
@@ -139,9 +142,10 @@ impl CssDelim {
 }
 
 impl WriteCss for CssDelim {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        _values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.write_delim(&self.s, true)
     }
@@ -150,13 +154,15 @@ impl WriteCss for CssDelim {
 #[derive(Debug, Clone)]
 pub struct CssNumber {
     pub span: Span,
-    pub value: f32,
-    pub int_value: Option<i32>,
+    pub value: MaybeDyn<Number>,
 }
 
 impl CssNumber {
     pub fn integer(&self) -> Option<i32> {
-        self.int_value
+        match &self.value {
+            MaybeDyn::Static(Number::I32(x)) => Some(*x),
+            _ => None,
+        }
     }
 
     pub fn positive_integer(&self) -> Option<NonZeroU32> {
@@ -172,9 +178,10 @@ impl CssNumber {
 }
 
 impl WriteCss for CssNumber {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
@@ -196,10 +203,20 @@ impl WriteCss for CssNumber {
                     _ => {}
                 }
             }
-            if let Some(x) = self.int_value {
-                write!(w, "{}", x)?;
-            } else {
-                write!(w, "{}", self.value)?;
+            match &self.value {
+                MaybeDyn::Static(Number::I32(x)) => {
+                    write!(w, "{}", x)?;
+                }
+                MaybeDyn::Static(Number::F32(x)) => {
+                    write!(w, "{}", x)?;
+                }
+                MaybeDyn::Dyn(_) => {
+
+                }
+            }
+            match self.value.value(values).unwrap() {
+                Number::I32(x) => write!(w, "{}", x)?,
+                Number::F32(x) => write!(w, "{}", x)?,
             }
             Ok(WriteCssSepCond::Digit)
         })
@@ -209,24 +226,23 @@ impl WriteCss for CssNumber {
 #[derive(Debug, Clone)]
 pub struct CssPercentage {
     pub span: Span,
-    pub value: f32,
-    pub int_value: Option<i32>,
+    pub value: MaybeDyn<Number>,
 }
 
 impl CssPercentage {
     pub(crate) fn new_int(span: Span, value: i32) -> Self {
         Self {
             span,
-            value: value as f32,
-            int_value: Some(value),
+            value: MaybeDyn::Static(Number::I32(value)),
         }
     }
 }
 
 impl WriteCss for CssPercentage {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
@@ -248,10 +264,9 @@ impl WriteCss for CssPercentage {
                     _ => {}
                 }
             }
-            if let Some(x) = self.int_value {
-                write!(w, "{}%", x)?;
-            } else {
-                write!(w, "{}%", self.value)?;
+            match self.value.value(values).unwrap() {
+                Number::I32(x) => write!(w, "{}%", x)?,
+                Number::F32(x) => write!(w, "{}%", x)?,
             }
             Ok(WriteCssSepCond::Other)
         })
@@ -261,15 +276,15 @@ impl WriteCss for CssPercentage {
 #[derive(Debug, Clone)]
 pub struct CssDimension {
     pub span: Span,
-    pub value: f32,
-    pub int_value: Option<i32>,
+    pub value: MaybeDyn<Number>,
     pub unit: String,
 }
 
 impl WriteCss for CssDimension {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
@@ -291,10 +306,9 @@ impl WriteCss for CssDimension {
                     _ => {}
                 }
             }
-            if let Some(x) = self.int_value {
-                write!(w, "{}{}", x, self.unit)?;
-            } else {
-                write!(w, "{}{}", self.value, self.unit)?;
+            match self.value.value(values).unwrap() {
+                Number::I32(x) => write!(w, "{}{}", x, self.unit)?,
+                Number::F32(x) => write!(w, "{}{}", x, self.unit)?,
             }
             Ok(WriteCssSepCond::NonIdentAlpha)
         })
@@ -304,13 +318,14 @@ impl WriteCss for CssDimension {
 #[derive(Debug, Clone)]
 pub struct CssColor {
     pub span: Span,
-    pub value: String,
+    pub value: MaybeDyn<String>,
 }
 
 impl WriteCss for CssColor {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         cssw.custom_write(|w, sc, debug_mode| {
             if debug_mode {
@@ -321,7 +336,8 @@ impl WriteCss for CssColor {
                     }
                 }
             }
-            write!(w, "#{}", self.value)?;
+            let v = self.value.value(values).unwrap();
+            write!(w, "#{}", v)?;
             Ok(WriteCssSepCond::Digit)
         })
     }
@@ -351,11 +367,12 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssFunction<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssFunction<T> {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_function_block(true, &self.css_name(), |cssw| self.block.write_css(cssw))
+        cssw.write_function_block(true, &self.css_name(), |cssw| self.block.write_css_with_args(cssw, values))
     }
 }
 
@@ -391,11 +408,12 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssParen<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssParen<T> {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_paren_block(|cssw| self.block.write_css(cssw))
+        cssw.write_paren_block(|cssw| self.block.write_css_with_args(cssw, values))
     }
 }
 
@@ -429,11 +447,12 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssBracket<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssBracket<T> {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_bracket_block(|cssw| self.block.write_css(cssw))
+        cssw.write_bracket_block(|cssw| self.block.write_css_with_args(cssw, values))
     }
 }
 
@@ -467,11 +486,12 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssBrace<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssBrace<T> {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_brace_block(|cssw| self.block.write_css(cssw))
+        cssw.write_brace_block(|cssw| self.block.write_css_with_args(cssw, values))
     }
 }
 
@@ -707,22 +727,23 @@ impl CssToken {
 }
 
 impl WriteCss for CssToken {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         let sc = match self {
-            Self::Ident(x) => x.write_css(cssw)?,
-            Self::String(x) => x.write_css(cssw)?,
-            Self::Delim(x) => x.write_css(cssw)?,
-            Self::Number(x) => x.write_css(cssw)?,
-            Self::Percentage(x) => x.write_css(cssw)?,
-            Self::Dimension(x) => x.write_css(cssw)?,
-            Self::Color(x) => x.write_css(cssw)?,
-            Self::Function(x) => x.write_css(cssw)?,
-            Self::Paren(x) => x.write_css(cssw)?,
-            Self::Bracket(x) => x.write_css(cssw)?,
-            Self::Brace(x) => x.write_css(cssw)?,
+            Self::Ident(x) => x.write_css_with_args(cssw, values)?,
+            Self::String(x) => x.write_css_with_args(cssw, values)?,
+            Self::Delim(x) => x.write_css_with_args(cssw, values)?,
+            Self::Number(x) => x.write_css_with_args(cssw, values)?,
+            Self::Percentage(x) => x.write_css_with_args(cssw, values)?,
+            Self::Dimension(x) => x.write_css_with_args(cssw, values)?,
+            Self::Color(x) => x.write_css_with_args(cssw, values)?,
+            Self::Function(x) => x.write_css_with_args(cssw, values)?,
+            Self::Paren(x) => x.write_css_with_args(cssw, values)?,
+            Self::Bracket(x) => x.write_css_with_args(cssw, values)?,
+            Self::Brace(x) => x.write_css_with_args(cssw, values)?,
         };
         Ok(sc)
     }
@@ -733,7 +754,7 @@ impl ParseWithVars for CssToken {
         input: syn::parse::ParseStream,
         scope: &mut ScopeVars,
     ) -> Result<Self, syn::Error> {
-        use syn::{*, ext::IdentExt, spanned::Spanned};
+        use syn::{*, spanned::Spanned};
 
         fn parse_css_delim(input: syn::parse::ParseStream) -> Result<CssDelim> {
             let la = input.lookahead1();
@@ -802,45 +823,30 @@ impl ParseWithVars for CssToken {
             let s = ls.value();
             CssToken::String(CssString {
                 span: ls.span(),
-                s,
+                s: MaybeDyn::Static(s),
             })
         } else if input.peek(LitInt) || input.peek(LitFloat) {
             let span;
             let value;
-            let int_value;
-            let suffix;
             let lit: Lit = input.parse()?;
             match &lit {
                 Lit::Int(num) => {
                     span = num.span();
-                    let v: i32 = num.base10_parse()?;
-                    value = v as f32;
-                    int_value = Some(v);
-                    suffix = num.suffix();
+                    let v = num.base10_parse()?;
+                    value = MaybeDyn::Static(Number::I32(v));
                 }
                 Lit::Float(num) => {
                     span = num.span();
-                    value = num.base10_parse()?;
-                    int_value = None;
-                    suffix = num.suffix();
+                    let v = num.base10_parse()?;
+                    value = MaybeDyn::Static(Number::F32(v));
                 }
                 _ => unreachable!()
             }
-            if suffix.len() > 0 {
-                return Err(Error::new(
-                    span,
-                    format!("`.` should be added before units, i.e. `{}.{}`", value, suffix),
-                ));
-            }
-            if input.peek(Token![.]) {
-                let _: Token![.] = input.parse()?;
-                let unit = Ident::parse_any(input)?.to_string();
-                CssToken::Dimension(CssDimension { span, value, int_value, unit })
-            } else if input.peek(Token![%]) {
+            if input.peek(Token![%]) {
                 let _: Token![%] = input.parse()?;
-                CssToken::Percentage(CssPercentage { span, value, int_value })
+                CssToken::Percentage(CssPercentage { span, value })
             } else {
-                CssToken::Number(CssNumber { span, value, int_value })
+                CssToken::Number(CssNumber { span, value })
             }
         } else if input.peek(token::Paren) {
             let content;
@@ -872,18 +878,69 @@ impl ParseWithVars for CssToken {
             if input.peek(token::Paren) {
                 let content;
                 parenthesized!(content in input);
-                let input = &content;
                 let is_uppercase = {
                     let first_char = *css_ident.formal_name.as_bytes().get(0).unwrap_or(&0);
                     'A' as u8 <= first_char && first_char <= 'Z' as u8
                 };
                 if is_uppercase {
+                    let input = &content;
                     // TODO support var value
                     if css_ident.is("Color") {
-                        let s: LitStr = input.parse()?;
+                        let la = input.lookahead1();
+                        let value = if la.peek(LitStr) {
+                            let s: LitStr = input.parse()?;
+                            MaybeDyn::Static(s.value())
+                        } else if la.peek(Ident) {
+                            let var_name: VarName = input.parse()?;
+                            if let Some(v) = scope.vars.get(&var_name) {
+                                match v {
+                                    ScopeVarValue::DynStr(x) => {
+                                        scope.var_refs.push(var_name.into_ref());
+                                        MaybeDyn::Dyn(x.clone())
+                                    }
+                                    x => {
+                                        return Err(syn::Error::new(var_name.span(), format!("expected &str, found {}", x.type_name())));
+                                    }
+                                }
+                            } else {
+                                return Err(syn::Error::new(var_name.span(), "variable not declared"));
+                            }
+                        } else {
+                            return Err(la.error());
+                        };
                         CssToken::Color(CssColor {
                             span: css_ident.span,
-                            value: s.value(),
+                            value,
+                        })
+                    } else if css_ident.is("Percent") {
+                        let la = input.lookahead1();
+                        let value = if la.peek(LitInt) {
+                            let s: LitInt = input.parse()?;
+                            MaybeDyn::Static(Number::I32(s.base10_parse()?))
+                        } else if la.peek(LitFloat) {
+                            let s: LitFloat = input.parse()?;
+                            MaybeDyn::Static(Number::F32(s.base10_parse()?))
+                        } else if la.peek(Ident) {
+                            let var_name: VarName = input.parse()?;
+                            if let Some(v) = scope.vars.get(&var_name) {
+                                match v {
+                                    ScopeVarValue::DynNum(x) => {
+                                        scope.var_refs.push(var_name.into_ref());
+                                        MaybeDyn::Dyn(x.clone())
+                                    }
+                                    x => {
+                                        return Err(syn::Error::new(var_name.span(), format!("expected i32 or f32, found {}", x.type_name())));
+                                    }
+                                }
+                            } else {
+                                return Err(syn::Error::new(var_name.span(), "variable not declared"));
+                            }
+                        } else {
+                            return Err(la.error());
+                        };
+                        CssToken::Percentage(CssPercentage {
+                            span: css_ident.span,
+                            value,
                         })
                     } else {
                         let la = input.lookahead1();
@@ -892,8 +949,7 @@ impl ParseWithVars for CssToken {
                             let value = v.base10_parse()?;
                             CssToken::Dimension(CssDimension {
                                 span: css_ident.span,
-                                value: value as f32,
-                                int_value: Some(value),
+                                value: MaybeDyn::Static(Number::I32(value)),
                                 unit: css_ident.formal_name.to_ascii_lowercase(),
                             })
                         } else if la.peek(LitFloat) {
@@ -901,8 +957,7 @@ impl ParseWithVars for CssToken {
                             let value = v.base10_parse()?;
                             CssToken::Dimension(CssDimension {
                                 span: css_ident.span,
-                                value,
-                                int_value: None,
+                                value: MaybeDyn::Static(Number::F32(value)),
                                 unit: css_ident.formal_name.to_ascii_lowercase(),
                             })
                         } else {
@@ -919,10 +974,16 @@ impl ParseWithVars for CssToken {
             } else {
                 let var_name = VarName { ident };
                 if let Some(v) = scope.vars.get(&var_name) {
+                    scope.var_refs.push(var_name.into_ref());
                     match v {
                         ScopeVarValue::Token(x) => {
-                            scope.var_refs.push(var_name.into_ref());
                             x.clone()
+                        }
+                        ScopeVarValue::DynStr(x) => {
+                            CssToken::String(CssString { span: x.span, s: MaybeDyn::Dyn(x.clone()) })
+                        }
+                        ScopeVarValue::DynNum(x) => {
+                            CssToken::Number(CssNumber { span: x.span, value: MaybeDyn::Dyn(x.clone()) })
                         }
                         x => {
                             return Err(syn::Error::new(css_ident.span, format!("expected value, found {}", x.type_name())));
@@ -1169,12 +1230,13 @@ impl CssTokenStream {
 }
 
 impl WriteCss for CssTokenStream {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         for token in self.tokens.iter() {
-            token.write_css(cssw)?;
+            token.write_css_with_args(cssw, values)?;
         }
         Ok(())
     }
@@ -1190,5 +1252,16 @@ impl ParseWithVars for CssTokenStream {
             ret.push_back(ParseWithVars::parse_with_vars(input, scope)?);
         }
         Ok(Self::new(input.span(), ret))
+    }
+}
+
+impl ParseStyleSheetValue for CssTokenStream {
+    fn parse_value(_name: &CssIdent, tokens: &mut CssTokenStream) -> Result<Self, ParseError>
+    where
+        Self: Sized {
+        Ok(Self {
+            last_span: tokens.last_span,
+            tokens: tokens.tokens.drain(..).collect(),
+        })
     }
 }

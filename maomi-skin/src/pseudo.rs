@@ -1,6 +1,4 @@
-use crate::ParseWithVars;
-use crate::css_token::*;
-use super::write_css::WriteCss;
+use crate::{css_token::*, ParseWithVars, VarDynValue, write_css::{WriteCss, CssWriter}};
 
 /// The supported pseudo classes
 ///
@@ -125,7 +123,11 @@ impl ParseWithVars for Pseudo {
 }
 
 impl WriteCss for Pseudo {
-    fn write_css<W: std::fmt::Write>(&self, cssw: &mut super::write_css::CssWriter<W>) -> std::fmt::Result {
+    fn write_css_with_args<W: std::fmt::Write>(
+        &self,
+        cssw: &mut CssWriter<W>,
+        _values: &[VarDynValue],
+    ) -> std::fmt::Result {
         match self {
             Self::Fullscreen => cssw.write_ident("fullscreen", false),
             Self::Modal => cssw.write_ident("modal", false),

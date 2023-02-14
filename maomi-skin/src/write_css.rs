@@ -1,5 +1,7 @@
 use std::fmt::{Result, Write};
 
+use crate::VarDynValue;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum LineStatus {
     BlockStart,
@@ -360,8 +362,13 @@ impl<'a, W: Write> CssWriter<'a, W> {
 
 /// Display as CSS text
 pub trait WriteCss {
+    /// Write CSS text (with specified argument values)
+    fn write_css_with_args<W: Write>(&self, cssw: &mut CssWriter<W>, var_values: &[VarDynValue]) -> Result;
+
     /// Write CSS text
-    fn write_css<W: Write>(&self, cssw: &mut CssWriter<W>) -> Result;
+    fn write_css<W: Write>(&self, cssw: &mut CssWriter<W>) -> Result {
+        self.write_css_with_args(cssw, &[])
+    }
 }
 
 /// Separator indicator for `WriteCss`
@@ -418,12 +425,13 @@ pub enum WriteCssSepCond {
 }
 
 impl<V: WriteCss> WriteCss for Option<V> {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
         match self {
-            Some(x) => x.write_css(cssw)?,
+            Some(x) => x.write_css_with_args(cssw, values)?,
             None => {}
         }
         Ok(())

@@ -58,10 +58,8 @@ pub struct ScopeVars {
 #[derive(Debug, Clone)]
 pub enum ScopeVarValue {
     Token(CssToken),
-    Str(syn::Ident),
-    U32(syn::Ident),
-    I32(syn::Ident),
-    F32(syn::Ident),
+    DynStr(VarDynRef),
+    DynNum(VarDynRef),
     StyleDefinition(Vec<(VarName, ArgType)>),
 }
 
@@ -69,10 +67,8 @@ impl ScopeVarValue {
     fn type_name(&self) -> &'static str {
         match self {
             Self::Token(_) => "value",
-            Self::Str(_) => "&str",
-            Self::U32(_) => "u32",
-            Self::I32(_) => "i32",
-            Self::F32(_) => "f32",
+            Self::DynStr(_) => "&str",
+            Self::DynNum(_) => "{number}",
             Self::StyleDefinition(_) => "StyleDefinition",
         }
     }
@@ -81,9 +77,82 @@ impl ScopeVarValue {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ArgType {
     Str,
-    U32,
-    I32,
-    F32,
+    Num,
+}
+
+#[derive(Debug, Clone)]
+pub struct VarDynRef {
+    span: Span,
+    index: usize,
+}
+
+impl PartialEq for VarDynRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VarDynValue {
+    span: Span,
+    kind: VarDynValueKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum VarDynValueKind {
+    Str(String),
+    Num(Number),
+}
+
+impl VarDynValue {
+    fn type_name(&self) -> &'static str {
+        match &self.kind {
+            VarDynValueKind::Str(_) => "&str",
+            VarDynValueKind::Num(_) => "{number}",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MaybeDyn<T> {
+    Static(T),
+    Dyn(VarDynRef),
+}
+
+impl MaybeDyn<String> {
+    fn value<'a>(&'a self, values: &'a [VarDynValue]) -> Result<&'a str, syn::Error> {
+        match self {
+            Self::Static(x) => Ok(x),
+            Self::Dyn(x) => {
+                let v = values.get(x.index).unwrap();
+                match &v.kind {
+                    VarDynValueKind::Str(x) => Ok(x),
+                    _ => Err(syn::Error::new(x.span, format!("expected &str, found {}", v.type_name()))),
+                }
+            }
+        }
+    }
+}
+
+impl MaybeDyn<Number> {
+    fn value(&self, values: &[VarDynValue]) -> Result<Number, syn::Error> {
+        match self {
+            Self::Static(x) => Ok(x.clone()),
+            Self::Dyn(x) => {
+                let v = values.get(x.index).unwrap();
+                match &v.kind {
+                    VarDynValueKind::Num(x) => Ok(x.clone()),
+                    _ => Err(syn::Error::new(x.span, format!("expected {{number}}, found {}", v.type_name()))),
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Number {
+    I32(i32),
+    F32(f32),
 }
 
 #[derive(Debug, Clone, Default)]

@@ -1,4 +1,5 @@
 use maomi_skin::ParseError;
+use maomi_skin::VarDynValue;
 use maomi_skin::write_css::*;
 use maomi_skin::css_token::*;
 use maomi_skin::style_sheet::*;
@@ -21,12 +22,13 @@ impl ParseStyleSheetValue for DomCssProperty {
 }
 
 impl WriteCss for DomCssProperty {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::fmt::Result {
         for token in &self.inner {
-            token.write_css(cssw)?;
+            token.write_css_with_args(cssw, values)?;
         }
         Ok(())
     }

@@ -18,30 +18,33 @@ stylesheet! {
     };
 
     // #[error_css_output]
-    // style s(v: &str) {
-    //     color = Color("00d2ff");
-    //     color = Color(v);
+    style s(v: &str) {
+        color = Color("00d2ff");
+        color = Color(v);
+    }
+
+    // style b() {
+    //     s("fff");
+    //     border = Px(1) solid Color(v);
     // }
 
     #[css_name("c")]
     #[error_css_output]
-    pub(self) class c {
+    pub(self) class warn {
         color = orange;
-        // font_size = FONT_SIZE;
-        // display = block;
-        // s("fff");
+        s("fff");
 
-        // if media (max_width = Px(1)) {
-            
-        // }
+        if media (max_width = Px(1)) {
+            font_size = FONT_SIZE;
+        }
 
-        // if supports (width = Px(0)) {
+        if supports (width = Px(0)) {
+            // s("fff");
+        }
 
-        // }
-
-        // if lang(zh_CN) {
-
-        // }
+        if lang(zh_CN) {
+            animation = KEY_FRAMES;
+        }
     }
 }
 

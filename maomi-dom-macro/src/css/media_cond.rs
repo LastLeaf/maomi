@@ -1,4 +1,4 @@
-use maomi_skin::{write_css::*, css_token::*, style_sheet::ParseStyleSheetValue, ParseError};
+use maomi_skin::{write_css::*, css_token::*, style_sheet::ParseStyleSheetValue, ParseError, VarDynValue};
 
 pub(crate) enum DomMediaCondValue {
     AspectRatio(CssNumber, CssNumber),
@@ -89,15 +89,16 @@ impl ParseStyleSheetValue for DomMediaCondValue {
 }
 
 impl WriteCss for DomMediaCondValue {
-    fn write_css<W: std::fmt::Write>(
+    fn write_css_with_args<W: std::fmt::Write>(
         &self,
         cssw: &mut CssWriter<W>,
+        values: &[VarDynValue],
     ) -> std::fmt::Result {
         match self {
             Self::AspectRatio(a, b) => {
-                a.write_css(cssw)?;
+                a.write_css_with_args(cssw, values)?;
                 cssw.write_delim("/", true)?;
-                b.write_css(cssw)?;
+                b.write_css_with_args(cssw, values)?;
             }
             Self::Orientation(x) => {
                 let s = match x {
@@ -113,9 +114,9 @@ impl WriteCss for DomMediaCondValue {
                 };
                 cssw.write_ident(s, true)?;
             }
-            Self::Resolution(x) => x.write_css(cssw)?,
-            Self::Width(x) => x.write_css(cssw)?,
-            Self::Height(x) => x.write_css(cssw)?,
+            Self::Resolution(x) => x.write_css_with_args(cssw, values)?,
+            Self::Width(x) => x.write_css_with_args(cssw, values)?,
+            Self::Height(x) => x.write_css_with_args(cssw, values)?,
         }
         Ok(())
     }

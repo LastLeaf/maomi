@@ -147,7 +147,7 @@ impl StyleSheetConstructor for DomStyleSheet {
         ) {
             tokens.append_all(quote! {
                 #[allow(non_camel_case_types)]
-                struct #struct_name {}
+                #vis struct #struct_name {}
                 impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomClassList, bool> for #struct_name {
                     type Value = &'static str;
                     #[inline(always)]
@@ -218,9 +218,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                     error_css_output,
                     name,
                     args,
-                    props,
+                    content,
                     ..
                 } => {
+                    // TODO style
                     tokens.append_all(quote! {
                         const #name: () = ();
                     })
@@ -261,16 +262,26 @@ impl StyleSheetConstructor for DomStyleSheet {
                         };
 
                         // a helper for write prop list
-                        let write_prop_list =
-                            |cssw: &mut CssWriter<String>, props: &[Property<DomCssProperty>]| {
-                                for (index, prop) in props.iter().enumerate() {
-                                    prop.name.write_css(cssw)?;
-                                    cssw.write_colon()?;
-                                    prop.value.write_css(cssw)?;
-                                    if debug_mode || index + 1 < content.props.len() {
-                                        cssw.write_semi()?;
-                                        if debug_mode {
-                                            cssw.line_wrap()?;
+                        let mut write_prop_list =
+                            |cssw: &mut CssWriter<String>, props: &[StyleContentItem<DomCssProperty>]| {
+                                for (index, item) in props.iter().enumerate() {
+                                    match item {
+                                        StyleContentItem::CompilationError(err) => {
+                                            tokens.append_all(err.to_compile_error());
+                                        }
+                                        StyleContentItem::Property(prop) => {
+                                            prop.name.write_css(cssw)?;
+                                            cssw.write_colon()?;
+                                            prop.value.write_css(cssw)?;
+                                            if debug_mode || index + 1 < content.items.len() {
+                                                cssw.write_semi()?;
+                                                if debug_mode {
+                                                    cssw.line_wrap()?;
+                                                }
+                                            }        
+                                        }
+                                        StyleContentItem::StyleRef(name, args) => {
+                                            // TODO unimplemented!("style()")
                                         }
                                     }
                                 }
@@ -280,13 +291,9 @@ impl StyleSheetConstructor for DomStyleSheet {
                         // a helper for write at-blocks
                         let mut write_main_rule_and_at_blocks =
                             |cssw: &mut CssWriter<String>,
-                             compilation_errors: &Vec<syn::Error>,
                              pseudo: Option<&pseudo::Pseudo>,
-                             props: &[Property<DomCssProperty>],
+                             props: &[StyleContentItem<DomCssProperty>],
                              at_blocks: &[AtBlock<DomStyleSheet>]| {
-                                for err in compilation_errors {
-                                    tokens.append_all(err.to_compile_error());
-                                }
                                 if props.len() > 0 {
                                     write_selector(cssw)?;
                                     if let Some(pseudo) = pseudo {
@@ -301,7 +308,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                             expr,
                                             content,
                                         } => {
-                                            if content.props.len() > 0 {
+                                            if content.items.len() > 0 {
                                                 cssw.write_at_keyword("media")?;
                                                 for (index, q) in expr.iter().enumerate() {
                                                     if index > 0 {
@@ -310,7 +317,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                                     q.write_css(cssw)?;
                                                 }
                                                 // TODO write cascaded
-                                                Some(&content.props)
+                                                Some(&content.items)
                                             } else {
                                                 None
                                             }
@@ -319,10 +326,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                                             expr,
                                             content,
                                         } => {
-                                            if content.props.len() > 0 {
+                                            if content.items.len() > 0 {
                                                 cssw.write_at_keyword("supports")?;
                                                 expr.write_css(cssw)?;
-                                                Some(&content.props)
+                                                Some(&content.items)
                                             } else {
                                                 None
                                             }
@@ -349,17 +356,15 @@ impl StyleSheetConstructor for DomStyleSheet {
                         if let Some(cssw) = cssw.as_mut() {
                             write_main_rule_and_at_blocks(
                                 cssw,
-                                &content.compilation_errors,
                                 None,
-                                &content.props,
+                                &content.items,
                                 &content.at_blocks,
                             )?;
                             for c in content.pseudo_classes.iter() {
                                 write_main_rule_and_at_blocks(
                                     cssw,
-                                    &content.compilation_errors,
                                     Some(&c.pseudo),
-                                    c.content.props.as_slice(),
+                                    c.content.items.as_slice(),
                                     c.content.at_blocks.as_slice(),
                                 )?;
                             }
@@ -381,11 +386,9 @@ impl StyleSheetConstructor for DomStyleSheet {
                             &mut Some(cssw),
                         )
                         .unwrap();
-                        if content.compilation_errors.len() == 0 {
-                            tokens.append_all(quote_spanned! {span=>
-                                compile_error!(#s);
-                            });
-                        }
+                        tokens.append_all(quote_spanned! {span=>
+                            compile_error!(#s);
+                        });
                     } else if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
                         let mut s = String::new();
                         let cssw = CssWriter::new(&mut s, debug_mode);
@@ -425,10 +428,8 @@ impl StyleSheetConstructor for DomStyleSheet {
             proc_macro2::Span::call_site(),
         );
         tokens.append_all(quote! {
-            mod #fn_name {
-                fn #fn_name() {
-                    #inner_tokens
-                }
+            fn #fn_name() {
+                #inner_tokens
             }
         });
     }
