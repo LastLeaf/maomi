@@ -3,9 +3,11 @@ use wasm_bindgen::prelude::*;
 // import maomi core module
 use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleStr}};
 // using DOM backend
-use maomi_dom::{async_task, element::*, event::*, prelude::*, DomBackend};
+use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 
 stylesheet! {
+    use crate::*;
+
     class warn {
         color = orange;
     }

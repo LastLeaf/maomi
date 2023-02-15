@@ -136,7 +136,6 @@ impl StyleSheetConstructor for DomStyleSheet {
     {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
         let inner_tokens = &mut proc_macro2::TokenStream::new();
-        let mut style_content_map: HashMap<&VarName, &Vec<StyleContentItem<DomCssProperty>>> = HashMap::new();
 
         // a helper for write prop list
         fn write_prop_list(

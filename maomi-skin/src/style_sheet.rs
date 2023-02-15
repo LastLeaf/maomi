@@ -1,4 +1,4 @@
-use std::{path::PathBuf, collections::VecDeque};
+use std::{path::PathBuf, collections::{VecDeque, HashMap}, rc::Rc};
 use proc_macro2::{TokenTree, Span};
 use syn::{Token, parse::ParseStream, Attribute, Visibility, Ident, ext::IdentExt, braced, parenthesized, spanned::Spanned};
 
@@ -188,6 +188,10 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
     }
 }
 
+pub struct VarContext<T: StyleSheetConstructor> {
+    map: Rc<HashMap<VarName, StyleSheetItem<T>>>,
+}
+
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
     CompilationError {
         err: syn::Error,
@@ -207,6 +211,7 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         name: VarName,
         args: Vec<(VarName, ArgType)>,
         content: Vec<StyleContentItem<T::PropertyValue>>,
+        var_context: VarContext<T>,
         sub_var_refs: Vec<VarRef>,
     },
     Class {
@@ -216,6 +221,7 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         css_name: Option<String>,
         name: VarName,
         content: RuleContent<T>,
+        var_context: VarContext<T>,
         sub_var_refs: Vec<VarRef>,
     },
 }
@@ -237,9 +243,9 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
         // `pub(xxx)`
         let (vis, extern_vis): (Option<ModPath>, Option<Visibility>) = if input.peek(Token![pub]) {
             let extern_vis: Visibility = input.parse()?;
-            let vis = if let Some(mod_path) = &scope.cur_mod {
+            let vis = if let Some(cur_mod_path) = &scope.cur_mod {
                 match &extern_vis {
-                    Visibility::Inherited => Some(mod_path.clone()),
+                    Visibility::Inherited => Some(cur_mod_path.clone()),
                     Visibility::Public(_) => Some(ModPath::default()),
                     Visibility::Crate(_) => Some(ModPath::default()),
                     Visibility::Restricted(x) => {
@@ -260,10 +266,21 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
 
         let la = input.lookahead1();
         if la.peek(Token![mod]) {
-            // `mod xxx;`
-            unimplemented!()
+            if let Some(cur_mod_path) = &scope.cur_mod {
+                input.parse::<Token![mod]>()?;
+                for attr in attrs {
+                    return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+                }
+                // `mod xxx;`
+                unimplemented!()
+            } else {
+                return Err(input.error("`mod` cannot be used inside inline stylesheets"));
+            }
         } else if la.peek(Token![use]) {
-            // `use xxx;`
+            input.parse::<Token![use]>()?;
+            for attr in attrs {
+                return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+            }
             unimplemented!()
         } else if la.peek(Token![const]) {
             // `const xxx: xxx = xxx;`
@@ -276,9 +293,12 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                 for attr in attrs {
                     return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                 }
-                if vis.is_none() {
-                    if let Some(x) = extern_vis {
+                if let Some(x) = extern_vis {
+                    if vis.is_none() {
                         return Err(syn::Error::new_spanned(x, "constants are always private in inline stylesheets"));
+                    }
+                    if let Visibility::Public(_) = x {
+                        return Err(syn::Error::new_spanned(x, "constants cannot be visited by other crates, use `pub(crate)` instead"));
                     }
                 }
                 match ty.to_string().as_str() {

@@ -14,10 +14,10 @@ fn main() {
         #[cfg(debug_assertions)]
         println!("cargo:rustc-env=MAOMI_CSS_OUT_MODE=debug");
 
-        // specify the root crate CSS module (default to `src/styles.mcss`)
+        // specify the root crate CSS module (default to `src/lib.mcss`)
         println!(
             "cargo:rustc-env=MAOMI_CSS_MOD_ROOT={}",
-            crate_path.join("src").join("styles.mcss").to_str().unwrap(),
+            crate_path.join("src").join("lib.mcss").to_str().unwrap(),
         );
 
         // enable i18n support and specify the current locale

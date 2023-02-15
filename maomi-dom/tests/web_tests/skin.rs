@@ -7,18 +7,18 @@ use super::*;
 
 #[wasm_bindgen_test]
 async fn skin_const() {
-    dom_css! {
+    dom_css!(r#"
         @config name_mangling: off;
 
-        @const $a: 1.px;
+        @const $a: 1px;
 
         @keyframes $kw {}
 
         .a_class {
-            padding: $a 2.3.em;
+            padding: $a 2.3em;
             animation-name: $kw;
         }
-    }
+    "#);
 
     #[component(Backend = DomBackend)]
     struct MyComp {

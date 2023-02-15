@@ -1,0 +1,3 @@
+// the crate root stylesheet
+
+pub(crate) const FONT_SIZE: value = Px(16);
