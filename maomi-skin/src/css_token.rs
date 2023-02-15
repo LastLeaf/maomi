@@ -94,7 +94,7 @@ pub struct CssString {
 
 impl CssString {
     pub fn value(&self, values: &[VarDynValue]) -> String {
-        self.s.value(values).unwrap().to_string()
+        self.s.value(values).expect("argument value not enough").to_string()
     }
 }
 
@@ -122,7 +122,7 @@ impl WriteCss for CssString {
                     }
                 }
             }
-            let s = self.s.value(values).unwrap();
+            let s = self.s.value(values).expect("argument value not enough");
             write!(w, "{:?}", s)?;
             Ok(WriteCssSepCond::Other)
         })
@@ -214,7 +214,7 @@ impl WriteCss for CssNumber {
 
                 }
             }
-            match self.value.value(values).unwrap() {
+            match self.value.value(values).expect("argument value not enough") {
                 Number::I32(x) => write!(w, "{}", x)?,
                 Number::F32(x) => write!(w, "{}", x)?,
             }
@@ -264,7 +264,7 @@ impl WriteCss for CssPercentage {
                     _ => {}
                 }
             }
-            match self.value.value(values).unwrap() {
+            match self.value.value(values).expect("argument value not enough") {
                 Number::I32(x) => write!(w, "{}%", x)?,
                 Number::F32(x) => write!(w, "{}%", x)?,
             }
@@ -306,7 +306,7 @@ impl WriteCss for CssDimension {
                     _ => {}
                 }
             }
-            match self.value.value(values).unwrap() {
+            match self.value.value(values).expect("argument value not enough") {
                 Number::I32(x) => write!(w, "{}{}", x, self.unit)?,
                 Number::F32(x) => write!(w, "{}{}", x, self.unit)?,
             }
@@ -336,7 +336,7 @@ impl WriteCss for CssColor {
                     }
                 }
             }
-            let v = self.value.value(values).unwrap();
+            let v = self.value.value(values).expect("argument value not enough");
             write!(w, "#{}", v)?;
             Ok(WriteCssSepCond::Digit)
         })
@@ -884,7 +884,6 @@ impl ParseWithVars for CssToken {
                 };
                 if is_uppercase {
                     let input = &content;
-                    // TODO support var value
                     if css_ident.is("Color") {
                         let la = input.lookahead1();
                         let value = if la.peek(LitStr) {

@@ -21,6 +21,7 @@ fn main() {
         );
 
         // enable i18n support and specify the current locale
+        println!("cargo:rerun-if-env-changed=LANG");
         if let Ok(lang) = std::env::var("LANG") {
             let locale = lang.split('.').next().unwrap();
             println!(

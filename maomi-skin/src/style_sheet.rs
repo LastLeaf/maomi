@@ -30,11 +30,6 @@ mod kw {
 }
 
 // fn get_import_content(src: &CssString) -> Result<String, ParseError> {
-//     // TODO Currently we must force this so that the span can work properly.
-//     // This requires nightly rust to work with rust-analyzer properly.
-//     // Consider tokenizing with CSS parser to avoid this problem.
-//     proc_macro2::fallback::force();
-
 //     let p = src.value();
 //     if !p.starts_with("/") {
 //         return Err(ParseError::new(
@@ -204,14 +199,15 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
     KeyFrames {
         vis: Option<ModPath>,
         name: VarName,
+        sub_var_refs: Vec<VarRef>,
     },
     Style {
         vis: Option<ModPath>,
         extern_vis: Option<Visibility>,
-        error_css_output: Option<Span>,
         name: VarName,
         args: Vec<(VarName, ArgType)>,
         content: Vec<StyleContentItem<T::PropertyValue>>,
+        sub_var_refs: Vec<VarRef>,
     },
     Class {
         vis: Option<ModPath>,
@@ -220,12 +216,13 @@ pub enum StyleSheetItem<T: StyleSheetConstructor> {
         css_name: Option<String>,
         name: VarName,
         content: RuleContent<T>,
+        sub_var_refs: Vec<VarRef>,
     },
 }
 
-pub struct KeyFrame<V> {
+pub struct KeyFrame<V: ParseStyleSheetValue> {
     pub progress: CssPercentage,
-    pub props: Vec<Property<V>>,
+    pub items: Vec<StyleContentItem<V>>,
 }
 
 impl<T: StyleSheetConstructor> StyleSheetItem<T> {
@@ -297,37 +294,40 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                         braced!(content in input);
                         let input = &content;
                         let mut frames = vec![];
-                        while !input.is_empty() {
-                            let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
-                            let progress = match token {
-                                CssToken::Ident(x) => {
-                                    match x.formal_name.as_str() {
-                                        "from" => CssPercentage::new_int(x.span, 0),
-                                        "to" => CssPercentage::new_int(x.span, 100),
-                                        _ => {
-                                            return Err(syn::Error::new(x.span, "invalid keyframe progress token"));
+                        let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
+                        let result = (|input: ParseStream| {
+                            while !input.is_empty() {
+                                let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
+                                let progress = match token {
+                                    CssToken::Ident(x) => {
+                                        match x.formal_name.as_str() {
+                                            "from" => CssPercentage::new_int(x.span, 0),
+                                            "to" => CssPercentage::new_int(x.span, 100),
+                                            _ => {
+                                                return Err(syn::Error::new(x.span, "invalid keyframe progress token"));
+                                            }
                                         }
                                     }
-                                }
-                                CssToken::Percentage(x) => x,
-                                x => {
-                                    return Err(syn::Error::new(x.span(), "invalid keyframe progress token"));
-                                }
-                            };
-                            let content;
-                            braced!(content in input);
-                            let input = &content;
-                            let mut props = vec![];
-                            while !input.is_empty() {
-                                props.push(Property::parse_with_vars(input, scope)?);
+                                    CssToken::Percentage(x) => x,
+                                    x => {
+                                        return Err(syn::Error::new(x.span(), "invalid keyframe progress token"));
+                                    }
+                                };
+                                let content;
+                                braced!(content in input);
+                                let input = &content;
+                                let items = StyleContentItem::parse_with_vars(input, scope, true)?;
+                                frames.push(KeyFrame { progress, items });
                             }
-                            frames.push(KeyFrame { progress, props });
-                        }
+                            Ok(())
+                        })(input);
+                        let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
+                        result?;
                         let converted_token = ssc.define_key_frames(&name, frames).map_err(|e| e.into_syn_error())?;
                         if scope.vars.insert(name.clone(), ScopeVarValue::Token(converted_token)).is_some() {
                             return Err(syn::Error::new(name.span(), "duplicated identifier"));
                         }
-                        Ok(Self::KeyFrames { vis, name })
+                        Ok(Self::KeyFrames { vis, name, sub_var_refs })
                     }
                     _ => Err(syn::Error::new_spanned(ty, "invalid type")),
                 }
@@ -336,35 +336,28 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
             // `style xxx(xxx: xxx) { xxx }`
             input.parse::<kw::style>()?;
             let name: VarName = input.parse()?;
-            let mut error_css_output = None;
             let args = try_parse_paren(input, |input| {
                 for attr in attrs {
-                    if attr.path.is_ident("error_css_output") {
-                        if !attr.tokens.is_empty() {
-                            return Err(syn::Error::new_spanned(attr.tokens, "unknown attribute arguments"));
-                        }
-                        error_css_output = Some(attr.path.span());
-                    } else {
-                        return Err(syn::Error::new_spanned(attr, "unknown attribute"));
-                    }
+                    return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                 }
                 let mut args = vec![];
                 while !input.is_empty() {
                     let var_name: VarName = input.parse()?;
                     input.parse::<Token![:]>()?;
                     let ty: syn::Type = input.parse()?;
+                    let span = ty.span();
                     let arg_type: ArgType = match &ty {
                         syn::Type::Reference(r) if r.lifetime.is_none() && r.mutability.is_none() => {
                             match &*r.elem {
                                 syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident("str") => {
-                                    ArgType::Str
+                                    ArgType::Str(span)
                                 }
                                 _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
                             }
                         }
                         syn::Type::Path(p) if p.qself.is_none() => {
                             if p.path.is_ident("f32") {
-                                ArgType::Num
+                                ArgType::Num(span)
                             } else {
                                 Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
                             }
@@ -382,13 +375,15 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                 for (index, (var_name, ty)) in args.iter().enumerate() {
                     let r = VarDynRef { span: var_name.span(), index };
                     if scope.vars.insert(var_name.clone(), match ty {
-                        ArgType::Str => ScopeVarValue::DynStr(r),
-                        ArgType::Num => ScopeVarValue::DynNum(r),
+                        ArgType::Str(_) => ScopeVarValue::DynStr(r),
+                        ArgType::Num(_) => ScopeVarValue::DynNum(r),
                     }).is_some() {
                         return Err(syn::Error::new(var_name.span(), "duplicated identifier"));
                     };
                 }
-                let content_result = StyleContentItem::parse_with_vars(input, scope);
+                let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
+                let content_result = StyleContentItem::parse_with_vars(input, scope, true);
+                let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
                 for (var_name, _) in args.iter() {
                     scope.vars.remove(var_name);
                 }
@@ -396,7 +391,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                 if scope.vars.insert(name.clone(), ScopeVarValue::StyleDefinition(args.clone())).is_some() {
                     return Err(syn::Error::new(name.span(), "duplicated identifier"));
                 }
-                Ok(Self::Style { vis, extern_vis, error_css_output, name, args, content })
+                Ok(Self::Style { vis, extern_vis, name, args, content, sub_var_refs })
             })
         } else if la.peek(kw::class) {
             // `class xxx { xxx }`
@@ -417,10 +412,12 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                     return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                 }
             }
+            let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
             let content = try_parse_brace(input, |input| {
                 RuleContent::parse_with_vars(input, scope, false)
             })?;
-            Ok(Self::Class { vis, extern_vis, error_css_output, css_name, name, content })
+            let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
+            Ok(Self::Class { vis, extern_vis, error_css_output, css_name, name, content, sub_var_refs })
         } else {
             return Err(la.error());
         }
@@ -438,10 +435,14 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
     fn parse_with_vars(
         input: ParseStream,
         scope: &mut ScopeVars,
+        parse_to_end: bool,
     ) -> Result<Vec<Self>, syn::Error> {
         let mut compilation_errors = vec![];
         let mut items = vec![];
-        while !input.is_empty() && input.peek(Ident) {
+        while !input.is_empty() {
+            if !parse_to_end && !input.peek(Ident) {
+                break
+            }
             if input.peek2(Token![=]) {
                 match Property::parse_with_vars(input, scope) {
                     Ok(prop) => {
@@ -463,7 +464,7 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
                                 let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
                                 let v = if let Some((_, ty)) = args_iter.next() {
                                     match ty {
-                                        ArgType::Str => match token {
+                                        ArgType::Str(_) => match token {
                                             CssToken::String(s) => match s.s {
                                                 MaybeDyn::Static(x) => MaybeDyn::Static(VarDynValue {
                                                     span: s.span,
@@ -475,7 +476,7 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
                                                 return Err(syn::Error::new(token.span(), "expected &str"));
                                             }
                                         },
-                                        ArgType::Num => match token {
+                                        ArgType::Num(_) => match token {
                                             CssToken::Number(s) => match s.value {
                                                 MaybeDyn::Static(x) => MaybeDyn::Static(VarDynValue {
                                                     span: s.span,
@@ -531,7 +532,7 @@ impl<T: StyleSheetConstructor> RuleContent<T> {
         scope: &mut ScopeVars,
         inside_sub_rule: bool,
     ) -> Result<Self, syn::Error> {
-        let items = StyleContentItem::parse_with_vars(input, scope)?;
+        let items = StyleContentItem::parse_with_vars(input, scope, false)?;
         if !input.is_empty() && !input.peek(Token![if]) {
             return Err(input.error("expected property, style reference, or `if` conditions"));
         }

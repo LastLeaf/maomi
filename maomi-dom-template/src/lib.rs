@@ -6,45 +6,8 @@ use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleSt
 use maomi_dom::{async_task, element::*, event::*, prelude::*, DomBackend};
 
 stylesheet! {
-    const FONT_SIZE: value = Px(16);
-
-    const KEY_FRAMES: keyframes = {
-        from {
-            transfrom = translateX(Px(10));
-        }
-        to {
-            transfrom = translateX(0);
-        }
-    };
-
-    // #[error_css_output]
-    style s(v: &str) {
-        color = Color("00d2ff");
-        color = Color(v);
-    }
-
-    // style b() {
-    //     s("fff");
-    //     border = Px(1) solid Color(v);
-    // }
-
-    #[css_name("c")]
-    #[error_css_output]
-    pub(self) class warn {
+    class warn {
         color = orange;
-        s("fff");
-
-        if media (max_width = Px(1)) {
-            font_size = FONT_SIZE;
-        }
-
-        if supports (width = Px(0)) {
-            // s("fff");
-        }
-
-        if lang(zh_CN) {
-            animation = KEY_FRAMES;
-        }
     }
 }
 
@@ -65,12 +28,12 @@ struct HelloWorld {
         // use classes in `class:xxx` form
         <div class:warn> "WARN" </div>
         // bind event with `@xxx()`
-        if !self.r {
+        if !self.clicked {
             <div tap=@handle_tap()> "Click me!" </div>
         }
     },
     hello: LocaleString,
-    r: bool,
+    clicked: bool,
 }
 
 // implement basic component interfaces
@@ -79,7 +42,7 @@ impl Component for HelloWorld {
         Self {
             template: Default::default(),
             hello: i18n!("Hello world again!").to_locale_string(),
-            r: false,
+            clicked: false,
         }
     }
 }
@@ -88,8 +51,8 @@ impl HelloWorld {
     // an event handler
     fn handle_tap(this: ComponentRc<Self>, _detail: &mut TapEvent) {
         log::info!("Clicked!");
-        async_task(async move {
-            this.update(|this| this.r = true).await.unwrap();
+        this.task(|this| {
+            this.clicked = true;
         });
     }
 }

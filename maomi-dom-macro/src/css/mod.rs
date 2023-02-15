@@ -1,13 +1,14 @@
 use once_cell::sync::Lazy;
 use quote::{quote, TokenStreamExt, quote_spanned};
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
 
 use maomi_skin::write_css::{CssWriter, WriteCss};
-use maomi_skin::css_token::*;
+use maomi_skin::{css_token::*, VarDynValue, MaybeDyn};
 use maomi_skin::style_sheet::*;
 use maomi_skin::{ParseError, pseudo};
 
@@ -98,7 +99,6 @@ fn generate_css_name(full_ident: &VarName, debug_mode: bool) -> String {
 }
 
 pub(crate) struct DomStyleSheet {
-    name_mangling: bool,
     key_frames_def: Vec<(CssIdent, Vec<KeyFrame<DomCssProperty>>)>,
 }
 
@@ -111,7 +111,6 @@ impl StyleSheetConstructor for DomStyleSheet {
         Self: Sized,
     {
         Self {
-            name_mangling: true,
             key_frames_def: vec![],
         }
     }
@@ -137,42 +136,56 @@ impl StyleSheetConstructor for DomStyleSheet {
     {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
         let inner_tokens = &mut proc_macro2::TokenStream::new();
+        let mut style_content_map: HashMap<&VarName, &Vec<StyleContentItem<DomCssProperty>>> = HashMap::new();
 
-        // generate proc macro output for a class
-        fn write_proc_macro_class(
+        // a helper for write prop list
+        fn write_prop_list(
             tokens: &mut proc_macro2::TokenStream,
-            vis: &Option<syn::Visibility>,
-            struct_name: &VarName,
-            class_name: &str,
-        ) {
-            tokens.append_all(quote! {
-                #[allow(non_camel_case_types)]
-                #vis struct #struct_name {}
-                impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomClassList, bool> for #struct_name {
-                    type Value = &'static str;
-                    #[inline(always)]
-                    fn item_value<'a>(
-                        _dest: &mut maomi_dom::class_list::DomClassList,
-                        _index: usize,
-                        _s: &'a bool,
-                        _ctx: &mut <maomi_dom::class_list::DomClassList as maomi::prop::ListPropertyInit>::UpdateContext,
-                    ) -> &'a Self::Value {
-                        &#class_name
+            debug_mode: bool,
+            cssw: &mut CssWriter<String>,
+            items: &[StyleContentItem<DomCssProperty>],
+            style_content_map: &HashMap<&VarName, &Vec<StyleContentItem<DomCssProperty>>>,
+            var_values: &[VarDynValue],
+            is_last_item: bool,
+        ) -> Result<(), std::fmt::Error> {
+            for (index, item) in items.iter().enumerate() {
+                let is_last_item = is_last_item && index + 1 == items.len();
+                match item {
+                    StyleContentItem::CompilationError(err) => {
+                        tokens.append_all(err.to_compile_error());
+                    }
+                    StyleContentItem::Property(prop) => {
+                        prop.name.write_css_with_args(cssw, var_values)?;
+                        cssw.write_colon()?;
+                        prop.value.write_css_with_args(cssw, var_values)?;
+                        if debug_mode || !is_last_item {
+                            cssw.write_semi()?;
+                            if debug_mode {
+                                cssw.line_wrap()?;
+                            }
+                        }
+                    }
+                    StyleContentItem::StyleRef(name, args) => {
+                        let items = style_content_map.get(&name).expect("style section not found");
+                        let args: Vec<_> = args.iter().map(|arg| {
+                            match arg {
+                                MaybeDyn::Dyn(x) => var_values.get(x.index).expect("argument value not enough"),
+                                MaybeDyn::Static(v) => v,
+                            }.clone()
+                        }).collect();
+                        write_prop_list(
+                            tokens,
+                            debug_mode,
+                            cssw,
+                            items,
+                            style_content_map,
+                            &args,
+                            is_last_item,
+                        )?;
                     }
                 }
-                impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomExternalClasses, bool> for #struct_name {
-                    type Value = &'static str;
-                    #[inline(always)]
-                    fn item_value<'a>(
-                        _dest: &mut maomi_dom::class_list::DomExternalClasses,
-                        _index: usize,
-                        _s: &'a bool,
-                        _ctx: &mut <maomi_dom::class_list::DomExternalClasses as maomi::prop::ListPropertyInit>::UpdateContext,
-                    ) -> &'a Self::Value {
-                        &#class_name
-                    }
-                }
-            });
+            }
+            Ok(())
         }
 
         // generate @keyframes output
@@ -186,7 +199,15 @@ impl StyleSheetConstructor for DomStyleSheet {
                     for kf in content.iter() {
                         kf.progress.write_css(cssw)?;
                         cssw.write_brace_block(|cssw| {
-                            kf.progress.write_css(cssw)
+                            write_prop_list(
+                                tokens,
+                                debug_mode,
+                                cssw,
+                                &kf.items,
+                                &style_content_map,
+                                &[],
+                                true,
+                            )
                         })?;
                     }
                     Ok(())
@@ -205,26 +226,40 @@ impl StyleSheetConstructor for DomStyleSheet {
                 }
 
                 // generate const def
-                StyleSheetItem::ConstValue { name, .. }
-                    | StyleSheetItem::KeyFrames { name, .. } => {
+                StyleSheetItem::ConstValue { name, .. } => {
                     tokens.append_all(quote! {
-                        const #name: () = ();
-                    })
+                        const #name: &'static str = "(value)";
+                    });
+                }
+                StyleSheetItem::KeyFrames { name, .. } => {
+                    tokens.append_all(quote! {
+                        const #name: &'static str = "(keyframes)";
+                    });
                 }
 
                 // style as const def
                 StyleSheetItem::Style {
                     extern_vis,
-                    error_css_output,
                     name,
                     args,
                     content,
+                    sub_var_refs,
                     ..
                 } => {
-                    // TODO style
+                    let args_var_name = args.iter().map(|x| &x.0);
+                    let args_ty = args.iter().map(|x| x.1.type_tokens());
                     tokens.append_all(quote! {
-                        const #name: () = ();
-                    })
+                        #[allow(non_camel_case_types)]
+                        #extern_vis struct #name();
+                        impl #name {
+                            #[allow(dead_code)]
+                            fn __stylesheet(#(#args_var_name: #args_ty),*) {
+                                #(#sub_var_refs;)*
+                            }
+                        }
+                        // TODO style
+                    });
+                    style_content_map.insert(name, content);
                 }
 
                 // generate common rule
@@ -234,17 +269,46 @@ impl StyleSheetConstructor for DomStyleSheet {
                     css_name,
                     name,
                     content,
+                    sub_var_refs,
                     ..
                 } => {
                     let class_name = css_name.clone().unwrap_or_else(|| generate_css_name(name, debug_mode));
 
                     // generate proc macro output
-                    write_proc_macro_class(
-                        tokens,
-                        extern_vis,
-                        &name,
-                        &class_name,
-                    );
+                    tokens.append_all(quote! {
+                        #[allow(non_camel_case_types)]
+                        #extern_vis struct #name {}
+                        impl #name {
+                            #[allow(dead_code)]
+                            fn __stylesheet() {
+                                #(#sub_var_refs;)*
+                            }
+                        }
+                        impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomClassList, bool> for #name {
+                            type Value = &'static str;
+                            #[inline(always)]
+                            fn item_value<'a>(
+                                _dest: &mut maomi_dom::class_list::DomClassList,
+                                _index: usize,
+                                _s: &'a bool,
+                                _ctx: &mut <maomi_dom::class_list::DomClassList as maomi::prop::ListPropertyInit>::UpdateContext,
+                            ) -> &'a Self::Value {
+                                &#class_name
+                            }
+                        }
+                        impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomExternalClasses, bool> for #name {
+                            type Value = &'static str;
+                            #[inline(always)]
+                            fn item_value<'a>(
+                                _dest: &mut maomi_dom::class_list::DomExternalClasses,
+                                _index: usize,
+                                _s: &'a bool,
+                                _ctx: &mut <maomi_dom::class_list::DomExternalClasses as maomi::prop::ListPropertyInit>::UpdateContext,
+                            ) -> &'a Self::Value {
+                                &#class_name
+                            }
+                        }
+                    });
 
                     // generate all CSS rules
                     fn handle_rule_content(
@@ -252,7 +316,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                         debug_mode: bool,
                         class_name: &str,
                         content: &RuleContent<DomStyleSheet>,
-                        cssw: &mut Option<CssWriter<String>>,
+                        cssw: &mut CssWriter<String>,
+                        style_content_map: &HashMap<&VarName, &Vec<StyleContentItem<DomCssProperty>>>,
                     ) -> Result<(), std::fmt::Error> {
                         // a helper for write css name
                         let write_selector = |cssw: &mut CssWriter<String>| {
@@ -261,49 +326,30 @@ impl StyleSheetConstructor for DomStyleSheet {
                             Ok(())
                         };
 
-                        // a helper for write prop list
-                        let mut write_prop_list =
-                            |cssw: &mut CssWriter<String>, props: &[StyleContentItem<DomCssProperty>]| {
-                                for (index, item) in props.iter().enumerate() {
-                                    match item {
-                                        StyleContentItem::CompilationError(err) => {
-                                            tokens.append_all(err.to_compile_error());
-                                        }
-                                        StyleContentItem::Property(prop) => {
-                                            prop.name.write_css(cssw)?;
-                                            cssw.write_colon()?;
-                                            prop.value.write_css(cssw)?;
-                                            if debug_mode || index + 1 < content.items.len() {
-                                                cssw.write_semi()?;
-                                                if debug_mode {
-                                                    cssw.line_wrap()?;
-                                                }
-                                            }        
-                                        }
-                                        StyleContentItem::StyleRef(name, args) => {
-                                            // TODO unimplemented!("style()")
-                                        }
-                                    }
-                                }
-                                Ok(())
-                            };
-
                         // a helper for write at-blocks
                         let mut write_main_rule_and_at_blocks =
                             |cssw: &mut CssWriter<String>,
                              pseudo: Option<&pseudo::Pseudo>,
-                             props: &[StyleContentItem<DomCssProperty>],
+                             items: &[StyleContentItem<DomCssProperty>],
                              at_blocks: &[AtBlock<DomStyleSheet>]| {
-                                if props.len() > 0 {
+                                if items.len() > 0 {
                                     write_selector(cssw)?;
                                     if let Some(pseudo) = pseudo {
                                         cssw.write_delim(":", false)?;
                                         pseudo.write_css(cssw)?;
                                     }
-                                    cssw.write_brace_block(|cssw| write_prop_list(cssw, &props))?;
+                                    cssw.write_brace_block(|cssw| write_prop_list(
+                                        tokens,
+                                        debug_mode,
+                                        cssw,
+                                        &items,
+                                        style_content_map,
+                                        &[],
+                                        true,
+                                    ))?;
                                 }
                                 for block in at_blocks {
-                                    let items = match block {
+                                    let content = match block {
                                         AtBlock::Media {
                                             expr,
                                             content,
@@ -316,8 +362,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                                     }
                                                     q.write_css(cssw)?;
                                                 }
-                                                // TODO write cascaded
-                                                Some(&content.items)
+                                                Some(content)
                                             } else {
                                                 None
                                             }
@@ -329,23 +374,22 @@ impl StyleSheetConstructor for DomStyleSheet {
                                             if content.items.len() > 0 {
                                                 cssw.write_at_keyword("supports")?;
                                                 expr.write_css(cssw)?;
-                                                Some(&content.items)
+                                                Some(content)
                                             } else {
                                                 None
                                             }
                                         }
                                     };
-                                    if let Some(items) = items {
+                                    if let Some(content) = content {
                                         cssw.write_brace_block(|cssw| {
-                                            write_selector(cssw)?;
-                                            if let Some(pseudo) = pseudo {
-                                                cssw.write_delim(":", false)?;
-                                                pseudo.write_css(cssw)?;
-                                            }
-                                            cssw.write_brace_block(|cssw| {
-                                                write_prop_list(cssw, items.as_slice())
-                                            })?;
-                                            Ok(())
+                                            handle_rule_content(
+                                                tokens,
+                                                debug_mode,
+                                                class_name,
+                                                &content,
+                                                cssw,
+                                                style_content_map,
+                                            )
                                         })?;
                                     }
                                 }
@@ -353,21 +397,19 @@ impl StyleSheetConstructor for DomStyleSheet {
                             };
 
                         // write CSS for the class itself
-                        if let Some(cssw) = cssw.as_mut() {
+                        write_main_rule_and_at_blocks(
+                            cssw,
+                            None,
+                            &content.items,
+                            &content.at_blocks,
+                        )?;
+                        for c in content.pseudo_classes.iter() {
                             write_main_rule_and_at_blocks(
                                 cssw,
-                                None,
-                                &content.items,
-                                &content.at_blocks,
+                                Some(&c.pseudo),
+                                c.content.items.as_slice(),
+                                c.content.at_blocks.as_slice(),
                             )?;
-                            for c in content.pseudo_classes.iter() {
-                                write_main_rule_and_at_blocks(
-                                    cssw,
-                                    Some(&c.pseudo),
-                                    c.content.items.as_slice(),
-                                    c.content.at_blocks.as_slice(),
-                                )?;
-                            }
                         }
 
                         Ok(())
@@ -377,13 +419,17 @@ impl StyleSheetConstructor for DomStyleSheet {
                     if let Some(span) = error_css_output {
                         let span = *span;
                         let mut s = String::new();
-                        let cssw = CssWriter::new(&mut s, debug_mode);
+                        if debug_mode {
+                            s += "/* error_css_output */\n";
+                        }
+                        let mut cssw = CssWriter::new(&mut s, debug_mode);
                         handle_rule_content(
                             tokens,
                             debug_mode,
                             &class_name,
                             &content,
-                            &mut Some(cssw),
+                            &mut cssw,
+                            &style_content_map,
                         )
                         .unwrap();
                         tokens.append_all(quote_spanned! {span=>
@@ -391,25 +437,19 @@ impl StyleSheetConstructor for DomStyleSheet {
                         });
                     } else if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
                         let mut s = String::new();
-                        let cssw = CssWriter::new(&mut s, debug_mode);
+                        let mut cssw = CssWriter::new(&mut s, debug_mode);
                         handle_rule_content(
                             tokens,
                             debug_mode,
                             &class_name,
                             &content,
-                            &mut Some(cssw),
+                            &mut cssw,
+                            &style_content_map,
                         )
                         .unwrap();
                         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
                     } else {
-                        handle_rule_content(
-                            tokens,
-                            debug_mode,
-                            &class_name,
-                            &content,
-                            &mut None,
-                        )
-                        .unwrap();
+                        // empty
                     }
                 }
             }

@@ -1,7 +1,7 @@
 #![recursion_limit = "128"]
 
 use rustc_hash::FxHashMap;
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
 
 // pub mod parser;
 pub mod css_token;
@@ -74,16 +74,25 @@ impl ScopeVarValue {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum ArgType {
-    Str,
-    Num,
+    Str(Span),
+    Num(Span),
+}
+
+impl ArgType {
+    pub fn type_tokens(self) -> TokenStream {
+        match self {
+            Self::Str(span) => quote::quote_spanned!(span=> &str ),
+            Self::Num(span) => quote::quote_spanned!(span=> f32 ),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct VarDynRef {
-    span: Span,
-    index: usize,
+    pub span: Span,
+    pub index: usize,
 }
 
 impl PartialEq for VarDynRef {
@@ -94,8 +103,8 @@ impl PartialEq for VarDynRef {
 
 #[derive(Debug, Clone)]
 pub struct VarDynValue {
-    span: Span,
-    kind: VarDynValueKind,
+    pub span: Span,
+    pub kind: VarDynValueKind,
 }
 
 #[derive(Debug, Clone)]
