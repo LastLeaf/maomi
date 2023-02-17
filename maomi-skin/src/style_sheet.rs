@@ -1,22 +1,11 @@
-use std::{path::PathBuf, collections::{VecDeque, HashMap}, rc::Rc};
+use std::{collections::VecDeque, rc::{Rc, Weak}, cell::RefCell};
 use proc_macro2::{TokenTree, Span};
-use syn::{Token, parse::ParseStream, Attribute, Visibility, Ident, ext::IdentExt, braced, parenthesized, spanned::Spanned};
+use rustc_hash::FxHashMap;
+use syn::{Token, parse::ParseStream, Attribute, Visibility, Ident, ext::IdentExt, braced, parenthesized, spanned::Spanned, UseTree};
 
 use crate::{ParseError, css_token::*, ScopeVars, ParseWithVars, write_css::*, ModPath, ScopeVarValue, ArgType, VarDynRef, VarDynValue, MaybeDyn, VarDynValueKind};
 
 // TODO consider a proper way to handle global styling (font, css-reset, etc.)
-
-thread_local! {
-    static CSS_MOD_ROOT: Option<PathBuf> = {
-        std::env::var("MAOMI_CSS_MOD_ROOT")
-            .map(|s| PathBuf::from(&s))
-            .or_else(|_| {
-                std::env::var("CARGO_MANIFEST_DIR")
-                    .map(|s| PathBuf::from(&s).join("src").join("styles.mcss"))
-            })
-            .ok()
-    };
-}
 
 mod kw {
     syn::custom_keyword!(style);
@@ -28,36 +17,6 @@ mod kw {
     syn::custom_keyword!(and);
     syn::custom_keyword!(or);
 }
-
-// fn get_import_content(src: &CssString) -> Result<String, ParseError> {
-//     let p = src.value();
-//     if !p.starts_with("/") {
-//         return Err(ParseError::new(
-//             src.span,
-//             "Currently only paths started with `/` are supported (which means the path relative to crate `src` or MAOMI_CSS_IMPORT_DIR)",
-//         ));
-//     }
-//     let mut target = CSS_MOD_ROOT.with(|import_dir| match import_dir {
-//         None => Err(ParseError::new(
-//             src.span,
-//             "no MAOMI_CSS_MOD_ROOT or CARGO_MANIFEST_DIR environment variables provided",
-//         )),
-//         Some(s) => Ok(s.clone()),
-//     })?;
-//     for slice in p[1..].split('/') {
-//         match slice {
-//             "." => {}
-//             ".." => {
-//                 target.pop();
-//             }
-//             x => {
-//                 target.push(x);
-//             }
-//         }
-//     }
-//     std::fs::read_to_string(&target)
-//         .map_err(|_| ParseError::new(src.span, &format!("cannot open file {:?}", target)))
-// }
 
 fn try_parse_until_semi<T>(
     input: ParseStream,
@@ -120,7 +79,7 @@ impl<T: syn::parse::Parse> syn::parse::Parse for Paren<T> {
 }
 
 /// Handlers for CSS details (varies between backends)
-pub trait StyleSheetConstructor {
+pub trait StyleSheetConstructor: 'static {
     type PropertyValue: ParseStyleSheetValue;
     type MediaCondValue: ParseStyleSheetValue;
 
@@ -131,6 +90,7 @@ pub trait StyleSheetConstructor {
     fn define_key_frames(
         &mut self,
         name: &VarName,
+        css_name: &Option<String>,
         content: Vec<KeyFrame<Self::PropertyValue>>,
     ) -> Result<CssToken, ParseError>;
 
@@ -148,8 +108,25 @@ pub trait ParseStyleSheetValue {
 
 pub struct StyleSheet<T: StyleSheetConstructor> {
     ssc: T,
-    pub items: Vec<StyleSheetItem<T>>,
+    pub items: Vec<Rc<StyleSheetItem<T>>>,
+    pub var_context: VarContext<T>,
     pub var_refs: Vec<VarRef>,
+    submodules: FxHashMap<Ident, Rc<StyleSheet<T>>>,
+}
+
+impl<T: StyleSheetConstructor> StyleSheet<T> {
+    pub(crate) fn new_err(err: syn::Error) -> Self {
+        let items = vec![
+            Rc::new(StyleSheetItem::CompilationError(err)),
+        ];
+        Self {
+            ssc: T::new(),
+            items,
+            var_context: Default::default(),
+            var_refs: Vec::with_capacity(0),
+            submodules: FxHashMap::default(),
+        }
+    }
 }
 
 impl<T: StyleSheetConstructor> syn::parse::Parse for StyleSheet<T> {
@@ -177,53 +154,52 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
     ) -> Result<Self, syn::Error> {
         let mut ssc = T::new();
         let mut items = vec![];
+        let var_context = VarContext::default();
+        let mut submodules = FxHashMap::default();
         while !input.is_empty() {
-            items.push(StyleSheetItem::parse_with_vars(input, scope, &mut ssc)?);
+            if let Some(item) = StyleSheetItem::parse_with_vars(input, scope, &var_context, &mut submodules, &mut ssc)? {
+                items.push(item);
+            }
         }
         Ok(Self {
             ssc,
             items,
+            var_context,
             var_refs: std::mem::replace(&mut scope.var_refs, Vec::with_capacity(0)),
+            submodules,
         })
     }
 }
 
 pub struct VarContext<T: StyleSheetConstructor> {
-    map: Rc<HashMap<VarName, StyleSheetItem<T>>>,
+    map: Rc<RefCell<FxHashMap<VarName, Weak<StyleSheetItem<T>>>>>,
+}
+
+impl<T: StyleSheetConstructor> Clone for VarContext<T> {
+    fn clone(&self) -> Self {
+        Self { map: self.map.clone() }
+    }
+}
+
+impl<T: StyleSheetConstructor> Default for VarContext<T> {
+    fn default() -> Self {
+        Self { map: Rc::new(RefCell::new(FxHashMap::default())) }
+    }
+}
+
+impl<T: StyleSheetConstructor> VarContext<T> {
+    pub fn get(&self, var_name: &VarName) -> Option<Rc<StyleSheetItem<T>>> {
+        self.map.borrow().get(var_name).and_then(|x| x.upgrade())
+    }
 }
 
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
-    CompilationError {
-        err: syn::Error,
-    },
-    ConstValue {
-        vis: Option<ModPath>,
-        name: VarName,
-    },
-    KeyFrames {
-        vis: Option<ModPath>,
-        name: VarName,
-        sub_var_refs: Vec<VarRef>,
-    },
-    Style {
-        vis: Option<ModPath>,
-        extern_vis: Option<Visibility>,
-        name: VarName,
-        args: Vec<(VarName, ArgType)>,
-        content: Vec<StyleContentItem<T::PropertyValue>>,
-        var_context: VarContext<T>,
-        sub_var_refs: Vec<VarRef>,
-    },
-    Class {
-        vis: Option<ModPath>,
-        extern_vis: Option<Visibility>,
-        error_css_output: Option<Span>,
-        css_name: Option<String>,
-        name: VarName,
-        content: RuleContent<T>,
-        var_context: VarContext<T>,
-        sub_var_refs: Vec<VarRef>,
-    },
+    CompilationError(syn::Error),
+    ConstValue(ConstValueDefinition),
+    KeyFrames(KeyFramesDefinition),
+    StyleFn(StyleFnDefinition<T>),
+    Style(StyleDefinition<T>),
+    Class(ClassDefinition<T>),
 }
 
 pub struct KeyFrame<V: ParseStyleSheetValue> {
@@ -235,8 +211,10 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
     fn parse_with_vars(
         input: ParseStream,
         scope: &mut ScopeVars,
+        var_context: &VarContext<T>,
+        submodules: &mut FxHashMap<Ident, Rc<StyleSheet<T>>>,
         ssc: &mut T,
-    ) -> Result<Self, syn::Error> {
+    ) -> Result<Option<Rc<Self>>, syn::Error> {
         // `#[xxx(xxx)]`
         let attrs = Attribute::parse_outer(input)?;
 
@@ -277,145 +255,343 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                 return Err(input.error("`mod` cannot be used inside inline stylesheets"));
             }
         } else if la.peek(Token![use]) {
-            input.parse::<Token![use]>()?;
+            let use_token: Token![use] = input.parse()?;
             for attr in attrs {
                 return Err(syn::Error::new_spanned(attr, "unknown attribute"));
             }
-            unimplemented!()
+            let mut cur_module = crate::module::root_module::<T>().ok_or_else(|| {
+                syn::Error::new_spanned(use_token, "root module not found (`MAOMI_STYLESHEET_MOD_ROOT` or `CARGO_MANIFEST_DIR/src/lib.mcss` not exists?)")
+            })?;
+            let use_tree: UseTree = input.parse()?;
+            match &use_tree {
+                UseTree::Path(syn::UsePath { ident, tree, .. }) => {
+                    if ident.to_string().as_str() != "crate" {
+                        return Err(syn::Error::new_spanned(use_tree, "path must be started with `crate::`"));
+                    }
+                    fn rec<T: StyleSheetConstructor>(
+                        tree: &UseTree,
+                        cur_module: &Rc<StyleSheet<T>>,
+                    ) -> Result<(), syn::Error> {
+                        match tree {
+                            UseTree::Path(syn::UsePath { ident, tree, .. }) => {
+                                let m = cur_module.submodules.get(ident).ok_or_else(|| {
+                                    syn::Error::new_spanned(ident, "module not found")
+                                })?;
+                                return rec(tree, m);
+                            }
+                            UseTree::Name(syn::UseName { ident }) => {
+
+                            }
+                            UseTree::Rename(syn::UseRename { ident, rename, .. }) => {
+
+                            }
+                            UseTree::Glob(_) => {
+
+                            }
+                            UseTree::Group(_) => {
+
+                            }
+                        }
+                        Ok(())
+                    }
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(use_tree, "path must be started with `crate::`"));
+                }
+            }
+            unimplemented!("!!!")
         } else if la.peek(Token![const]) {
             // `const xxx: xxx = xxx;`
-            input.parse::<Token![const]>()?;
-            let name: VarName = input.parse()?;
-            input.parse::<Token![:]>()?;
-            let ty = Ident::parse_any(input)?;
-            input.parse::<Token![=]>()?;
-            try_parse_until_semi(input, |input| {
-                for attr in attrs {
-                    return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+            let parsed = ConstValueDefinition::parse_with_vars(input, scope, attrs, vis, extern_vis, ssc)?;
+            let name = match &parsed {
+                StyleSheetItem::ConstValue(x) => x.name.clone(),
+                StyleSheetItem::KeyFrames(x) => x.name.clone(),
+                _ => unreachable!(),
+            };
+            let item = Rc::new(parsed);
+            var_context.map.borrow_mut().insert(name, Rc::downgrade(&item));
+            Ok(Some(item))
+        } else if la.peek(Token![fn]) {
+            // `fn xxx(xxx: xxx) { xxx }`
+            if let Some(x) = extern_vis {
+                if vis.is_none() {
+                    return Err(syn::Error::new_spanned(x, "functions are always private in inline stylesheets"));
                 }
-                if let Some(x) = extern_vis {
-                    if vis.is_none() {
-                        return Err(syn::Error::new_spanned(x, "constants are always private in inline stylesheets"));
-                    }
-                    if let Visibility::Public(_) = x {
-                        return Err(syn::Error::new_spanned(x, "constants cannot be visited by other crates, use `pub(crate)` instead"));
-                    }
-                }
-                match ty.to_string().as_str() {
-                    "value" => {
-                        let value = ParseWithVars::parse_with_vars(input, scope)?;
-                        if scope.vars.insert(name.clone(), ScopeVarValue::Token(value)).is_some() {
-                            return Err(syn::Error::new(name.span(), "duplicated identifier"));
-                        }
-                        Ok(Self::ConstValue { vis, name })
-                    }
-                    "keyframes" => {
-                        let content;
-                        braced!(content in input);
-                        let input = &content;
-                        let mut frames = vec![];
-                        let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
-                        let result = (|input: ParseStream| {
-                            while !input.is_empty() {
-                                let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
-                                let progress = match token {
-                                    CssToken::Ident(x) => {
-                                        match x.formal_name.as_str() {
-                                            "from" => CssPercentage::new_int(x.span, 0),
-                                            "to" => CssPercentage::new_int(x.span, 100),
-                                            _ => {
-                                                return Err(syn::Error::new(x.span, "invalid keyframe progress token"));
-                                            }
-                                        }
-                                    }
-                                    CssToken::Percentage(x) => x,
-                                    x => {
-                                        return Err(syn::Error::new(x.span(), "invalid keyframe progress token"));
-                                    }
-                                };
-                                let content;
-                                braced!(content in input);
-                                let input = &content;
-                                let items = StyleContentItem::parse_with_vars(input, scope, true)?;
-                                frames.push(KeyFrame { progress, items });
-                            }
-                            Ok(())
-                        })(input);
-                        let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
-                        result?;
-                        let converted_token = ssc.define_key_frames(&name, frames).map_err(|e| e.into_syn_error())?;
-                        if scope.vars.insert(name.clone(), ScopeVarValue::Token(converted_token)).is_some() {
-                            return Err(syn::Error::new(name.span(), "duplicated identifier"));
-                        }
-                        Ok(Self::KeyFrames { vis, name, sub_var_refs })
-                    }
-                    _ => Err(syn::Error::new_spanned(ty, "invalid type")),
-                }
-            })
+            }
+            let parsed = StyleFnDefinition::parse_with_vars(input, scope, attrs, vis, var_context)?;
+            let name = parsed.name.clone();
+            let item = Rc::new(Self::StyleFn(parsed));
+            var_context.map.borrow_mut().insert(name, Rc::downgrade(&item));
+            Ok(Some(item))
         } else if la.peek(kw::style) {
             // `style xxx(xxx: xxx) { xxx }`
-            input.parse::<kw::style>()?;
-            let name: VarName = input.parse()?;
-            let args = try_parse_paren(input, |input| {
-                for attr in attrs {
-                    return Err(syn::Error::new_spanned(attr, "unknown attribute"));
-                }
-                let mut args = vec![];
-                while !input.is_empty() {
-                    let var_name: VarName = input.parse()?;
-                    input.parse::<Token![:]>()?;
-                    let ty: syn::Type = input.parse()?;
-                    let span = ty.span();
-                    let arg_type: ArgType = match &ty {
-                        syn::Type::Reference(r) if r.lifetime.is_none() && r.mutability.is_none() => {
-                            match &*r.elem {
-                                syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident("str") => {
-                                    ArgType::Str(span)
-                                }
-                                _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
-                            }
-                        }
-                        syn::Type::Path(p) if p.qself.is_none() => {
-                            if p.path.is_ident("f32") {
-                                ArgType::Num(span)
-                            } else {
-                                Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
-                            }
-                        }
-                        _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
-                    };
-                    args.push((var_name, arg_type));
-                    if !input.is_empty() {
-                        input.parse::<Token![,]>()?;
-                    }
-                }
-                Ok(args)
-            })?;
-            try_parse_brace(input, |input| {
-                for (index, (var_name, ty)) in args.iter().enumerate() {
-                    let r = VarDynRef { span: var_name.span(), index };
-                    if scope.vars.insert(var_name.clone(), match ty {
-                        ArgType::Str(_) => ScopeVarValue::DynStr(r),
-                        ArgType::Num(_) => ScopeVarValue::DynNum(r),
-                    }).is_some() {
-                        return Err(syn::Error::new(var_name.span(), "duplicated identifier"));
-                    };
-                }
-                let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
-                let content_result = StyleContentItem::parse_with_vars(input, scope, true);
-                let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
-                for (var_name, _) in args.iter() {
-                    scope.vars.remove(var_name);
-                }
-                let content = content_result?;
-                if scope.vars.insert(name.clone(), ScopeVarValue::StyleDefinition(args.clone())).is_some() {
-                    return Err(syn::Error::new(name.span(), "duplicated identifier"));
-                }
-                Ok(Self::Style { vis, extern_vis, name, args, content, sub_var_refs })
-            })
+            if vis.is_some() {
+                return Err(input.error("style definition cannot be used inside independent stylesheet modules"));
+            }
+            let parsed = StyleDefinition::parse_with_vars(input, scope, attrs, extern_vis)?;
+            let name = parsed.name.clone();
+            let item = Rc::new(Self::Style(parsed));
+            var_context.map.borrow_mut().insert(name, Rc::downgrade(&item));
+            Ok(Some(item))
         } else if la.peek(kw::class) {
             // `class xxx { xxx }`
-            input.parse::<kw::class>()?;
+            if vis.is_some() {
+                return Err(input.error("class definition cannot be used inside independent stylesheet modules"));
+            }
+            let parsed = ClassDefinition::parse_with_vars(input, scope, attrs, extern_vis)?;
+            let name = parsed.name.clone();
+            let item = Rc::new(Self::Class(parsed));
+            var_context.map.borrow_mut().insert(name, Rc::downgrade(&item));
+            Ok(Some(item))
+        } else {
+            return Err(la.error());
+        }
+    }
+}
+
+pub struct ConstValueDefinition {
+    vis: Option<ModPath>,
+    pub name: VarName,
+    converted_token: CssToken,
+}
+
+impl ConstValueDefinition {
+    fn parse_with_vars<T: StyleSheetConstructor>(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+        attrs: Vec<Attribute>,
+        vis: Option<ModPath>,
+        extern_vis: Option<Visibility>,
+        ssc: &mut T,
+    ) -> Result<StyleSheetItem<T>, syn::Error> {
+        input.parse::<Token![const]>()?;
+        let name: VarName = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let ty = Ident::parse_any(input)?;
+        input.parse::<Token![=]>()?;
+        try_parse_until_semi(input, |input| {
+            if let Some(x) = extern_vis {
+                if vis.is_none() {
+                    return Err(syn::Error::new_spanned(x, "constants are always private in inline stylesheets"));
+                }
+                if let Visibility::Public(_) = x {
+                    return Err(syn::Error::new_spanned(x, "constants cannot be visited by other crates, use `pub(crate)` instead"));
+                }
+            }
+            match ty.to_string().as_str() {
+                "value" => {
+                    for attr in attrs {
+                        return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+                    }
+                    let converted_token = CssToken::parse_with_vars(input, scope)?;
+                    if scope.vars.insert(name.clone(), ScopeVarValue::Token(converted_token.clone())).is_some() {
+                        return Err(syn::Error::new(name.span(), "duplicated identifier"));
+                    }
+                    Ok(StyleSheetItem::ConstValue(Self { vis, name, converted_token }))
+                }
+                "keyframes" => {
+                    let mut css_name = None;
+                    for attr in attrs {
+                        if attr.path.is_ident("css_name") {
+                            let name = syn::parse2::<Paren<syn::LitStr>>(attr.tokens)?;
+                            css_name = Some(name.inner.value());
+                        } else {
+                            return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+                        }
+                    }
+                    let content;
+                    braced!(content in input);
+                    let input = &content;
+                    let mut frames = vec![];
+                    let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
+                    let result = (|input: ParseStream| {
+                        while !input.is_empty() {
+                            let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
+                            let progress = match token {
+                                CssToken::Ident(x) => {
+                                    match x.formal_name.as_str() {
+                                        "from" => CssPercentage::new_int(x.span, 0),
+                                        "to" => CssPercentage::new_int(x.span, 100),
+                                        _ => {
+                                            return Err(syn::Error::new(x.span, "invalid keyframe progress token"));
+                                        }
+                                    }
+                                }
+                                CssToken::Percentage(x) => x,
+                                x => {
+                                    return Err(syn::Error::new(x.span(), "invalid keyframe progress token"));
+                                }
+                            };
+                            let content;
+                            braced!(content in input);
+                            let input = &content;
+                            let items = StyleContentItem::parse_with_vars(input, scope, true)?;
+                            frames.push(KeyFrame { progress, items });
+                        }
+                        Ok(())
+                    })(input);
+                    let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
+                    result?;
+                    let converted_token = ssc.define_key_frames(&name, &css_name, frames).map_err(|e| e.into_syn_error())?;
+                    if scope.vars.insert(name.clone(), ScopeVarValue::Token(converted_token.clone())).is_some() {
+                        return Err(syn::Error::new(name.span(), "duplicated identifier"));
+                    }
+                    Ok(StyleSheetItem::KeyFrames(KeyFramesDefinition { vis, name, css_name, converted_token, sub_var_refs }))
+                }
+                _ => Err(syn::Error::new_spanned(ty, "invalid type")),
+            }
+        })
+    }
+}
+
+pub struct KeyFramesDefinition {
+    vis: Option<ModPath>,
+    pub name: VarName,
+    pub css_name: Option<String>,
+    converted_token: CssToken,
+    pub sub_var_refs: Vec<VarRef>,
+}
+
+pub struct StyleFnDefinition<T: StyleSheetConstructor> {
+    vis: Option<ModPath>,
+    pub name: VarName,
+    pub args: Vec<(VarName, ArgType)>,
+    pub content: Vec<StyleContentItem<T::PropertyValue>>,
+    pub sub_var_refs: Vec<VarRef>,
+    pub var_context: VarContext<T>,
+}
+
+impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
+    fn parse_arg_list(
+        input: syn::parse::ParseStream,
+        _scope: &mut ScopeVars,
+    ) -> Result<Vec<(VarName, ArgType)>, syn::Error> {
+        try_parse_paren(input, |input| {
+            let mut args = vec![];
+            while !input.is_empty() {
+                let var_name: VarName = input.parse()?;
+                input.parse::<Token![:]>()?;
+                let ty: syn::Type = input.parse()?;
+                let span = ty.span();
+                let arg_type: ArgType = match &ty {
+                    syn::Type::Reference(r) if r.lifetime.is_none() && r.mutability.is_none() => {
+                        match &*r.elem {
+                            syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident("str") => {
+                                ArgType::Str(span)
+                            }
+                            _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
+                        }
+                    }
+                    syn::Type::Path(p) if p.qself.is_none() => {
+                        if p.path.is_ident("f32") {
+                            ArgType::Num(span)
+                        } else {
+                            Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
+                        }
+                    }
+                    _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
+                };
+                args.push((var_name, arg_type));
+                if !input.is_empty() {
+                    input.parse::<Token![,]>()?;
+                }
+            }
+            Ok(args)
+        })
+    }
+
+    fn parse_fn_body(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+        args: &[(VarName, ArgType)],
+    ) -> Result<(Vec<StyleContentItem<T::PropertyValue>>, Vec<VarRef>), syn::Error> {
+        try_parse_brace(input, |input| {
+            for (index, (var_name, ty)) in args.iter().enumerate() {
+                let r = VarDynRef { span: var_name.span(), index };
+                if scope.vars.insert(var_name.clone(), match ty {
+                    ArgType::Str(_) => ScopeVarValue::DynStr(r),
+                    ArgType::Num(_) => ScopeVarValue::DynNum(r),
+                }).is_some() {
+                    return Err(syn::Error::new(var_name.span(), "duplicated identifier"));
+                };
+            }
+            let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
+            let content_result = StyleContentItem::parse_with_vars(input, scope, true);
+            let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
+            for (var_name, _) in args.iter() {
+                scope.vars.remove(var_name);
+            }
+            Ok((content_result?, sub_var_refs))
+        })
+    }
+
+    fn parse_with_vars(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+        attrs: Vec<Attribute>,
+        vis: Option<ModPath>,
+        var_context: &VarContext<T>,
+    ) -> Result<Self, syn::Error> {
+        input.parse::<Token![fn]>()?;
+        let name: VarName = input.parse()?;
+        for attr in attrs {
+            return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+        }
+        let args = Self::parse_arg_list(input, scope)?;
+        let (content, sub_var_refs) = Self::parse_fn_body(input, scope, &args)?;
+        if scope.vars.insert(name.clone(), ScopeVarValue::StyleDefinition(args.clone())).is_some() {
+            return Err(syn::Error::new(name.span(), "duplicated identifier"));
+        }
+        Ok(Self { vis, name, args, content, sub_var_refs, var_context: var_context.clone() })
+    }
+}
+
+pub struct StyleDefinition<T: StyleSheetConstructor> {
+    pub extern_vis: Option<Visibility>,
+    pub name: VarName,
+    pub args: Vec<(VarName, ArgType)>,
+    pub content: Vec<StyleContentItem<T::PropertyValue>>,
+    pub sub_var_refs: Vec<VarRef>,
+}
+
+impl<T: StyleSheetConstructor> StyleDefinition<T> {
+    fn parse_with_vars(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+        attrs: Vec<Attribute>,
+        extern_vis: Option<Visibility>,
+    ) -> Result<Self, syn::Error> {
+        input.parse::<kw::style>()?;
+        let name: VarName = input.parse()?;
+        for attr in attrs {
+            return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+        }
+        let args = StyleFnDefinition::<T>::parse_arg_list(input, scope)?;
+        let (content, sub_var_refs) = StyleFnDefinition::<T>::parse_fn_body(input, scope, &args)?;
+        if scope.vars.insert(name.clone(), ScopeVarValue::StyleDefinition(args.clone())).is_some() {
+            return Err(syn::Error::new(name.span(), "duplicated identifier"));
+        }
+        Ok(Self { extern_vis, name, args, content, sub_var_refs })
+    }
+}
+
+pub struct ClassDefinition<T: StyleSheetConstructor> {
+    pub extern_vis: Option<Visibility>,
+    pub error_css_output: Option<Span>,
+    pub css_name: Option<String>,
+    pub name: VarName,
+    pub content: RuleContent<T>,
+    pub sub_var_refs: Vec<VarRef>,
+}
+
+impl<T: StyleSheetConstructor> ClassDefinition<T> {
+    fn parse_with_vars(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+        attrs: Vec<Attribute>,
+        extern_vis: Option<Visibility>,
+    ) -> Result<Self, syn::Error> {
+        input.parse::<kw::class>()?;
             let name = input.parse()?;
             let mut error_css_output = None;
             let mut css_name = None;
@@ -437,10 +613,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                 RuleContent::parse_with_vars(input, scope, false)
             })?;
             let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
-            Ok(Self::Class { vis, extern_vis, error_css_output, css_name, name, content, sub_var_refs })
-        } else {
-            return Err(la.error());
-        }
+            Ok(Self { extern_vis, error_css_output, css_name, name, content, sub_var_refs })
     }
 }
 
@@ -728,6 +901,9 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                     }
                 };
                 let has_media_feature = input.peek(kw::and);
+                if has_media_feature {
+                    input.parse::<kw::and>()?;
+                }
                 (media_type, has_media_feature)
             } else {
                 (MediaType::All, true)

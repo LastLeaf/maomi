@@ -9,6 +9,7 @@ use css_token::*;
 pub mod write_css;
 pub mod style_sheet;
 pub mod pseudo;
+mod module;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -128,6 +129,38 @@ pub enum MaybeDyn<T> {
     Dyn(VarDynRef),
 }
 
+impl ParseWithVars for MaybeDyn<String> {
+    fn parse_with_vars(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, syn::Error> {
+        use syn::*;
+        let la = input.lookahead1();
+        let value = if la.peek(LitStr) {
+            let s: LitStr = input.parse()?;
+            MaybeDyn::Static(s.value())
+        } else if la.peek(Ident) {
+            let var_name: VarName = input.parse()?;
+            if let Some(v) = scope.vars.get(&var_name) {
+                match v {
+                    ScopeVarValue::DynStr(x) => {
+                        scope.var_refs.push(var_name.into_ref());
+                        MaybeDyn::Dyn(x.clone())
+                    }
+                    x => {
+                        return Err(syn::Error::new(var_name.span(), format!("expected &str, found {}", x.type_name())));
+                    }
+                }
+            } else {
+                return Err(syn::Error::new(var_name.span(), "variable not declared"));
+            }
+        } else {
+            return Err(la.error());
+        };
+        Ok(value)
+    }
+}
+
 impl MaybeDyn<String> {
     fn value<'a>(&'a self, values: &'a [VarDynValue]) -> Result<&'a str, syn::Error> {
         match self {
@@ -140,6 +173,43 @@ impl MaybeDyn<String> {
                 }
             }
         }
+    }
+}
+
+impl ParseWithVars for MaybeDyn<Number> {
+    fn parse_with_vars(
+        input: syn::parse::ParseStream,
+        scope: &mut ScopeVars,
+    ) -> Result<Self, syn::Error> {
+        use syn::*;
+        let la = input.lookahead1();
+        let value = if la.peek(LitInt) {
+            let v: LitInt = input.parse()?;
+            let value = v.base10_parse()?;
+            MaybeDyn::Static(Number::I32(value))
+        } else if la.peek(LitFloat) {
+            let v: LitFloat = input.parse()?;
+            let value = v.base10_parse()?;
+            MaybeDyn::Static(Number::F32(value))
+        } else if la.peek(Ident) {
+            let var_name: VarName = input.parse()?;
+            if let Some(v) = scope.vars.get(&var_name) {
+                match v {
+                    ScopeVarValue::DynNum(x) => {
+                        scope.var_refs.push(var_name.into_ref());
+                        MaybeDyn::Dyn(x.clone())
+                    }
+                    x => {
+                        return Err(syn::Error::new(var_name.span(), format!("expected i32 or f32, found {}", x.type_name())));
+                    }
+                }
+            } else {
+                return Err(syn::Error::new(var_name.span(), "variable not declared"));
+            }
+        } else {
+            return Err(la.error());
+        };
+        Ok(value)
     }
 }
 

@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use quote::{quote, TokenStreamExt, quote_spanned};
 use std::cell::Cell;
-use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::Write;
@@ -118,11 +117,14 @@ impl StyleSheetConstructor for DomStyleSheet {
     fn define_key_frames(
         &mut self,
         name: &VarName,
+        css_name: &Option<String>,
         content: Vec<KeyFrame<Self::PropertyValue>>,
     ) -> Result<CssToken, ParseError> {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
-        let formal_name = generate_css_name(&name, debug_mode);
-        let generated_ident = CssIdent::new(name.span(), &formal_name);
+        let generated_ident = CssIdent::new(
+            name.span(),
+            css_name.as_ref().unwrap_or(&generate_css_name(&name, debug_mode)),
+        );
         self.key_frames_def.push((
             generated_ident.clone(),
             content,
@@ -143,7 +145,7 @@ impl StyleSheetConstructor for DomStyleSheet {
             debug_mode: bool,
             cssw: &mut CssWriter<String>,
             items: &[StyleContentItem<DomCssProperty>],
-            style_content_map: &HashMap<&VarName, &Vec<StyleContentItem<DomCssProperty>>>,
+            var_context: &VarContext<DomStyleSheet>,
             var_values: &[VarDynValue],
             is_last_item: bool,
         ) -> Result<(), std::fmt::Error> {
@@ -165,7 +167,16 @@ impl StyleSheetConstructor for DomStyleSheet {
                         }
                     }
                     StyleContentItem::StyleRef(name, args) => {
-                        let items = style_content_map.get(&name).expect("style section not found");
+                        let style_fn = var_context.get(&name);
+                        let style_fn = style_fn.as_ref()
+                            .and_then(|x| {
+                                if let StyleSheetItem::StyleFn(x) = &**x {
+                                    Some(x)
+                                } else {
+                                    None
+                                }
+                            })
+                            .expect("style section not found");
                         let args: Vec<_> = args.iter().map(|arg| {
                             match arg {
                                 MaybeDyn::Dyn(x) => var_values.get(x.index).expect("argument value not enough"),
@@ -176,8 +187,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                             tokens,
                             debug_mode,
                             cssw,
-                            items,
-                            style_content_map,
+                            &style_fn.content,
+                            &style_fn.var_context,
                             &args,
                             is_last_item,
                         )?;
@@ -203,7 +214,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 debug_mode,
                                 cssw,
                                 &kf.items,
-                                &style_content_map,
+                                &ss.var_context,
                                 &[],
                                 true,
                             )
@@ -218,33 +229,47 @@ impl StyleSheetConstructor for DomStyleSheet {
 
         // generate css output
         for item in ss.items.iter() {
-            match item {
+            match &**item {
                 // generate compilation error
-                StyleSheetItem::CompilationError { err } => {
+                StyleSheetItem::CompilationError(err) => {
                     tokens.append_all(err.to_compile_error());
                 }
 
                 // generate const def
-                StyleSheetItem::ConstValue { name, .. } => {
+                StyleSheetItem::ConstValue(ConstValueDefinition { name, .. }) => {
                     tokens.append_all(quote! {
                         const #name: &'static str = "(value)";
                     });
                 }
-                StyleSheetItem::KeyFrames { name, .. } => {
+                StyleSheetItem::KeyFrames(KeyFramesDefinition { name, .. }) => {
                     tokens.append_all(quote! {
                         const #name: &'static str = "(keyframes)";
                     });
                 }
+                StyleSheetItem::StyleFn(StyleFnDefinition { name, args, sub_var_refs, .. }) => {
+                    let args_var_name = args.iter().map(|x| &x.0);
+                    let args_ty = args.iter().map(|x| x.1.type_tokens());
+                    tokens.append_all(quote! {
+                        #[allow(non_camel_case_types)]
+                        struct #name();
+                        impl #name {
+                            #[allow(dead_code)]
+                            fn __stylesheet(#(#args_var_name: #args_ty),*) {
+                                #(#sub_var_refs;)*
+                            }
+                        }
+                    });
+                }
 
                 // style as const def
-                StyleSheetItem::Style {
+                StyleSheetItem::Style(StyleDefinition {
                     extern_vis,
                     name,
                     args,
                     content,
                     sub_var_refs,
                     ..
-                } => {
+                }) => {
                     let args_var_name = args.iter().map(|x| &x.0);
                     let args_ty = args.iter().map(|x| x.1.type_tokens());
                     tokens.append_all(quote! {
@@ -258,11 +283,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                         }
                         // TODO style
                     });
-                    style_content_map.insert(name, content);
                 }
 
                 // generate common rule
-                StyleSheetItem::Class {
+                StyleSheetItem::Class(ClassDefinition {
                     extern_vis,
                     error_css_output,
                     css_name,
@@ -270,7 +294,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                     content,
                     sub_var_refs,
                     ..
-                } => {
+                }) => {
+                    let var_context = &ss.var_context;
                     let class_name = css_name.clone().unwrap_or_else(|| generate_css_name(name, debug_mode));
 
                     // generate proc macro output
@@ -314,9 +339,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                         tokens: &mut proc_macro2::TokenStream,
                         debug_mode: bool,
                         class_name: &str,
+                        pseudo: Option<&pseudo::Pseudo>,
                         content: &RuleContent<DomStyleSheet>,
                         cssw: &mut CssWriter<String>,
-                        style_content_map: &HashMap<&VarName, &Vec<StyleContentItem<DomCssProperty>>>,
+                        var_context: &VarContext<DomStyleSheet>,
                     ) -> Result<(), std::fmt::Error> {
                         // a helper for write css name
                         let write_selector = |cssw: &mut CssWriter<String>| {
@@ -327,10 +353,12 @@ impl StyleSheetConstructor for DomStyleSheet {
 
                         // a helper for write at-blocks
                         let mut write_main_rule_and_at_blocks =
-                            |cssw: &mut CssWriter<String>,
-                             pseudo: Option<&pseudo::Pseudo>,
-                             items: &[StyleContentItem<DomCssProperty>],
-                             at_blocks: &[AtBlock<DomStyleSheet>]| {
+                            |
+                                cssw: &mut CssWriter<String>,
+                                pseudo: Option<&pseudo::Pseudo>,
+                                items: &[StyleContentItem<DomCssProperty>],
+                                at_blocks: &[AtBlock<DomStyleSheet>],
+                            | {
                                 if items.len() > 0 {
                                     write_selector(cssw)?;
                                     if let Some(pseudo) = pseudo {
@@ -342,7 +370,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                         debug_mode,
                                         cssw,
                                         &items,
-                                        style_content_map,
+                                        var_context,
                                         &[],
                                         true,
                                     ))?;
@@ -385,9 +413,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                                                 tokens,
                                                 debug_mode,
                                                 class_name,
+                                                pseudo,
                                                 &content,
                                                 cssw,
-                                                style_content_map,
+                                                var_context,
                                             )
                                         })?;
                                     }
@@ -398,7 +427,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                         // write CSS for the class itself
                         write_main_rule_and_at_blocks(
                             cssw,
-                            None,
+                            pseudo,
                             &content.items,
                             &content.at_blocks,
                         )?;
@@ -426,9 +455,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                             tokens,
                             debug_mode,
                             &class_name,
+                            None,
                             &content,
                             &mut cssw,
-                            &style_content_map,
+                            &var_context,
                         )
                         .unwrap();
                         tokens.append_all(quote_spanned! {span=>
@@ -441,9 +471,10 @@ impl StyleSheetConstructor for DomStyleSheet {
                             tokens,
                             debug_mode,
                             &class_name,
+                            None,
                             &content,
                             &mut cssw,
-                            &style_content_map,
+                            var_context,
                         )
                         .unwrap();
                         css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
@@ -504,7 +535,7 @@ mod test {
         std::env::set_var("MAOMI_CSS_OUT_DIR", out_dir.to_str().unwrap());
         let import_dir = tmp_path.join("maomi-dom-macro").join("test-import");
         std::fs::create_dir_all(&import_dir).unwrap();
-        std::env::set_var("MAOMI_CSS_MOD_ROOT", import_dir.join("mod.mcss").to_str().unwrap());
+        std::env::set_var("MAOMI_STYLESHEET_MOD_ROOT", import_dir.join("lib.mcss").to_str().unwrap());
         (out_dir, import_dir)
     });
 
@@ -537,138 +568,77 @@ mod test {
     fn import() {
         setup_env(false, |env| {
             env.write_import_file(
-                "a.css",
+                "lib.mcss",
                 r#"
-                    @config name_mangling: off;
-                    @macro ma {
-                        () => {
-                            2.px
-                        };
-                    }
-                    @const $a: 1.px;
-                    @const $color: rgb(1, 2, 3);
+                    const A: value = Px(1);
+                    const COLOR: value = rgb(1, 2, 3);
                 "#,
             );
             parse_str(
                 r#"
-                    @import "/a.css";
-                    @const $b: $a ma!();
+                    use crate::*;
+                    const B: value = A;
+                    #[css_name("self")]
                     .self {
-                        padding: $b $a ma!();
-                        color: $color;
+                        padding: B A;
+                        color: COLOR;
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#".self{padding:1px 2px 1px 2px;color:rgb(1,2,3)}"#,
+                r#".self{padding:1px 1px;color:rgb(1,2,3)}"#,
             );
         });
     }
 
     #[test]
     #[serial]
-    fn value_position_macro() {
+    fn style_fn() {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    @const $ok: 2.px;
-                    @macro ma {
-                        ($$ $t:tt) => { $ok $t };
-                        ($($t:tt),*) => { $($t)* };
+                    fn a(padding: f32, color: &str) {
+                        padding = Px(padding);
+                        color = Color(color);
                     }
-                    @const $p: ma!($$ 1.px);
-                    .c {
-                        padding: $p;
-                        margin: ma!(1.px, 2.px, 3.px);
-                    }
-                "#,
-            );
-            assert_eq!(
-                env.read_output(),
-                r#".c{padding:2px 1px;margin:1px 2px 3px}"#,
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn property_position_macro() {
-        setup_env(false, |env| {
-            parse_str(
-                r#"
-                    @config name_mangling: off;
-                    @macro ma {
-                        ($k:ident = $($v:tt)*) => {
-                            $k: $($v)*;
-                        };
-                    }
-                    @macro mb {
-                        ($($i:value);*) => {
-                            $(
-                                ma!($i)
-                            )*
-                        };
-                    }
-                    .c {
-                        ma![padding = 1.px];
-                        margin: 2.px;
-                        :hover {
-                            mb! { padding = 3.px; margin = 4.px }
+                    #[css_name("c")]
+                    class cc {
+                        a(1.2, "aaa");
+                        if hover {
+                            a(34, "bbb");
                         }
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#".c{padding:1px;margin:2px}.c:hover{padding:3px;margin:4px}"#,
+                r#".c{padding:1.2px;color:#aaa}.c:hover{padding:34px;color:#bbb}"#,
             );
         });
     }
 
     #[test]
     #[serial]
-    fn recursive_macro() {
+    fn cascaded_style_fn() {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    @macro ma {
-                        ({ $a:value }) => { $a; };
-                        ({ $a:value } $($b:tt)*) => { $a; ma!($($b)*) };
+                    fn a(v: f32) {
+                        padding = Em(v);
                     }
-                    .c {
-                        ma! {
-                            { padding: 1.px }
-                            { margin: 2.px }
-                        }
+                    fn b(v: f32) {
+                        a(v);
+                        color = Color("123456");
                     }
-                "#,
-            );
-            assert_eq!(env.read_output(), r#".c{padding:1px;margin:2px}"#,);
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn outer_then_inner_macro_expand() {
-        setup_env(false, |env| {
-            parse_str(
-                r#"
-                    @config name_mangling: off;
-                    @macro ma {
-                        ($a:ident = $b:value) => { $a: 1.px $b; };
-                    }
-                    @macro mb {
-                        ($a: value) => { 2.px $a };
-                    }
-                    .c {
-                        ma!(padding = mb!(3.px));
+                    #[css_name("c")]
+                    class c {
+                        b(1);
+                        a(2);
                     }
                 "#,
             );
-            assert_eq!(env.read_output(), r#".c{padding:1px 2px 3px}"#,);
+            assert_eq!(env.read_output(), r#".c{padding:1em;color:#123456;padding:2em}"#,);
         });
     }
 
@@ -678,11 +648,11 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        padding: 1.px;
-                        @media (aspect_ratio: 16/9) {
-                            margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        padding = Px(1);
+                        if media (aspect_ratio = 16/9) {
+                            margin = Px(2);
                         }
                     }
                 "#,
@@ -695,11 +665,11 @@ mod test {
         setup_env(true, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        padding: 1.px;
-                        @media (aspect_ratio: 16/9) {
-                            margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        padding = Px(1);
+                        if media (aspect_ratio = 16/9) {
+                            margin = Px(2);
                         }
                     }
                 "#,
@@ -727,43 +697,43 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        padding: 1.px;
-                        @supports (margin: 2.px) {
-                            margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        padding = Px(1);
+                        if supports (margin = Percent(2)) {
+                            margin = Percent(2);
                         }
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#".c{padding:1px}@supports(margin:2px){.c{margin:2px}}"#,
+                r#".c{padding:1px}@supports(margin:2%){.c{margin:2%}}"#,
             );
         });
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @supports not (margin: 2.px) {
-                            padding: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        if supports not (margin = Px(2)) {
+                            margin = Px(2);
                         }
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#"@supports not (margin:2px){.c{padding:2px}}"#,
+                r#"@supports not (margin:2px){.c{margin:2px}}"#,
             );
         });
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @supports (margin: 2.px) and (margin: 3.px) {
-                            margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        if supports (margin = Px(2)) and (margin = Px(3)) {
+                            margin = Px(2);
                         }
                     }
                 "#,
@@ -776,10 +746,10 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @supports (margin: 2.px) or (margin: 3.px) {
-                            margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        if supports (margin = Px(2)) or (margin = Px(3)) {
+                            margin = Px(2);
                         }
                     }
                 "#,
@@ -792,10 +762,10 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @supports (not ((margin: 2.px))) and ((((margin: 3.px)) or (margin: 4.px))) {
-                            margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        if supports (not ((margin = Px(2)))) and ((((margin = Px(3))) or (margin = Px(4)))) {
+                            margin = Px(2);
                         }
                     }
                 "#,
@@ -808,8 +778,8 @@ mod test {
         setup_env(false, |_| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @supports margin: 2.px {}
+                    class c {
+                        if supports margin = Px(2) {}
                     }
                 "#
             )
@@ -818,8 +788,8 @@ mod test {
         setup_env(false, |_| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @supports(margin: 2px) and (margin: 3px) or (margin: 4px) {}
+                    class c {
+                        if supports (margin = Px(2)) and (margin = Px(3)) or (margin = Px(4)) {}
                     }
                 "#
             )
@@ -833,45 +803,47 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    @keyframes $kf {
+                    #[css_name("kf")]
+                    const KF: keyframes = {
                         from {
-                            transform: translateX(0.px);
+                            transform = translateX(0);
                         }
                         50% {
-                            transform: translateX(10%);
+                            transform = translateX(10%);
                         }
                         to {
-                            transform: translateX(100%);
+                            transform = translateX(100%);
                         }
-                    }
-                    .c {
-                        animation-name: $kf;
+                    };
+                    #[css_name("c")]
+                    class c {
+                        animation_name = KF;
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#"@keyframes kf{0%{transform:translateX(0px);}50%{transform:translateX(10%);}100%{transform:translateX(100%);}}.c{animation-name:kf}"#,
+                r#"@keyframes kf{0%{transform:translateX(0)}50%{transform:translateX(10%)}100%{transform:translateX(100%)}}.c{animation-name:kf}"#,
             );
         });
         setup_env(true, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    @keyframes $kf {
+                    #[css_name("kf")]
+                    const KF: keyframes = {
                         from {
-                            transform: translateX(0.px);
+                            transform = translateX(0);
                         }
                         50% {
-                            transform: translateX(10%);
+                            transform = translateX(10%);
                         }
                         to {
-                            transform: translateX(100%);
+                            transform = translateX(100%);
                         }
-                    }
-                    .c {
-                        animation-name: $kf;
+                    };
+                    #[css_name("c")]
+                    class c {
+                        animation_name = KF;
                     }
                 "#,
             );
@@ -880,7 +852,7 @@ mod test {
                 r#"
 @keyframes kf {
     0% {
-        transform: translateX(0px);
+        transform: translateX(0);
     }
 
     50% {
@@ -906,16 +878,16 @@ mod test {
         setup_env(false, |env| {
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        :hover {
-                            @media (aspect-ratio: 16/9) {
-                                margin: 2.px;
+                    #[css_name("c")]
+                    class c {
+                        padding = Px(1);
+                        if hover {
+                            if media (aspect_ratio = 16/9) {
+                                margin = Px(2);
                             }
                         }
-                        padding: 1.px;
-                        :active {
-                            margin: 3.px;
+                        if active {
+                            margin = Px(3);
                         }
                     }
                 "#,
@@ -928,9 +900,9 @@ mod test {
         setup_env(false, |_| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        :hover {
-                            -d {}
+                    class c {
+                        if hover {
+                            if active {}
                         }
                     }
                 "#

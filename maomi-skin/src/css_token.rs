@@ -203,17 +203,6 @@ impl WriteCss for CssNumber {
                     _ => {}
                 }
             }
-            match &self.value {
-                MaybeDyn::Static(Number::I32(x)) => {
-                    write!(w, "{}", x)?;
-                }
-                MaybeDyn::Static(Number::F32(x)) => {
-                    write!(w, "{}", x)?;
-                }
-                MaybeDyn::Dyn(_) => {
-
-                }
-            }
             match self.value.value(values).expect("argument value not enough") {
                 Number::I32(x) => write!(w, "{}", x)?,
                 Number::F32(x) => write!(w, "{}", x)?,
@@ -885,83 +874,24 @@ impl ParseWithVars for CssToken {
                 if is_uppercase {
                     let input = &content;
                     if css_ident.is("Color") {
-                        let la = input.lookahead1();
-                        let value = if la.peek(LitStr) {
-                            let s: LitStr = input.parse()?;
-                            MaybeDyn::Static(s.value())
-                        } else if la.peek(Ident) {
-                            let var_name: VarName = input.parse()?;
-                            if let Some(v) = scope.vars.get(&var_name) {
-                                match v {
-                                    ScopeVarValue::DynStr(x) => {
-                                        scope.var_refs.push(var_name.into_ref());
-                                        MaybeDyn::Dyn(x.clone())
-                                    }
-                                    x => {
-                                        return Err(syn::Error::new(var_name.span(), format!("expected &str, found {}", x.type_name())));
-                                    }
-                                }
-                            } else {
-                                return Err(syn::Error::new(var_name.span(), "variable not declared"));
-                            }
-                        } else {
-                            return Err(la.error());
-                        };
+                        let value = ParseWithVars::parse_with_vars(input, scope)?;
                         CssToken::Color(CssColor {
                             span: css_ident.span,
                             value,
                         })
                     } else if css_ident.is("Percent") {
-                        let la = input.lookahead1();
-                        let value = if la.peek(LitInt) {
-                            let s: LitInt = input.parse()?;
-                            MaybeDyn::Static(Number::I32(s.base10_parse()?))
-                        } else if la.peek(LitFloat) {
-                            let s: LitFloat = input.parse()?;
-                            MaybeDyn::Static(Number::F32(s.base10_parse()?))
-                        } else if la.peek(Ident) {
-                            let var_name: VarName = input.parse()?;
-                            if let Some(v) = scope.vars.get(&var_name) {
-                                match v {
-                                    ScopeVarValue::DynNum(x) => {
-                                        scope.var_refs.push(var_name.into_ref());
-                                        MaybeDyn::Dyn(x.clone())
-                                    }
-                                    x => {
-                                        return Err(syn::Error::new(var_name.span(), format!("expected i32 or f32, found {}", x.type_name())));
-                                    }
-                                }
-                            } else {
-                                return Err(syn::Error::new(var_name.span(), "variable not declared"));
-                            }
-                        } else {
-                            return Err(la.error());
-                        };
+                        let value = ParseWithVars::parse_with_vars(input, scope)?;
                         CssToken::Percentage(CssPercentage {
                             span: css_ident.span,
                             value,
                         })
                     } else {
-                        let la = input.lookahead1();
-                        if la.peek(LitInt) {
-                            let v: LitInt = input.parse()?;
-                            let value = v.base10_parse()?;
-                            CssToken::Dimension(CssDimension {
-                                span: css_ident.span,
-                                value: MaybeDyn::Static(Number::I32(value)),
-                                unit: css_ident.formal_name.to_ascii_lowercase(),
-                            })
-                        } else if la.peek(LitFloat) {
-                            let v: LitFloat = input.parse()?;
-                            let value = v.base10_parse()?;
-                            CssToken::Dimension(CssDimension {
-                                span: css_ident.span,
-                                value: MaybeDyn::Static(Number::F32(value)),
-                                unit: css_ident.formal_name.to_ascii_lowercase(),
-                            })
-                        } else {
-                            return Err(la.error());
-                        }
+                        let value = ParseWithVars::parse_with_vars(input, scope)?;
+                        CssToken::Dimension(CssDimension {
+                            span: css_ident.span,
+                            value,
+                            unit: css_ident.formal_name.to_ascii_lowercase(),
+                        })
                     }
                 } else {
                     CssToken::Function(CssFunction {

@@ -16,7 +16,7 @@ fn main() {
 
         // specify the root crate CSS module (default to `src/lib.mcss`)
         println!(
-            "cargo:rustc-env=MAOMI_CSS_MOD_ROOT={}",
+            "cargo:rustc-env=MAOMI_STYLESHEET_MOD_ROOT={}",
             crate_path.join("src").join("lib.mcss").to_str().unwrap(),
         );
 

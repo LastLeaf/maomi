@@ -134,18 +134,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media only (resolution: 1.dpi) {}
+                    class c {
+                        if media only (resolution = Dpi(1)) {}
                     }
                 "#,
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media only all and (resolution: 1.dpi) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media only all and (resolution = Dpi(1)) {
+                            padding = Px(1);
                         }
                     }
                 "#,
@@ -163,27 +163,27 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media xxx {}
+                    class c {
+                        if media xxx {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media screen {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media screen {
+                            padding = Px(1);
                         }
-                        @media all {
-                            padding: 2.px;
+                        if media all {
+                            padding = Px(2);
                         }
-                        @media print and not (resolution: 1.dpi) {
-                            padding: 3.px;
+                        if media print and not (resolution = Dpi(1)) {
+                            padding = Px(3);
                         }
-                        @media all and (resolution: 2.dpi) {
-                            padding: 4.px;
+                        if media all and (resolution = Dpi(2)) {
+                            padding = Px(4);
                         }
                     }
                 "#,
@@ -201,18 +201,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media (aspect-ratio: 16/0) {}
+                    class c {
+                        if media (aspect_ratio = 16/0) {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media (aspect-ratio: 16/9), (min-aspect-ratio: 4/3), (max-aspect-ratio: 2/1) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media (aspect_ratio = 16/9), (min_aspect_ratio = 4/3), (max_aspect_ratio = 2/1) {
+                            padding = Px(1);
                         }
                     }
                 "#,
@@ -230,18 +230,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media (orientation: xxx) {}
+                    class c {
+                        if media (orientation = xxx) {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media not (orientation: landscape) and (orientation: portrait) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media not (orientation = landscape) and (orientation = portrait) {
+                            padding = Px(1);
                         }
                     }
                 "#,
@@ -259,18 +259,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media (prefers-color-scheme: xxx) {}
+                    class c {
+                        if media (prefers_color_scheme = xxx) {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media (prefers-color-scheme: light), not (prefers-color-scheme: dark) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media (prefers_color_scheme = light), not (prefers_color_scheme = dark) {
+                            padding = Px(1);
                         }
                     }
                 "#,
@@ -288,18 +288,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media (resolution: 1.px) {}
+                    class c {
+                        if media (resolution = Px(1)) {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media (resolution: 1.dpi), (min-resolution: 1.1.dpi), (max-resolution: 2.dpi) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media (resolution = Dpi(1)), (min_resolution = Dpi(1.1)), (max_resolution = Dpi(2)) {
+                            padding = Px(1);
                         }
                     }
                 "#,
@@ -317,18 +317,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media (width: 1dpi) {}
+                    class c {
+                        if media (width = Dpi(1)) {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media (width: 1.px), (min-width: 2.px), (max-width: 3.px) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media (width = Px(1)), (min_width = Px(2)), (max_width = Px(3)) {
+                            padding = Px(1);
                         }
                     }
                 "#,
@@ -346,18 +346,18 @@ mod test {
         setup_env(false, |env| {
             assert!(syn::parse_str::<StyleSheet<DomStyleSheet>>(
                 r#"
-                    .c {
-                        @media (height: 1.dpi) {}
+                    class c {
+                        if media (height = Dpi(1)) {}
                     }
                 "#
             )
             .is_err());
             parse_str(
                 r#"
-                    @config name_mangling: off;
-                    .c {
-                        @media (height: 1.px), (min-height: 2.px), (max-height: 3.px) {
-                            padding: 1.px;
+                    #[css_name("c")]
+                    class c {
+                        if media (height = Px(1)), (min_height = Px(2)), (max_height = Px(3)) {
+                            padding = Px(1);
                         }
                     }
                 "#,
