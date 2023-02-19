@@ -505,6 +505,10 @@ pub struct VarName {
 }
 
 impl VarName {
+    pub(crate) fn from_ident(ident: syn::Ident) -> Self {
+        Self { ident }
+    }
+
     pub fn into_ref(self) -> VarRef {
         VarRef { ident: self.ident.clone() }
     }

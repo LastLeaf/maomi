@@ -235,6 +235,32 @@ impl StyleSheetConstructor for DomStyleSheet {
                     tokens.append_all(err.to_compile_error());
                 }
 
+                // generate use item def
+                StyleSheetItem::UseItem(use_item) => {
+                    if let Some(target) = use_item.target() {
+                        let name = &use_item.alias;
+                        match &*target {
+                            StyleSheetItem::ConstValue(ConstValueDefinition { .. }) => {
+                                tokens.append_all(quote! {
+                                    const #name: &'static str = "(value)";
+                                });
+                            }
+                            StyleSheetItem::KeyFrames(KeyFramesDefinition { .. }) => {
+                                tokens.append_all(quote! {
+                                    const #name: &'static str = "(keyframes)";
+                                });
+                            }
+                            StyleSheetItem::StyleFn(StyleFnDefinition { .. }) => {
+                                tokens.append_all(quote! {
+                                    #[allow(non_camel_case_types)]
+                                    struct #name();
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 // generate const def
                 StyleSheetItem::ConstValue(ConstValueDefinition { name, .. }) => {
                     tokens.append_all(quote! {

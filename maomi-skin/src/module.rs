@@ -18,10 +18,11 @@ thread_local! {
 }
 
 fn init_root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
+    use syn::parse::Parser;
     MOD_ROOT.with(|mod_root| {
         let mod_root = mod_root.as_ref()?;
         let s = std::fs::read_to_string(&mod_root).ok()?;
-        let style_sheet = syn::parse_str(&s).unwrap_or_else(|err| {
+        let style_sheet = StyleSheet::<T>::parse_mod_fn(Default::default()).parse_str(&s).unwrap_or_else(|err| {
             StyleSheet::new_err(err)
         });
         Some(Rc::new(style_sheet))

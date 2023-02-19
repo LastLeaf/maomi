@@ -6,9 +6,10 @@ use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleSt
 use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 
 stylesheet! {
-    // use crate::*;
+    use crate::{FONT_SIZE as A};
 
     class warn {
+        font_size = A;
         color = orange;
     }
 }

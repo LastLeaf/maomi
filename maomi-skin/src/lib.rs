@@ -56,6 +56,23 @@ pub struct ScopeVars {
     var_refs: Vec<VarRef>,
 }
 
+impl ScopeVars {
+    fn insert_var(&mut self, var_name: VarName, value: ScopeVarValue) -> Result<(), syn::Error> {
+        let mut inserted = false;
+        let span = var_name.span();
+        self.vars.entry(var_name)
+            .or_insert_with(|| {
+                inserted = true;
+                value
+            });
+        if inserted {
+            Ok(())
+        } else {
+            Err(syn::Error::new(span, "duplicated identifier"))
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ScopeVarValue {
     Token(CssToken),
@@ -237,4 +254,15 @@ pub enum Number {
 #[derive(Debug, Clone, Default)]
 pub struct ModPath {
     segs: Vec<syn::Ident>,
+}
+
+impl ModPath {
+    fn visible_in(&self, src: &Self) -> bool {
+        for (index, seg) in self.segs.iter().enumerate() {
+            if Some(seg) != src.segs.get(index) {
+                return false;
+            }
+        }
+        true
+    }
 }
