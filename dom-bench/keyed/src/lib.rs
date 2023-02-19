@@ -1,30 +1,47 @@
 use maomi::{prelude::*, BackendContext};
 use maomi_dom::element::table as table_elem;
-use maomi_dom::{async_task, element::*, event::*, prelude::dom_css, DomBackend};
+use maomi_dom::{async_task, element::*, event::*, prelude::*, DomBackend};
 use wasm_bindgen::prelude::*;
 
 mod data;
 
-dom_css! {
-    @config name_mangling: off;
-    .jumbotron {}
-    .row {}
-    .col_md_1 {}
-    .col_md_4 {}
-    .col_md_6 {}
-    .col_sm_6 {}
-    .smallpad {}
-    .btn {}
-    .btn_primary {}
-    .btn_block {}
-    .table {}
-    .table_hover {}
-    .table_striped {}
-    .test_data {}
-    .danger {}
-    .glyphicon {}
-    .glyphicon_remove {}
-    .preloadicon {}
+stylesheet! {
+    #[css_name("jumbotron")]
+    class jumbotron {}
+    #[css_name("row")]
+    class row {}
+    #[css_name("col-md-1")]
+    class col_md_1 {}
+    #[css_name("col-md-4")]
+    class col_md_4 {}
+    #[css_name("col-md-6")]
+    class col_md_6 {}
+    #[css_name("col-sm-6")]
+    class col_sm_6 {}
+    #[css_name("smallpad")]
+    class smallpad {}
+    #[css_name("btn")]
+    class btn {}
+    #[css_name("btn-primary")]
+    class btn_primary {}
+    #[css_name("btn-block")]
+    class btn_block {}
+    #[css_name("table")]
+    class table {}
+    #[css_name("table-hover")]
+    class table_hover {}
+    #[css_name("table-striped")]
+    class table_striped {}
+    #[css_name("test-data")]
+    class test_data {}
+    #[css_name("danger")]
+    class danger {}
+    #[css_name("glyphicon")]
+    class glyphicon {}
+    #[css_name("glyphicon-remove")]
+    class glyphicon_remove {}
+    #[css_name("preloadicon")]
+    class preloadicon {}
 }
 
 #[component(Backend = DomBackend)]

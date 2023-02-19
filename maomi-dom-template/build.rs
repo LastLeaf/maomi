@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 fn main() {
+    // TODO use package config instead
     if let Ok(crate_path) = std::env::var("CARGO_MANIFEST_DIR") {
         let crate_path = PathBuf::from(crate_path);
 

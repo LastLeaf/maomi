@@ -22,4 +22,10 @@ console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ['-Oz']
+wasm-opt = ["-Oz"]
+
+[package.metadata.maomi]
+css-out-dir = "pkg"
+css-out-mode = "debug"
+stylesheet-mod-root = "src/lib.mcss"
+i18n-dir = "i18n"

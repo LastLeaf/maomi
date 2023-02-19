@@ -302,11 +302,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                     Visibility::Crate(_) => Some(ModPath::default()),
                     Visibility::Restricted(x) => {
                         if x.in_token.is_some() {
-                            let segs = x.path.segments.iter().map(|seg| {
-                                assert!(seg.arguments.is_empty());
-                                seg.ident.clone()
-                            }).collect();
-                            Some(ModPath { segs })
+                            return Err(syn::Error::new_spanned(x, "`pub(in ...) is not supported`"))
                         } else if x.path.is_ident("crate") {
                             Some(ModPath::default())
                         } else if x.path.is_ident("self") {
@@ -333,13 +329,19 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
 
         let la = input.lookahead1();
         if la.peek(Token![mod]) {
+            // `mod xxx;`
             if let Some(cur_mod_path) = &scope.cur_mod {
                 input.parse::<Token![mod]>()?;
                 for attr in attrs {
                     return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                 }
-                // `mod xxx;`
-                unimplemented!()
+                let mod_name: VarName = input.parse()?;
+                input.parse::<Token![;]>()?;
+                if let Some(submodule) = crate::module::parse_mod_path(cur_mod_path, &mod_name) {
+                    ss.submodules.insert(mod_name, submodule);
+                } else {
+                    return Err(syn::Error::new(mod_name.span(), "cannot read target module file"));
+                }
             } else {
                 return Err(input.error("`mod` cannot be used inside inline stylesheets"));
             }
@@ -352,29 +354,38 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
             let use_tree: UseTree = input.parse()?;
             match use_tree {
                 UseTree::Path(syn::UsePath { ident, tree, .. }) => {
-                    if ident.to_string().as_str() != "crate" {
-                        return Err(syn::Error::new(ident.span(), "path must be started with `crate::`"));
+                    let base = ident.to_string();
+                    if base.as_str() == "super" {
+                        return Err(syn::Error::new(ident.span(), "`super` is not supported"));
                     }
-                    fn rec<'a, T: StyleSheetConstructor>(
+                    let from_crate = base.as_str() == "crate";
+                    if from_crate {
+                        if scope.cur_mod.is_some() {
+                            return Err(syn::Error::new(ident.span(), "path cannot be started with `crate::` in independent stylesheet modules"));
+                        }
+                    } else {
+                        if scope.cur_mod.is_none() {
+                            return Err(syn::Error::new(ident.span(), "path must be started with `crate::` in inline stylesheets"));
+                        }
+                    }
+                    fn rec<T: StyleSheetConstructor>(
                         scope: &mut ScopeVars,
                         vis: Option<ModPath>,
                         tree: UseTree,
-                        cur_module_stack: &Vec<&'a StyleSheet<T>>,
+                        cur_module: &StyleSheet<T>,
                         ss: &mut StyleSheet<T>,
                     ) -> Result<(), syn::Error> {
                         match tree {
                             UseTree::Path(syn::UsePath { ident, tree, .. }) => {
                                 let var_name = VarName::from_ident(ident);
-                                let next_module = cur_module_stack.last().unwrap().submodules.get(&var_name).ok_or_else(|| {
+                                let next_module = cur_module.submodules.get(&var_name).ok_or_else(|| {
                                     syn::Error::new(var_name.span(), "module not found")
                                 })?;
-                                let mut next_module_stack: Vec<_> = cur_module_stack.iter().map(|x| *x).collect();
-                                next_module_stack.push(next_module);
-                                return rec(scope, vis, *tree, &next_module_stack, ss);
+                                return rec(scope, vis, *tree, &next_module, ss);
                             }
                             UseTree::Name(syn::UseName { ident }) => {
                                 let var_name = VarName::from_ident(ident);
-                                let item = cur_module_stack.last().unwrap().var_context.get(&var_name).ok_or_else(|| {
+                                let item = cur_module.var_context.get(&var_name).ok_or_else(|| {
                                     syn::Error::new(var_name.span(), "item not found in target module")
                                 })?;
                                 if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
@@ -389,7 +400,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                             UseTree::Rename(syn::UseRename { ident, rename, .. }) => {
                                 let var_name = VarName::from_ident(ident);
                                 let alias = VarName::from_ident(rename);
-                                let item = cur_module_stack.last().unwrap().var_context.get(&var_name).ok_or_else(|| {
+                                let item = cur_module.var_context.get(&var_name).ok_or_else(|| {
                                     syn::Error::new(var_name.span(), "item not found in target module")
                                 })?;
                                 if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
@@ -403,7 +414,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                             }
                             UseTree::Glob(x) => {
                                 let star_span = x.span();
-                                for (var_name, item) in cur_module_stack.last().unwrap().var_context.map.borrow().iter() {
+                                for (var_name, item) in cur_module.var_context.map.borrow().iter() {
                                     if let Some(item) = item.upgrade() {
                                         if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
                                             let item = item.resolve_use_target().unwrap();
@@ -418,25 +429,31 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                             }
                             UseTree::Group(use_group) => {
                                 for item in use_group.items {
-                                    rec(scope, vis.clone(), item, cur_module_stack, ss)?;
+                                    rec(scope, vis.clone(), item, cur_module, ss)?;
                                 }
                             }
                         }
                         Ok(())
                     }
-                    let root_module = crate::module::root_module::<T>().ok_or_else(|| {
-                        syn::Error::new_spanned(ident, "root module not found (`MAOMI_STYLESHEET_MOD_ROOT` or `CARGO_MANIFEST_DIR/src/lib.mcss` not exists?)")
-                    })?;
-                    for item in root_module.items.iter() {
+                    let cur_module = if from_crate {
+                        crate::module::root_module::<T>().ok_or_else(|| {
+                            syn::Error::new_spanned(ident, "root module not found (`MAOMI_STYLESHEET_MOD_ROOT` or `CARGO_MANIFEST_DIR/src/lib.mcss` not exists?)")
+                        })?
+                    } else {
+                        ss.submodules.get(&VarName::from_ident(ident.clone())).ok_or_else(|| {
+                            syn::Error::new_spanned(ident, "submodule not found")
+                        })?.clone()
+                    };
+                    for item in cur_module.items.iter() {
                         if let Self::CompilationError(err) = &**item {
                             let msg = err.to_string();
-                            return Err(syn::Error::new_spanned(use_token, format!("(error in module content) {}", msg)));
+                            return Err(syn::Error::new_spanned(use_token, format!("(error in module {:?}) {}", base, msg)));
                         }
                     }
-                    rec(scope, vis, *tree, &vec![&root_module], ss)?;
+                    rec(scope, vis, *tree, &cur_module, ss)?;
                 }
                 _ => {
-                    return Err(syn::Error::new_spanned(use_tree, "path must be started with `crate::`"));
+                    return Err(syn::Error::new_spanned(use_tree, "illegal `use` statement"));
                 }
             }
             input.parse::<Token![;]>()?;
@@ -694,7 +711,8 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
 pub struct StyleDefinition<T: StyleSheetConstructor> {
     pub extern_vis: Option<Visibility>,
     pub name: VarName,
-    pub args: Vec<(VarName, ArgType)>,
+    pub arg_name: VarName,
+    pub arg_ty: ArgType,
     pub content: Vec<StyleContentItem<T::PropertyValue>>,
     pub sub_var_refs: Vec<VarRef>,
 }
@@ -712,9 +730,13 @@ impl<T: StyleSheetConstructor> StyleDefinition<T> {
             return Err(syn::Error::new_spanned(attr, "unknown attribute"));
         }
         let args = StyleFnDefinition::<T>::parse_arg_list(input, scope)?;
+        if args.len() != 1 {
+            return Err(syn::Error::new(name.span(), "should contain exactly one argument"));
+        }
+        let (arg_name, arg_ty) = args[0].clone();
         let (content, sub_var_refs) = StyleFnDefinition::<T>::parse_fn_body(input, scope, &args)?;
         scope.insert_var(name.clone(), ScopeVarValue::StyleDefinition(args.clone()))?;
-        Ok(Self { extern_vis, name, args, content, sub_var_refs })
+        Ok(Self { extern_vis, name, arg_name, arg_ty, content, sub_var_refs })
     }
 }
 
@@ -959,7 +981,7 @@ impl<V: ParseStyleSheetValue> Property<V> {
 }
 
 impl<V: WriteCss> WriteCss for Property<V> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -1090,7 +1112,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
 }
 
 impl<V: WriteCss> WriteCss for MediaQuery<V> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -1217,7 +1239,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
 }
 
 impl<V: WriteCss> WriteCss for SupportsQuery<V> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],

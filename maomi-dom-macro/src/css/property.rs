@@ -22,7 +22,7 @@ impl ParseStyleSheetValue for DomCssProperty {
 }
 
 impl WriteCss for DomCssProperty {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],

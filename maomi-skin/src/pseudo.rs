@@ -123,7 +123,7 @@ impl ParseWithVars for Pseudo {
 }
 
 impl WriteCss for Pseudo {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         _values: &[VarDynValue],

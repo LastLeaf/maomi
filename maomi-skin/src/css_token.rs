@@ -1,8 +1,9 @@
 use std::{num::NonZeroU32, collections::VecDeque};
 use proc_macro2::Span;
 use quote::TokenStreamExt;
+use syn::ext::IdentExt;
 
-use crate::{ScopeVarValue, VarDynValue, MaybeDyn, Number, style_sheet::ParseStyleSheetValue};
+use crate::{ScopeVarValue, VarDynValue, MaybeDyn, Number, style_sheet::ParseStyleSheetValue, write_css::CssWritePlaceholder};
 
 use super::{
     write_css::{CssWriter, WriteCss, WriteCssSepCond},
@@ -56,7 +57,7 @@ impl syn::parse::Parse for CssIdent {
 }
 
 impl WriteCss for CssIdent {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         _values: &[VarDynValue],
@@ -108,12 +109,12 @@ impl std::fmt::Debug for CssString {
 }
 
 impl WriteCss for CssString {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
+        cssw.custom_write(|w, sc, debug_mode, placeholders| {
             if debug_mode {
                 match sc {
                     WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
@@ -122,8 +123,12 @@ impl WriteCss for CssString {
                     }
                 }
             }
-            let s = self.s.value(values).expect("argument value not enough");
-            write!(w, "{:?}", s)?;
+            match self.s.value(values) {
+                Ok(v) => write!(w, "{:?}", v)?,
+                Err(_) => {
+                    placeholders.push(CssWritePlaceholder::QuoteStr(w.position()));
+                }
+            }
             Ok(WriteCssSepCond::Other)
         })
     }
@@ -142,7 +147,7 @@ impl CssDelim {
 }
 
 impl WriteCss for CssDelim {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         _values: &[VarDynValue],
@@ -178,12 +183,12 @@ impl CssNumber {
 }
 
 impl WriteCss for CssNumber {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
+        cssw.custom_write(|w, sc, debug_mode, placeholders| {
             if debug_mode {
                 match sc {
                     WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
@@ -203,9 +208,12 @@ impl WriteCss for CssNumber {
                     _ => {}
                 }
             }
-            match self.value.value(values).expect("argument value not enough") {
-                Number::I32(x) => write!(w, "{}", x)?,
-                Number::F32(x) => write!(w, "{}", x)?,
+            match self.value.value(values) {
+                Ok(Number::I32(x)) => write!(w, "{}", x)?,
+                Ok(Number::F32(x)) => write!(w, "{}", x)?,
+                Err(_) => {
+                    placeholders.push(CssWritePlaceholder::Num(w.position()));
+                }
             }
             Ok(WriteCssSepCond::Digit)
         })
@@ -228,12 +236,12 @@ impl CssPercentage {
 }
 
 impl WriteCss for CssPercentage {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
+        cssw.custom_write(|w, sc, debug_mode, placeholders| {
             if debug_mode {
                 match sc {
                     WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
@@ -253,9 +261,12 @@ impl WriteCss for CssPercentage {
                     _ => {}
                 }
             }
-            match self.value.value(values).expect("argument value not enough") {
-                Number::I32(x) => write!(w, "{}%", x)?,
-                Number::F32(x) => write!(w, "{}%", x)?,
+            match self.value.value(values) {
+                Ok(Number::I32(x)) => write!(w, "{}%", x)?,
+                Ok(Number::F32(x)) => write!(w, "{}%", x)?,
+                Err(_) => {
+                    placeholders.push(CssWritePlaceholder::Num(w.position()));
+                }
             }
             Ok(WriteCssSepCond::Other)
         })
@@ -270,12 +281,12 @@ pub struct CssDimension {
 }
 
 impl WriteCss for CssDimension {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
+        cssw.custom_write(|w, sc, debug_mode, placeholders| {
             if debug_mode {
                 match sc {
                     WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
@@ -295,9 +306,12 @@ impl WriteCss for CssDimension {
                     _ => {}
                 }
             }
-            match self.value.value(values).expect("argument value not enough") {
-                Number::I32(x) => write!(w, "{}{}", x, self.unit)?,
-                Number::F32(x) => write!(w, "{}{}", x, self.unit)?,
+            match self.value.value(values) {
+                Ok(Number::I32(x)) => write!(w, "{}{}", x, self.unit)?,
+                Ok(Number::F32(x)) => write!(w, "{}{}", x, self.unit)?,
+                Err(_) => {
+                    placeholders.push(CssWritePlaceholder::Num(w.position()));
+                }
             }
             Ok(WriteCssSepCond::NonIdentAlpha)
         })
@@ -311,12 +325,12 @@ pub struct CssColor {
 }
 
 impl WriteCss for CssColor {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.custom_write(|w, sc, debug_mode| {
+        cssw.custom_write(|w, sc, debug_mode, placeholders| {
             if debug_mode {
                 match sc {
                     WriteCssSepCond::BlockStart | WriteCssSepCond::Whitespace => {}
@@ -325,8 +339,12 @@ impl WriteCss for CssColor {
                     }
                 }
             }
-            let v = self.value.value(values).expect("argument value not enough");
-            write!(w, "#{}", v)?;
+            match self.value.value(values) {
+                Ok(v) => write!(w, "#{}", v)?,
+                Err(_) => {
+                    placeholders.push(CssWritePlaceholder::ColorHash(w.position()));
+                }
+            }
             Ok(WriteCssSepCond::Digit)
         })
     }
@@ -356,7 +374,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssFunction<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssFunction<T> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -397,7 +415,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssParen<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssParen<T> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -436,7 +454,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssBracket<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssBracket<T> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -475,7 +493,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for CssBrace<T> {
 }
 
 impl<T: WriteCss> WriteCss for CssBrace<T> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -543,7 +561,7 @@ impl Eq for VarName {}
 
 impl syn::parse::Parse for VarName {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let ident: syn::Ident = input.parse()?;
+        let ident = syn::Ident::parse_any(input)?;
         Ok(Self { ident })
     }
 }
@@ -720,7 +738,7 @@ impl CssToken {
 }
 
 impl WriteCss for CssToken {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
@@ -1163,7 +1181,7 @@ impl CssTokenStream {
 }
 
 impl WriteCss for CssTokenStream {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: crate::write_css::CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],

@@ -247,7 +247,7 @@ impl Parse for DomElementDefinition {
                 vis: parse_quote! { pub },
                 ident: Some(Ident::new("style", span)),
                 colon_token: Default::default(),
-                ty: parse_quote! { DomStrAttr },
+                ty: parse_quote! { DomStyleList },
             });
             fields.named.push(Field {
                 attrs: Vec::with_capacity(0),
@@ -349,12 +349,7 @@ impl ToTokens for DomElementDefinition {
                             #[cfg(feature = "prerendering-apply")]
                             DomState::PrerenderingApply(_) => DomState::PrerenderingApply(()),
                         }),
-                        style: DomStrAttr {
-                            inner: String::new(),
-                            f: set_style,
-                            #[cfg(feature = "prerendering")]
-                            attr_name: "style",
-                        },
+                        style: DomStyleList::new(),
                         #(#attrs_init)*
                         #(#events_init)*
                         dom_elem_lazy: std::cell::UnsafeCell::new(DomGeneralElement::to_lazy(elem)),

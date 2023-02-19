@@ -14,6 +14,7 @@ use wasm_bindgen::JsCast;
 use crate::{
     base_element::*,
     class_list::DomClassList,
+    dynamic_style::DomStyleList,
     event,
     event::DomEvent,
     tree::*,

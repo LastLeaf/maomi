@@ -127,13 +127,22 @@ pub struct VarDynValue {
 
 #[derive(Debug, Clone)]
 pub enum VarDynValueKind {
+    Placeholder,
     Str(String),
     Num(Number),
 }
 
 impl VarDynValue {
+    pub fn placeholder(span: Span) -> Self {
+        Self {
+            span,
+            kind: VarDynValueKind::Placeholder,
+        }
+    }
+
     fn type_name(&self) -> &'static str {
         match &self.kind {
+            VarDynValueKind::Placeholder => "{unknown}",
             VarDynValueKind::Str(_) => "&str",
             VarDynValueKind::Num(_) => "{number}",
         }

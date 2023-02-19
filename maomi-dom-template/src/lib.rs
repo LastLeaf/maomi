@@ -6,11 +6,15 @@ use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleSt
 use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 
 stylesheet! {
-    use crate::{FONT_SIZE as A};
-
+    // declare a class
     class warn {
         font_size = A;
         color = orange;
+    }
+
+    // declare a dynamic style
+    style opacity(alpha: f32) {
+        opacity = alpha;
     }
 }
 
@@ -30,6 +34,8 @@ struct HelloWorld {
         </div>
         // use classes in `class:xxx` form
         <div class:warn> "WARN" </div>
+        // use dynamic style in `style:xxx` form
+        <div style:opacity=0.5> "transparent text" </div>
         // bind event with `@xxx()`
         if !self.clicked {
             <div tap=@handle_tap()> "Click me!" </div>

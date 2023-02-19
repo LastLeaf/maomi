@@ -103,6 +103,7 @@ use virtual_element::DomVirtualElement;
 mod text_node;
 use text_node::DomTextNode;
 pub mod class_list;
+pub mod dynamic_style;
 mod composing;
 pub mod event;
 use event::DomListeners;

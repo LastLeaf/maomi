@@ -6,8 +6,8 @@ use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
 
-use maomi_skin::write_css::{CssWriter, WriteCss};
-use maomi_skin::{css_token::*, VarDynValue, MaybeDyn};
+use maomi_skin::write_css::{CssWriter, WriteCss, CssWritePlaceholder};
+use maomi_skin::{css_token::*, VarDynValue, MaybeDyn, ArgType};
 use maomi_skin::style_sheet::*;
 use maomi_skin::{ParseError, pseudo};
 
@@ -291,24 +291,159 @@ impl StyleSheetConstructor for DomStyleSheet {
                 StyleSheetItem::Style(StyleDefinition {
                     extern_vis,
                     name,
-                    args,
+                    arg_name,
+                    arg_ty,
                     content,
                     sub_var_refs,
                     ..
                 }) => {
-                    let args_var_name = args.iter().map(|x| &x.0);
-                    let args_ty = args.iter().map(|x| x.1.type_tokens());
+                    let arg_ty_quote = match *arg_ty {
+                        ArgType::Str(span) => quote_spanned!(span=> &str),
+                        ArgType::Num(span) => quote_spanned!(span=> f32),
+                    };
                     tokens.append_all(quote! {
                         #[allow(non_camel_case_types)]
                         #extern_vis struct #name();
                         impl #name {
                             #[allow(dead_code)]
-                            fn __stylesheet(#(#args_var_name: #args_ty),*) {
+                            fn __stylesheet(#arg_name: #arg_ty_quote) {
                                 #(#sub_var_refs;)*
                             }
                         }
-                        // TODO style
                     });
+                    fn write_prop_list(
+                        tokens: &mut proc_macro2::TokenStream,
+                        content: &Vec<StyleContentItem<DomCssProperty>>,
+                        var_values: &[VarDynValue],
+                        var_context: &VarContext<DomStyleSheet>,
+                        is_last_item: bool,
+                    ) -> Result<(), std::fmt::Error> {
+                        for (index, item) in content.iter().enumerate() {
+                            let is_last_item = is_last_item && index + 1 == content.len();
+                            match &*item {
+                                StyleContentItem::CompilationError(err) => {
+                                    tokens.append_all(err.to_compile_error());
+                                }
+                                StyleContentItem::Property(prop) => {
+                                    let css_name = prop.name.css_name();
+                                    let mut value_str = String::new();
+                                    {
+                                        let mut s = String::new();
+                                        let mut cssw = CssWriter::new(&mut s, false);
+                                        prop.value.write_css_with_args(&mut cssw, var_values)?;
+                                        let mut p_iter = cssw.placeholders().iter();
+                                        let mut p_next = p_iter.next();
+                                        let mut p_next_index = p_next.map(|x| x.index());
+                                        for (index, c) in cssw.target().char_indices() {
+                                            while p_next_index == Some(index) {
+                                                value_str += match p_next.unwrap() {
+                                                    CssWritePlaceholder::ColorHash(_) => "{value}",
+                                                    CssWritePlaceholder::QuoteStr(_) => "{value:?}",
+                                                    CssWritePlaceholder::Num(_) => "{value}",
+                                                };
+                                                p_next = p_iter.next();
+                                                p_next_index = p_next.map(|x| x.index());
+                                            }
+                                            if c == '{' {
+                                                value_str += "{{";
+                                            } else if c == '}' {
+                                                value_str += "}}";
+                                            } else {
+                                                value_str.push(c);
+                                            }
+                                        }
+                                        while p_next.is_some() {
+                                            value_str += match p_next.unwrap() {
+                                                CssWritePlaceholder::ColorHash(_) => "{value}",
+                                                CssWritePlaceholder::QuoteStr(_) => "{value:?}",
+                                                CssWritePlaceholder::Num(_) => "{value}",
+                                            };
+                                            p_next = p_iter.next();
+                                        }
+                                    }
+                                    tokens.append_all(quote! {
+                                        maomi_dom::dynamic_style::set_style(#css_name, &format!(#value_str, value = s), ctx);
+                                    });
+                                }
+                                StyleContentItem::StyleRef(name, args) => {
+                                    let style_fn = var_context.get(&name);
+                                    let style_fn = style_fn.as_ref()
+                                        .and_then(|x| {
+                                            if let StyleSheetItem::StyleFn(x) = &**x {
+                                                Some(x)
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .expect("style section not found");
+                                    let args: Vec<_> = args.iter().map(|arg| {
+                                        match arg {
+                                            MaybeDyn::Dyn(x) => var_values.get(x.index).expect("argument value not enough"),
+                                            MaybeDyn::Static(v) => v,
+                                        }.clone()
+                                    }).collect();
+                                    write_prop_list(tokens, &style_fn.content, &args, &style_fn.var_context, is_last_item)?;
+                                }
+                            }
+                        }
+                        Ok(())
+                    }
+                    let mut fn_body_tokens = proc_macro2::TokenStream::new();
+                    write_prop_list(
+                        &mut fn_body_tokens,
+                        content,
+                        &[VarDynValue::placeholder(arg_name.span())],
+                        &ss.var_context,
+                        true,
+                    ).unwrap();
+                    match *arg_ty {
+                        ArgType::Str(_) => {
+                            tokens.append_all(quote! {
+                                impl maomi::prop::ListPropertyItem<maomi_dom::dynamic_style::DomStyleList, str> for #name {
+                                    type Value = ();
+                                    fn item_value<'a>(
+                                        dest: &mut maomi_dom::dynamic_style::DomStyleList,
+                                        index: usize,
+                                        s: &'a str,
+                                        ctx: &mut <maomi_dom::dynamic_style::DomStyleList as maomi::prop::ListPropertyInit>::UpdateContext,
+                                    ) -> &'a Self::Value {
+                                        #fn_body_tokens
+                                        &()
+                                    }
+                                }
+                            });
+                        }
+                        ArgType::Num(_) => {
+                            tokens.append_all(quote! {
+                                impl maomi::prop::ListPropertyItem<maomi_dom::dynamic_style::DomStyleList, i32> for #name {
+                                    type Value = ();
+                                    fn item_value<'a>(
+                                        dest: &mut maomi_dom::dynamic_style::DomStyleList,
+                                        index: usize,
+                                        s: &'a i32,
+                                        ctx: &mut <maomi_dom::dynamic_style::DomStyleList as maomi::prop::ListPropertyInit>::UpdateContext,
+                                    ) -> &'a Self::Value {
+                                        #fn_body_tokens
+                                        &()
+                                    }
+                                }
+                            });
+                            tokens.append_all(quote! {
+                                impl maomi::prop::ListPropertyItem<maomi_dom::dynamic_style::DomStyleList, f32> for #name {
+                                    type Value = ();
+                                    fn item_value<'a>(
+                                        dest: &mut maomi_dom::dynamic_style::DomStyleList,
+                                        index: usize,
+                                        s: &'a f32,
+                                        ctx: &mut <maomi_dom::dynamic_style::DomStyleList as maomi::prop::ListPropertyInit>::UpdateContext,
+                                    ) -> &'a Self::Value {
+                                        #fn_body_tokens
+                                        &()
+                                    }
+                                }
+                            });
+                        }
+                    }
                 }
 
                 // generate common rule
@@ -546,7 +681,9 @@ mod test {
 
     impl<'a> Env<'a> {
         pub(crate) fn write_import_file(&self, name: &str, content: &str) {
-            std::fs::write(&self.import_dir.join(name), content).unwrap();
+            let dest = self.import_dir.join(name);
+            std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            std::fs::write(&dest, content).unwrap();
         }
 
         pub(crate) fn read_output(&self) -> String {
@@ -591,29 +728,85 @@ mod test {
 
     #[test]
     #[serial]
-    fn import() {
+    fn use_crate() {
         setup_env(false, |env| {
             env.write_import_file(
                 "lib.mcss",
                 r#"
-                    const A: value = Px(1);
-                    const COLOR: value = rgb(1, 2, 3);
+                    pub(crate) const COLOR: value = rgb(1, 2, 3);
+                    #[css_name("kf")]
+                    pub(crate) const KF: keyframes = {};
+                    pub(crate) fn color() {
+                        color = COLOR;
+                    }
                 "#,
             );
             parse_str(
                 r#"
                     use crate::*;
-                    const B: value = A;
+                    const BGCOLOR: value = COLOR;
                     #[css_name("self")]
-                    .self {
-                        padding: B A;
-                        color: COLOR;
+                    class self {
+                        color();
+                        background_color = BGCOLOR;
+                        animation_name = KF;
                     }
                 "#,
             );
             assert_eq!(
                 env.read_output(),
-                r#".self{padding:1px 1px;color:rgb(1,2,3)}"#,
+                r#".self{color:rgb(1,2,3);background-color:rgb(1,2,3);animation-name:kf}"#,
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn submodule() {
+        setup_env(false, |env| {
+            env.write_import_file(
+                "lib.mcss",
+                r#"
+                    mod abc;
+                    mod def;
+                    pub(crate) use abc::*;
+                    use def::D;
+                    pub(crate) const DEF: value = D;
+                "#,
+            );
+            env.write_import_file(
+                "abc.mcss",
+                r#"
+                    pub(crate) const ABC: value = Px(1);
+                "#,
+            );
+            env.write_import_file(
+                "def/mod.mcss",
+                r#"
+                    mod ghi;
+                    use ghi::I;
+                    pub(super) const D: value = I;
+                "#,
+            );
+            env.write_import_file(
+                "def/ghi.mcss",
+                r#"
+                    pub(crate) const G: value = Px(3);
+                    pub(super) const I: value = Px(2);
+                "#,
+            );
+            parse_str(
+                r#"
+                    use crate::{ABC, DEF, def::ghi::G as GHI};
+                    #[css_name("self")]
+                    class self {
+                        padding = ABC DEF GHI;
+                    }
+                "#,
+            );
+            assert_eq!(
+                env.read_output(),
+                r#".self{padding:1px 2px 3px}"#,
             );
         });
     }

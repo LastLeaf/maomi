@@ -25,14 +25,20 @@ fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &'static str, 
             }
         }
         #[cfg(feature = "prerendering-apply")]
-        class_list => match &_ctx.elem {
+        class_list => match &mut _ctx.elem {
             DomState::Normal(x) => {
                 let cl = x.class_list();
                 cl.toggle_with_force(class_name, v).unwrap();
                 *class_list = DomState::Normal(cl);
             }
             #[cfg(feature = "prerendering")]
-            DomState::Prerendering(_) => {}
+            DomState::Prerendering(x) => {
+                if v {
+                    x.add_class(class_name);
+                } else {
+                    x.remove_class(class_name);
+                }
+            }
             DomState::PrerenderingApply(_) => {}
         },
     }
@@ -50,7 +56,7 @@ enum DomClassItem {
 }
 
 impl DomClassList {
-    pub(crate) fn new(class_list: dom_state_ty!(DomTokenList, (), ())) -> Self {
+    pub(crate) fn new(class_list: DomClassListTy) -> Self {
         Self {
             class_list,
             enabled: Box::new([]),

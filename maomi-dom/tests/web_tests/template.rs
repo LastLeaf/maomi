@@ -549,13 +549,14 @@ async fn template_for() {
 
 #[wasm_bindgen_test]
 async fn class_attr() {
-    dom_css! {
-        @config name_mangling: off;
-        .static-class {
-            color: red;
+    stylesheet! {
+        #[css_name("static-class")]
+        class static_class {
+            color = red;
         }
-        .dyn_class {
-            color: blue;
+        #[css_name("dyn-class")]
+        class dyn_class {
+            color = blue;
         }
     }
 
@@ -637,13 +638,19 @@ async fn class_attr() {
 
 #[wasm_bindgen_test]
 async fn style_attr() {
+    stylesheet! {
+        style color(rgb: f32) {
+            color = rgb(rgb, rgb, rgb);
+        }
+    }
+
     #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
-            <div style={&format!("color: {};", self.color)} />
+            <div style:color=&{ self.color } />
         },
-        color: String,
+        color: i32,
     }
 
     impl Component for Parent {
@@ -651,7 +658,7 @@ async fn style_attr() {
             Self {
                 callback: None,
                 template: Default::default(),
-                color: "red".into(),
+                color: 64,
             }
         }
 
@@ -666,9 +673,9 @@ async fn style_attr() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div style="color: red;"></div>"#,
+                        r#"<div style="color: rgb(64, 64, 64);"></div>"#,
                     );
-                    this.color = "blue".into();
+                    this.color = 128;
                 })
                 .await
                 .unwrap();
@@ -680,7 +687,7 @@ async fn style_attr() {
                             .tag
                             .dom_element()
                             .outer_html(),
-                        r#"<div style="color: blue;"></div>"#,
+                        r#"<div style="color: rgb(128, 128, 128);"></div>"#,
                     );
                     (this.callback.take().unwrap())();
                 })

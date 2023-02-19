@@ -30,6 +30,7 @@ extern "C" {
 pub(crate) struct PrerenderingElement {
     tag_name: &'static str,
     classes: Vec<&'static str>,
+    styles: Vec<(&'static str, String)>,
     attrs: Vec<(&'static str, String)>,
 }
 
@@ -39,6 +40,7 @@ impl PrerenderingElement {
         Self {
             tag_name,
             classes: vec![],
+            styles: vec![],
             attrs: vec![],
         }
     }
@@ -66,6 +68,19 @@ impl PrerenderingElement {
     pub(crate) fn remove_class(&mut self, class_name: &'static str) {
         if let Some(index) = self.classes.iter().position(|x| *x == class_name) {
             self.classes.swap_remove(index);
+        }
+    }
+
+    pub(crate) fn set_style(&mut self, style_name: &'static str, value: &str) {
+        let need_push = self.styles.iter_mut().find_map(|(n, v)| {
+            if *n == style_name {
+                *v = value.to_string();
+                return Some(());
+            }
+            None
+        }).is_none();
+        if need_push {
+            self.styles.push((style_name, value.to_string()));
         }
     }
 
@@ -384,10 +399,6 @@ impl<T: DomElementBase> DomElementExt for T {
             }
         }
     }
-}
-
-pub(crate) fn set_style(elem: &web_sys::HtmlElement, s: &str) {
-    elem.style().set_css_text(s)
 }
 
 /// The attributes that accepts a string.

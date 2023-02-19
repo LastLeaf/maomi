@@ -9,24 +9,63 @@ enum LineStatus {
     Other,
 }
 
-/// A CSS writer
-pub struct CssWriter<'a, W: Write> {
+/// A writable target for `CssWriter` .
+pub trait CssWriteTarget: Write {
+    fn position(&self) -> usize;
+}
+
+impl CssWriteTarget for String {
+    fn position(&self) -> usize {
+        self.len()
+    }
+}
+
+/// The placeholder as a replacement of CSS variable.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CssWritePlaceholder {
+    ColorHash(usize),
+    QuoteStr(usize),
+    Num(usize),
+}
+
+impl CssWritePlaceholder {
+    pub fn index(&self) -> usize {
+        match self {
+            CssWritePlaceholder::ColorHash(x) => *x,
+            CssWritePlaceholder::QuoteStr(x) => *x,
+            CssWritePlaceholder::Num(x) => *x,
+        }
+    }
+}
+
+/// A CSS writer.
+pub struct CssWriter<'a, W: CssWriteTarget> {
     pub(crate) w: &'a mut W,
     pub(crate) sc: WriteCssSepCond,
     pub(crate) debug_mode: bool,
+    placeholders: Vec<CssWritePlaceholder>,
     tab_count: usize,
     line_status: LineStatus,
 }
 
-impl<'a, W: Write> CssWriter<'a, W> {
+impl<'a, W: CssWriteTarget> CssWriter<'a, W> {
     pub fn new(w: &'a mut W, debug_mode: bool) -> Self {
         Self {
             w,
             sc: WriteCssSepCond::BlockStart,
             debug_mode,
+            placeholders: Vec::with_capacity(0),
             tab_count: 0,
             line_status: LineStatus::BlockStart,
         }
+    }
+
+    pub fn target(&self) -> &W {
+        &self.w
+    }
+
+    pub fn placeholders(&self) -> &[CssWritePlaceholder] {
+        &self.placeholders
     }
 
     pub fn line_wrap(&mut self) -> Result {
@@ -64,6 +103,7 @@ impl<'a, W: Write> CssWriter<'a, W> {
             &mut W,
             WriteCssSepCond,
             bool,
+            &mut Vec<CssWritePlaceholder>,
         ) -> std::result::Result<WriteCssSepCond, std::fmt::Error>,
     ) -> Result {
         self.prepare_write()?;
@@ -71,9 +111,10 @@ impl<'a, W: Write> CssWriter<'a, W> {
             ref mut w,
             ref mut sc,
             debug_mode,
+            ref mut placeholders,
             ..
         } = self;
-        *sc = f(w, *sc, *debug_mode)?;
+        *sc = f(w, *sc, *debug_mode, placeholders)?;
         Ok(())
     }
 
@@ -363,10 +404,10 @@ impl<'a, W: Write> CssWriter<'a, W> {
 /// Display as CSS text
 pub trait WriteCss {
     /// Write CSS text (with specified argument values)
-    fn write_css_with_args<W: Write>(&self, cssw: &mut CssWriter<W>, var_values: &[VarDynValue]) -> Result;
+    fn write_css_with_args<W: CssWriteTarget>(&self, cssw: &mut CssWriter<W>, var_values: &[VarDynValue]) -> Result;
 
     /// Write CSS text
-    fn write_css<W: Write>(&self, cssw: &mut CssWriter<W>) -> Result {
+    fn write_css<W: CssWriteTarget>(&self, cssw: &mut CssWriter<W>) -> Result {
         self.write_css_with_args(cssw, &[])
     }
 }
@@ -425,7 +466,7 @@ pub enum WriteCssSepCond {
 }
 
 impl<V: WriteCss> WriteCss for Option<V> {
-    fn write_css_with_args<W: std::fmt::Write>(
+    fn write_css_with_args<W: CssWriteTarget>(
         &self,
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
