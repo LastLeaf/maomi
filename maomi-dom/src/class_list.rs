@@ -132,6 +132,7 @@ impl ListPropertyUpdate<DomExternalClasses> for DomClassList {
 
 impl ListPropertyItem<DomClassList, DomExternalClasses> for DomExternalClasses {
     type Value = ();
+
     #[inline(always)]
     fn item_value<'a>(
         _dest: &mut DomClassList,
@@ -162,6 +163,7 @@ enum DomExternalClassItem {
 
 impl DomExternalClasses {
     /// Initialize an external class.
+    #[inline]
     pub fn new() -> Self {
         Self {
             id: Rc::new(()),
@@ -301,6 +303,7 @@ impl ListPropertyUpdate<DomExternalClasses> for DomExternalClasses {
 
 impl ListPropertyItem<DomExternalClasses, DomExternalClasses> for DomExternalClasses {
     type Value = ();
+
     #[inline(always)]
     fn item_value<'a>(
         _dest: &mut DomExternalClasses,

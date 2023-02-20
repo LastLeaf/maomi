@@ -29,23 +29,31 @@ async fn generate_prerendering_html() {
         }
     }
 
-    dom_css! {
-        @config name_mangling: off;
-        .abc {}
-        .def {}
+    stylesheet! {
+        #[css_name("abc")]
+        class abc {}
+        #[css_name("def")]
+        class def {}
+        style g(v: f32) {
+            opacity = v;
+        }
+        style h(v: f32) {
+            height = Px(v);
+        }
     }
 
     #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
-            <div class:abc class:def={ &self.def_class }>
+            <div class:abc class:def={ &self.def_class } style:g={ &self.g_style } style:h=50>
                 <Child title={ &self.child_title } text=&{ self.child_text }>
                     { &self.text }
                 </Child>
             </div>
         },
         def_class: bool,
+        g_style: f32,
         child_text: String,
         child_title: String,
         text: String,
@@ -57,6 +65,7 @@ async fn generate_prerendering_html() {
                 callback: None,
                 template: Default::default(),
                 def_class: true,
+                g_style: 0.5,
                 child_text: "456<".into(),
                 child_title: "".into(),
                 text: "123".into(),
@@ -77,6 +86,7 @@ async fn generate_prerendering_html() {
                         r#"<div title="789&quot;"></div>456&lt;<!---->123"#,
                     );
                     this.def_class = false;
+                    this.g_style = 1.;
                     this.child_text = "456".into();
                     this.child_title = "789".into();
                     this.text = "+123".into();
@@ -92,7 +102,7 @@ async fn generate_prerendering_html() {
                                 .tag
                                 .dom_element()
                                 .outer_html(),
-                            r#"<div class="abc"><div title="789"></div>456<!---->+123</div>"#,
+                            r#"<div class="abc" style="opacity: 1; height: 50px;"><div title="789"></div>456<!---->+123</div>"#,
                         );
                         (this.callback.take().unwrap())();
                     })
@@ -126,7 +136,7 @@ async fn generate_prerendering_html() {
     let (html, prerendering_data) = test_component_prerendering::<Parent>(&"789\"").await;
     assert_eq!(
         &html,
-        r#"<div class="abc def"><div title="789&quot;"></div>456&lt;<!---->123</div>"#,
+        r#"<div class="abc def" style="opacity:0.5;height:50px"><div title="789&quot;"></div>456&lt;<!---->123</div>"#,
     );
 
     test_component_prerendering_apply::<Parent>(&html, prerendering_data).await;

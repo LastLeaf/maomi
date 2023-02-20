@@ -266,6 +266,7 @@ impl WriteCss for CssPercentage {
                 Ok(Number::F32(x)) => write!(w, "{}%", x)?,
                 Err(_) => {
                     placeholders.push(CssWritePlaceholder::Num(w.position()));
+                    write!(w, "%")?
                 }
             }
             Ok(WriteCssSepCond::Other)
@@ -311,6 +312,7 @@ impl WriteCss for CssDimension {
                 Ok(Number::F32(x)) => write!(w, "{}{}", x, self.unit)?,
                 Err(_) => {
                     placeholders.push(CssWritePlaceholder::Num(w.position()));
+                    write!(w, "{}", self.unit)?
                 }
             }
             Ok(WriteCssSepCond::NonIdentAlpha)

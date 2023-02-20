@@ -25,7 +25,7 @@ wasm-bindgen = "0.2"
 wasm-opt = ["-Oz"]
 
 [package.metadata.maomi]
-css-out-dir = "pkg"
-css-out-mode = "debug"
+css-out-dir = "pkg" # the location of CSS output (can be overrided by `MAOMI_CSS_OUT_DIR` environment variable)
+css-out-mode = "debug" # the location of CSS output (can be overrided by `MAOMI_CSS_OUT_MODE` environment variable)
 stylesheet-mod-root = "src/lib.mcss"
 i18n-dir = "i18n"

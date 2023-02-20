@@ -13,6 +13,7 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
+maomi-skin = { version = "=0.4.0", path = "../maomi-skin" }
 proc-macro2 = "1.0"
 syn = { version = "1.0", features = ["parsing"] }
 quote = "1.0"

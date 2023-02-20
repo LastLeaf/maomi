@@ -1,19 +1,9 @@
-use std::{path::{PathBuf, Path}, cell::RefCell, any::{Any, TypeId}, rc::Rc};
+use std::{path::Path, cell::RefCell, any::{Any, TypeId}, rc::Rc};
 use rustc_hash::FxHashMap;
 
 use crate::{style_sheet::*, css_token::VarName, ModPath};
 
 thread_local! {
-    static MOD_ROOT: Option<PathBuf> = {
-        std::env::var("MAOMI_STYLESHEET_MOD_ROOT")
-            .map(|s| PathBuf::from(&s))
-            .or_else(|_| {
-                std::env::var("CARGO_MANIFEST_DIR")
-                    .map(|s| PathBuf::from(&s).join("src").join("styles.mcss"))
-            })
-            .ok()
-    };
-
     static ROOT_MODULE_MAP: RefCell<FxHashMap<TypeId, Option<Rc<dyn Any>>>> = RefCell::new(FxHashMap::default());
 }
 
@@ -29,8 +19,8 @@ fn parse_mod_file<T: StyleSheetConstructor>(mod_path: ModPath, p: &Path) -> Opti
 }
 
 pub(crate) fn parse_mod_path<T: StyleSheetConstructor>(cur_mod_path: &crate::ModPath, mod_name: &VarName) -> Option<Rc<StyleSheet<T>>> {
-    MOD_ROOT.with(|mod_root| {
-        let mod_root: &Path = mod_root.as_ref()?;
+    crate::config::crate_config(|crate_config| {
+        let mod_root: &Path = crate_config.stylesheet_mod_root.as_ref()?;
         let mut cur_dir = mod_root.parent()?.to_path_buf();
         for seg in cur_mod_path.segs.iter() {
             cur_dir.push(seg.to_string());
@@ -47,13 +37,13 @@ pub(crate) fn parse_mod_path<T: StyleSheetConstructor>(cur_mod_path: &crate::Mod
 }
 
 fn init_root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
-    MOD_ROOT.with(|mod_root| {
-        let mod_root = mod_root.as_ref()?;
+    crate::config::crate_config(|crate_config| {
+        let mod_root: &Path = crate_config.stylesheet_mod_root.as_ref()?;
         parse_mod_file(Default::default(), mod_root)
     })
 }
 
-pub(crate) fn root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
+pub fn root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
     let ret = ROOT_MODULE_MAP.with(|map| {
         let map = &mut *map.borrow_mut();
         map.entry(TypeId::of::<T>()).or_insert_with(|| {

@@ -123,6 +123,20 @@ impl PrerenderingElement {
         if has_class {
             write!(w, r#"""#)?;
         }
+        let mut has_style = false;
+        for (name, value) in &self.styles {
+            if !has_style {
+                has_style = true;
+                write!(w, r#" style=""#)?;
+            } else {
+                write!(w, ";")?;
+            }
+            write!(w, "{}:", name)?;
+            html_escape::encode_double_quoted_attribute_to_writer(&value, w)?;
+        }
+        if has_style {
+            write!(w, r#"""#)?;
+        }
         for (name, value) in &self.attrs {
             write!(w, r#" {}=""#, name)?;
             html_escape::encode_double_quoted_attribute_to_writer(&value, w)?;
@@ -169,6 +183,7 @@ pub struct DomElement {
 }
 
 impl Drop for DomElement {
+    #[inline]
     fn drop(&mut self) {
         if self.hot_event_list.is_some() || self.cold_event_list.is_some() {
             match &self.elem {
@@ -635,11 +650,13 @@ pub struct DomBindingStrAttr {
 
 impl DomBindingStrAttr {
     /// Get a referrence of the value.
+    #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&String) -> R) -> R {
         (*self.inner).borrow().with(f)
     }
 
     /// Get the value.
+    #[inline]
     pub fn get(&self) -> String {
         (*self.inner).borrow().get()
     }
@@ -648,6 +665,7 @@ impl DomBindingStrAttr {
 impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
     type UpdateContext = DomElement;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<String>, ctx: &mut Self::UpdateContext) {
         let inner = &mut dest.inner.borrow_mut();
         if BindingValue::ptr_eq(inner, src) {
@@ -685,11 +703,13 @@ pub struct DomBindingBoolAttr {
 
 impl DomBindingBoolAttr {
     /// Get a referrence of the value.
+    #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&bool) -> R) -> R {
         (*self.inner).borrow().with(f)
     }
 
     /// Get the value.
+    #[inline]
     pub fn get(&self) -> bool {
         (*self.inner).borrow().get()
     }
@@ -698,6 +718,7 @@ impl DomBindingBoolAttr {
 impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
     type UpdateContext = DomElement;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<bool>, ctx: &mut Self::UpdateContext) {
         let inner = &mut dest.inner.borrow_mut();
         if BindingValue::ptr_eq(inner, src) {
@@ -739,11 +760,13 @@ pub struct DomBindingF64Attr {
 
 impl DomBindingF64Attr {
     /// Get a referrence of the value.
+    #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&f64) -> R) -> R {
         (*self.inner).borrow().with(f)
     }
 
     /// Get the value.
+    #[inline]
     pub fn get(&self) -> f64 {
         (*self.inner).borrow().get()
     }
@@ -752,6 +775,7 @@ impl DomBindingF64Attr {
 impl PropertyUpdate<BindingValue<f64>> for DomBindingF64Attr {
     type UpdateContext = DomElement;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<f64>, ctx: &mut Self::UpdateContext) {
         let inner = &mut dest.inner.borrow_mut();
         if BindingValue::ptr_eq(inner, src) {

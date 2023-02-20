@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use rustc_hash::FxHashMap;
 use once_cell::sync::Lazy;
 
@@ -7,23 +6,26 @@ const DEFAULT_GROUP_NAME: &'static str = "translation";
 static CUR_LOCALE: Lazy<Result<Option<Locale>, String>> = Lazy::new(|| read_locale());
 
 fn read_locale() -> Result<Option<Locale>, String> {
-    let locale_name = match std::env::var("MAOMI_I18N_LOCALE") {
-        Ok(x) => x,
-        Err(_) => { return Ok(None) }
-    };
-    let dir_name = std::env::var("MAOMI_I18N_DIR")
-        .map(|s| PathBuf::from(&s))
-        .or_else(|_| {
-            std::env::var("CARGO_MANIFEST_DIR")
-                .map(|s| PathBuf::from(&s).join("i18n"))
-        })
-        .map_err(|_| format!("i18n directory is illegal"))?;
-    let file_name = dir_name.join(&(locale_name + ".toml"));
-    let content = std::fs::read(&file_name)
-        .map_err(|_| format!("cannot read i18n file {:?}", file_name))?;
-    let locale = toml::from_slice(&content)
-        .map_err(|x| format!("parsing i18n TOML failed: {}", x))?;
-    Ok(Some(locale))
+    maomi_skin::config::crate_config(|crate_config| {
+        let locale_name = match crate_config.i18n_locale.as_ref() {
+            None => {
+                return Ok(None);
+            }
+            Some(x) => x.clone(),
+        };
+        let dir_name = match crate_config.i18n_dir.as_ref() {
+            None => {
+                return Err(format!("i18n directory is illegal"));
+            }
+            Some(x) => x.clone(),
+        };
+        let file_name = dir_name.join(&(locale_name + ".toml"));
+        let content = std::fs::read(&file_name)
+            .map_err(|_| format!("cannot read i18n file {:?}", file_name))?;
+        let locale = toml::from_slice(&content)
+            .map_err(|x| format!("parsing i18n TOML failed: {}", x))?;
+        Ok(Some(locale))
+    })
 }
 
 type Locale = FxHashMap<String, FxHashMap<String, String>>;
@@ -131,7 +133,7 @@ pub(crate) mod mac {
 
 #[cfg(test)]
 mod test {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use serial_test::serial;
 
     use super::*;

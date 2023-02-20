@@ -9,7 +9,8 @@ use css_token::*;
 pub mod write_css;
 pub mod style_sheet;
 pub mod pseudo;
-mod module;
+pub mod module;
+pub mod config;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {

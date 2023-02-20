@@ -111,7 +111,7 @@ pub struct StyleSheet<T: StyleSheetConstructor> {
     pub items: Vec<Rc<StyleSheetItem<T>>>,
     pub var_context: VarContext<T>,
     pub var_refs: Vec<VarRef>,
-    submodules: FxHashMap<VarName, Rc<StyleSheet<T>>>,
+    submodules: FxHashMap<VarName, Weak<StyleSheet<T>>>,
 }
 
 pub enum ExtraVarType {
@@ -143,6 +143,10 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
             var_refs: Vec::with_capacity(0),
             submodules: FxHashMap::default(),
         }
+    }
+
+    pub fn style_sheet_constructor(&self) -> &T {
+        &self.ssc
     }
 }
 
@@ -224,6 +228,7 @@ impl<T: StyleSheetConstructor> VarContext<T> {
 
 pub enum StyleSheetItem<T: StyleSheetConstructor> {
     CompilationError(syn::Error),
+    Submodule(VarName, Rc<StyleSheet<T>>),
     UseItem(UseItemDefinition<T>),
     ConstValue(ConstValueDefinition),
     KeyFrames(KeyFramesDefinition),
@@ -251,6 +256,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
         let mod_path = mod_path.unwrap_or(&default_mod_path);
         match self {
             Self::CompilationError(_) => None,
+            Self::Submodule(..) => None,
             Self::UseItem(UseItemDefinition { vis, target, .. }) => {
                 if vis.as_ref()?.visible_in(mod_path) {
                     target.upgrade()?.visible_in_mod_path(Some(mod_path))
@@ -332,13 +338,17 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
             // `mod xxx;`
             if let Some(cur_mod_path) = &scope.cur_mod {
                 input.parse::<Token![mod]>()?;
+                if let Some(x) = extern_vis {
+                    return Err(syn::Error::new(x.span(), "cannot specify visibility for `mod` statement"));
+                }
                 for attr in attrs {
                     return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                 }
                 let mod_name: VarName = input.parse()?;
                 input.parse::<Token![;]>()?;
                 if let Some(submodule) = crate::module::parse_mod_path(cur_mod_path, &mod_name) {
-                    ss.submodules.insert(mod_name, submodule);
+                    ss.submodules.insert(mod_name.clone(), Rc::downgrade(&submodule));
+                    ss.items.push(Rc::new(StyleSheetItem::Submodule(mod_name, submodule)));
                 } else {
                     return Err(syn::Error::new(mod_name.span(), "cannot read target module file"));
                 }
@@ -381,7 +391,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                                 let next_module = cur_module.submodules.get(&var_name).ok_or_else(|| {
                                     syn::Error::new(var_name.span(), "module not found")
                                 })?;
-                                return rec(scope, vis, *tree, &next_module, ss);
+                                return rec(scope, vis, *tree, &next_module.upgrade().unwrap(), ss);
                             }
                             UseTree::Name(syn::UseName { ident }) => {
                                 let var_name = VarName::from_ident(ident);
@@ -442,7 +452,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                     } else {
                         ss.submodules.get(&VarName::from_ident(ident.clone())).ok_or_else(|| {
                             syn::Error::new_spanned(ident, "submodule not found")
-                        })?.clone()
+                        })?.upgrade().unwrap()
                     };
                     for item in cur_module.items.iter() {
                         if let Self::CompilationError(err) = &**item {

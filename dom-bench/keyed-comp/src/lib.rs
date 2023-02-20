@@ -285,7 +285,7 @@ impl HelloWorld {
 pub fn wasm_main() {
     // init logger
     console_error_panic_hook::set_once();
-    console_log::init_with_level(log::Level::Trace).unwrap();
+    console_log::init_with_level(log::Level::Warn).unwrap();
 
     // init a backend context
     let dom_backend = DomBackend::new_with_element_id("main").unwrap();

@@ -44,7 +44,7 @@ fn add_global_attrs(
     add_attr("transition_start", parse_quote! { event!(event::transition::TransitionStart) });
     add_attr("transition_end", parse_quote! { event!(event::transition::TransitionEnd) });
     add_attr("transition_cancel", parse_quote! { event!(event::transition::TransitionCancel) });
-    // TODO add aria properties
+    // FIXME add aria properties
     add_attr("aria_hidden", parse_quote! { attribute!(&str) });
 }
 
@@ -313,12 +313,14 @@ impl ToTokens for DomElementDefinition {
             #s
 
             impl #tag_name {
+                #[inline]
                 fn init_binding_props(&mut self, dom_element: &mut DomElement) {
                     #(#binding_props_init)*
                 }
             }
 
             impl DomElementBase for #tag_name {
+                #[inline]
                 fn dom_element_lazy(&self) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)> {
                     &self.dom_elem_lazy
                 }
