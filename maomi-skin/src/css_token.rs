@@ -888,13 +888,18 @@ impl ParseWithVars for CssToken {
                 span: ident.span(),
                 formal_name: ident.to_string(),
             };
+            let is_uppercase = {
+                let mut i = 0;
+                let first_char = loop {
+                    let c = *css_ident.formal_name.as_bytes().get(i).unwrap_or(&0);
+                    if c != '_' as u8 { break c };
+                    i += 1;
+                };
+                'A' as u8 <= first_char && first_char <= 'Z' as u8
+            };
             if input.peek(token::Paren) {
                 let content;
                 parenthesized!(content in input);
-                let is_uppercase = {
-                    let first_char = *css_ident.formal_name.as_bytes().get(0).unwrap_or(&0);
-                    'A' as u8 <= first_char && first_char <= 'Z' as u8
-                };
                 if is_uppercase {
                     let input = &content;
                     if css_ident.is("Color") {
@@ -942,6 +947,8 @@ impl ParseWithVars for CssToken {
                             return Err(syn::Error::new(css_ident.span, format!("expected value, found {}", x.type_name())));
                         }
                     }
+                } else if is_uppercase {
+                    return Err(syn::Error::new(css_ident.span, "variable not found"));
                 } else {
                     CssToken::Ident(css_ident)
                 }

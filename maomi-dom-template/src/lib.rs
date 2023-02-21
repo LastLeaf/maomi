@@ -8,7 +8,6 @@ use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 stylesheet! {
     // declare a class
     class warn {
-        font_size = A;
         color = orange;
     }
 

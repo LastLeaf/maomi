@@ -805,7 +805,6 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
         scope: &mut ScopeVars,
         parse_to_end: bool,
     ) -> Result<Vec<Self>, syn::Error> {
-        let mut compilation_errors = vec![];
         let mut items = vec![];
         while !input.is_empty() {
             if !parse_to_end && !input.peek(Ident) {
@@ -817,7 +816,7 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
                         items.push(Self::Property(prop));
                     }
                     Err(err) => {
-                        compilation_errors.push(err);
+                        items.push(Self::CompilationError(err));
                     }
                 }
             } else if input.peek2(syn::token::Paren) {

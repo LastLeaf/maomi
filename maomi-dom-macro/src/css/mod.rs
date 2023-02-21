@@ -127,15 +127,14 @@ impl DomStyleSheet {
                 }
                 StyleContentItem::StyleRef(name, args) => {
                     let style_fn = var_context.get(&name);
-                    let style_fn = style_fn.as_ref()
-                        .and_then(|x| {
-                            if let StyleSheetItem::StyleFn(x) = &**x {
-                                Some(x)
-                            } else {
-                                None
-                            }
-                        })
-                        .expect("style section not found");
+                    let style_fn = style_fn.as_ref().expect("fn not found");
+                    let style_fn = {
+                        if let StyleSheetItem::StyleFn(x) = &**style_fn {
+                            x
+                        } else {
+                            panic!("not a fn");
+                        }
+                    };
                     let args: Vec<_> = args.iter().map(|arg| {
                         match arg {
                             MaybeDyn::Dyn(x) => var_values.get(x.index).expect("argument value not enough"),
