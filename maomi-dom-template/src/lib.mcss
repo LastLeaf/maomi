@@ -1,1 +1,3 @@
 // the crate root stylesheet
+
+pub(crate) const A: value = 1;

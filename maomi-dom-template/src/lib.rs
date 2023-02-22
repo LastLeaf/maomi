@@ -6,6 +6,8 @@ use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleSt
 use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 
 stylesheet! {
+    use crate::*;
+
     // declare a class
     class warn {
         color = orange;

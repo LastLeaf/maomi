@@ -53,15 +53,15 @@ pub trait ParseWithVars: Sized {
 #[derive(Debug)]
 pub struct ScopeVars {
     cur_mod: Option<ModPath>,
-    vars: FxHashMap<VarName, ScopeVarValue>,
+    vars: FxHashMap<String, ScopeVarValue>,
     var_refs: Vec<VarRef>,
 }
 
 impl ScopeVars {
-    fn insert_var(&mut self, var_name: VarName, value: ScopeVarValue) -> Result<(), syn::Error> {
+    fn insert_var(&mut self, var_name: &VarName, value: ScopeVarValue) -> Result<(), syn::Error> {
         let mut inserted = false;
         let span = var_name.span();
-        self.vars.entry(var_name)
+        self.vars.entry(var_name.to_string())
             .or_insert_with(|| {
                 inserted = true;
                 value
@@ -168,7 +168,7 @@ impl ParseWithVars for MaybeDyn<String> {
             MaybeDyn::Static(s.value())
         } else if la.peek(Ident) {
             let var_name: VarName = input.parse()?;
-            if let Some(v) = scope.vars.get(&var_name) {
+            if let Some(v) = scope.vars.get(&var_name.to_string()) {
                 match v {
                     ScopeVarValue::DynStr(x) => {
                         scope.var_refs.push(var_name.into_ref());
@@ -220,7 +220,7 @@ impl ParseWithVars for MaybeDyn<Number> {
             MaybeDyn::Static(Number::F32(value))
         } else if la.peek(Ident) {
             let var_name: VarName = input.parse()?;
-            if let Some(v) = scope.vars.get(&var_name) {
+            if let Some(v) = scope.vars.get(&var_name.to_string()) {
                 match v {
                     ScopeVarValue::DynNum(x) => {
                         scope.var_refs.push(var_name.into_ref());

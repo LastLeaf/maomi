@@ -190,7 +190,7 @@ impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
 }
 
 pub struct VarContext<T: StyleSheetConstructor> {
-    map: Rc<RefCell<FxHashMap<VarName, Weak<StyleSheetItem<T>>>>>,
+    map: Rc<RefCell<FxHashMap<String, Weak<StyleSheetItem<T>>>>>,
 }
 
 impl<T: StyleSheetConstructor> Clone for VarContext<T> {
@@ -207,13 +207,13 @@ impl<T: StyleSheetConstructor> Default for VarContext<T> {
 
 impl<T: StyleSheetConstructor> VarContext<T> {
     pub fn get(&self, var_name: &VarName) -> Option<Rc<StyleSheetItem<T>>> {
-        self.map.borrow().get(var_name).and_then(|x| x.upgrade())
+        self.map.borrow().get(&var_name.to_string()).and_then(|x| x.upgrade())
     }
 
     fn insert(&self, var_name: VarName, item: &Rc<StyleSheetItem<T>>) -> Result<(), syn::Error> {
         let mut inserted = false;
         let span = var_name.span();
-        self.map.borrow_mut().entry(var_name)
+        self.map.borrow_mut().entry(var_name.to_string())
             .or_insert_with(|| {
                 inserted = true;
                 Rc::downgrade(item)
@@ -400,7 +400,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                                 })?;
                                 if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
                                     let item = item.resolve_use_target().unwrap();
-                                    scope.insert_var(var_name.clone(), v)?;
+                                    scope.insert_var(&var_name, v)?;
                                     ss.var_context.insert(var_name.clone(), &item)?;
                                     ss.items.push(Rc::new(StyleSheetItem::UseItem(UseItemDefinition { vis, alias: var_name, target: Rc::downgrade(&item) })));
                                 } else {
@@ -415,7 +415,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                                 })?;
                                 if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
                                     let item = item.resolve_use_target().unwrap();
-                                    scope.insert_var(alias.clone(), v)?;
+                                    scope.insert_var(&alias, v)?;
                                     ss.var_context.insert(alias.clone(), &item)?;
                                     ss.items.push(Rc::new(StyleSheetItem::UseItem(UseItemDefinition { vis, alias, target: Rc::downgrade(&item) })));
                                 } else {
@@ -428,9 +428,8 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                                     if let Some(item) = item.upgrade() {
                                         if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
                                             let item = item.resolve_use_target().unwrap();
-                                            let mut var_name = var_name.clone();
-                                            var_name.ident.set_span(star_span);
-                                            scope.insert_var(var_name.clone(), v)?;
+                                            let var_name = VarName { ident: syn::Ident::new(&var_name, star_span) };
+                                            scope.insert_var(&var_name, v)?;
                                             ss.var_context.insert(var_name.clone(), &item)?;
                                             ss.items.push(Rc::new(StyleSheetItem::UseItem(UseItemDefinition { vis: vis.clone(), alias: var_name, target: Rc::downgrade(&item) })));
                                         }
@@ -564,7 +563,7 @@ impl ConstValueDefinition {
                         return Err(syn::Error::new_spanned(attr, "unknown attribute"));
                     }
                     let converted_token = CssToken::parse_with_vars(input, scope)?;
-                    scope.insert_var(name.clone(), ScopeVarValue::Token(converted_token.clone()))?;
+                    scope.insert_var(&name, ScopeVarValue::Token(converted_token.clone()))?;
                     Ok(StyleSheetItem::ConstValue(Self { vis, name, converted_token }))
                 }
                 "keyframes" => {
@@ -611,7 +610,7 @@ impl ConstValueDefinition {
                     let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
                     result?;
                     let converted_token = ssc.define_key_frames(&name, &css_name, frames).map_err(|e| e.into_syn_error())?;
-                    scope.insert_var(name.clone(), ScopeVarValue::Token(converted_token.clone()))?;
+                    scope.insert_var(&name, ScopeVarValue::Token(converted_token.clone()))?;
                     Ok(StyleSheetItem::KeyFrames(KeyFramesDefinition { vis, name, css_name, converted_token, sub_var_refs }))
                 }
                 _ => Err(syn::Error::new_spanned(ty, "invalid type")),
@@ -684,7 +683,7 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
         try_parse_brace(input, |input| {
             for (index, (var_name, ty)) in args.iter().enumerate() {
                 let r = VarDynRef { span: var_name.span(), index };
-                scope.insert_var(var_name.clone(), match ty {
+                scope.insert_var(&var_name, match ty {
                     ArgType::Str(_) => ScopeVarValue::DynStr(r),
                     ArgType::Num(_) => ScopeVarValue::DynNum(r),
                 })?;
@@ -693,7 +692,7 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
             let content_result = StyleContentItem::parse_with_vars(input, scope, true);
             let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
             for (var_name, _) in args.iter() {
-                scope.vars.remove(var_name);
+                scope.vars.remove(&var_name.to_string());
             }
             Ok((content_result?, sub_var_refs))
         })
@@ -713,7 +712,7 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
         }
         let args = Self::parse_arg_list(input, scope)?;
         let (content, sub_var_refs) = Self::parse_fn_body(input, scope, &args)?;
-        scope.insert_var(name.clone(), ScopeVarValue::StyleDefinition(args.clone()))?;
+        scope.insert_var(&name, ScopeVarValue::StyleDefinition(args.clone()))?;
         Ok(Self { vis, name, args, content, sub_var_refs, var_context: var_context.clone() })
     }
 }
@@ -745,7 +744,7 @@ impl<T: StyleSheetConstructor> StyleDefinition<T> {
         }
         let (arg_name, arg_ty) = args[0].clone();
         let (content, sub_var_refs) = StyleFnDefinition::<T>::parse_fn_body(input, scope, &args)?;
-        scope.insert_var(name.clone(), ScopeVarValue::StyleDefinition(args.clone()))?;
+        scope.insert_var(&name, ScopeVarValue::StyleDefinition(args.clone()))?;
         Ok(Self { extern_vis, name, arg_name, arg_ty, content, sub_var_refs })
     }
 }
@@ -821,7 +820,7 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
                 }
             } else if input.peek2(syn::token::Paren) {
                 let v: VarName = input.parse()?;
-                if let Some(x) = scope.vars.get(&v).cloned() {
+                if let Some(x) = scope.vars.get(&v.to_string()).cloned() {
                     if let ScopeVarValue::StyleDefinition(args) = x {
                         scope.var_refs.push(v.clone().into_ref());
                         let var_dyn_values = try_parse_paren(input, |input| {

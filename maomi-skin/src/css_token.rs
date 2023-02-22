@@ -547,6 +547,12 @@ impl VarName {
     }
 }
 
+impl ToString for VarName {
+    fn to_string(&self) -> String {
+        self.ident.to_string()
+    }
+}
+
 impl std::hash::Hash for VarName {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.ident.hash(state);
@@ -931,7 +937,7 @@ impl ParseWithVars for CssToken {
                 }
             } else {
                 let var_name = VarName { ident };
-                if let Some(v) = scope.vars.get(&var_name) {
+                if let Some(v) = scope.vars.get(&var_name.to_string()) {
                     scope.var_refs.push(var_name.into_ref());
                     match v {
                         ScopeVarValue::Token(x) => {

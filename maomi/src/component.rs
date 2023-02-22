@@ -366,7 +366,6 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
 /// In prerendering stage,
 /// components can do some async tasks (network request, etc.)
 /// before actually doing the build of the component.
-#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 #[async_trait]
 pub trait PrerenderableComponent: Component {
     /// The type of the query data.

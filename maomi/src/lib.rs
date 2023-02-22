@@ -20,7 +20,6 @@ pub mod prop;
 pub mod template;
 pub mod text_node;
 pub mod locale_string;
-#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 pub use backend::context::PrerenderingData;
 pub use backend::context::{AsyncCallback, BackendContext};
 
@@ -28,7 +27,6 @@ pub use backend::context::{AsyncCallback, BackendContext};
 /// 
 /// Usually, `use maomi::prelude::*;` should be added in component files for convinience.
 pub mod prelude {
-    #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
     pub use super::component::PrerenderableComponent;
     pub use super::component::{Component, ComponentExt, ComponentRc};
     pub use super::diff::key::AsListKey;

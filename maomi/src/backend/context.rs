@@ -11,7 +11,6 @@ use std::{
 
 use super::{tree, Backend, BackendStage};
 use crate::component::Component;
-#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 use crate::component::PrerenderableComponent;
 use crate::error::Error;
 use crate::mount_point::{MountPoint, DynMountPoint};
@@ -179,7 +178,6 @@ impl<B: Backend> BackendContext<B> {
     /// Get the prerendering data of a prerenderable component.
     ///
     /// The `QueryData` should be provided to the `PrerenderableComponent` .
-    #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
     pub async fn prerendering_data<C: PrerenderableComponent>(
         query_data: &C::QueryData,
     ) -> PrerenderingData<C> {
@@ -213,7 +211,6 @@ impl<B: Backend> EnteredBackendContext<B> {
     }
 
     /// Create a mount point and apply the prerendering data.
-    #[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
     pub fn prerendering_attach<C: PrerenderableComponent + ComponentTemplate<B> + 'static>(
         &mut self,
         prerendering_data: PrerenderingData<C>,
@@ -289,12 +286,10 @@ impl<B: Backend> std::ops::DerefMut for EnteredBackendContext<B> {
 }
 
 /// A helper for the prerendering data.
-#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 pub struct PrerenderingData<C: PrerenderableComponent> {
     data: C::PrerenderingData,
 }
 
-#[cfg(any(feature = "prerendering", feature = "prerendering-apply"))]
 impl<C: PrerenderableComponent> PrerenderingData<C> {
     /// Wrap the prerendering data.
     pub fn new(data: C::PrerenderingData) -> Self {
