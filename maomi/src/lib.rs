@@ -5,7 +5,7 @@
 //! 
 //! This is the *core* module of the framework.
 //! In browsers, the `maomi-dom` crate is also needed.
-//! See the [`maomi_dom`](../maomi_dom) crate document for the quick start.
+//! See the [`maomi_dom`](../maomi-dom) crate document for a quick start.
 
 #![warn(missing_docs)]
 

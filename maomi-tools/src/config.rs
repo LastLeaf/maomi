@@ -9,6 +9,7 @@ pub struct CrateConfig {
     pub stylesheet_mod_root: Option<PathBuf>,
     pub i18n_locale: Option<String>,
     pub i18n_dir: Option<PathBuf>,
+    pub i18n_format_metadata: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,6 +97,10 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
         .or_else(|| {
             manifest_dir.as_ref().map(|s| rel_path.join(&s).join("i18n"))
         });
+    let i18n_format_metadata = match std::env::var("MAOMI_I18N_FORMAT_METADATA").unwrap_or_default().as_str() {
+        "on" => true,
+        _ => false,
+    };
 
     CrateConfig {
         crate_name,
@@ -104,6 +109,7 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
         stylesheet_mod_root,
         i18n_locale,
         i18n_dir,
+        i18n_format_metadata,
     }
 });
 

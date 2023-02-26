@@ -19,7 +19,7 @@ fn parse_mod_file<T: StyleSheetConstructor>(mod_path: ModPath, p: &Path) -> Opti
 }
 
 pub(crate) fn parse_mod_path<T: StyleSheetConstructor>(cur_mod_path: &crate::ModPath, mod_name: &VarName) -> Option<Rc<StyleSheet<T>>> {
-    crate::config::crate_config(|crate_config| {
+    maomi_tools::config::crate_config(|crate_config| {
         let mod_root: &Path = crate_config.stylesheet_mod_root.as_ref()?;
         let mut cur_dir = mod_root.parent()?.to_path_buf();
         for seg in cur_mod_path.segs.iter() {
@@ -37,7 +37,7 @@ pub(crate) fn parse_mod_path<T: StyleSheetConstructor>(cur_mod_path: &crate::Mod
 }
 
 fn init_root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
-    crate::config::crate_config(|crate_config| {
+    maomi_tools::config::crate_config(|crate_config| {
         let mod_root: &Path = crate_config.stylesheet_mod_root.as_ref()?;
         parse_mod_file(Default::default(), mod_root)
     })

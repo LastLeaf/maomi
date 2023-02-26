@@ -1,36 +1,75 @@
-use rustc_hash::FxHashMap;
+use std::{sync::Mutex, path::PathBuf, io::Write};
 use once_cell::sync::Lazy;
+use rustc_hash::FxHashMap;
+
+use maomi_tools::i18n::*;
 
 const DEFAULT_GROUP_NAME: &'static str = "translation";
 
+thread_local! {
+    static DIR_LOCALE_NAME: Option<(PathBuf, String)> = {
+        maomi_tools::config::crate_config(|crate_config| {
+            let locale_name = match crate_config.i18n_locale.as_ref() {
+                None => {
+                    return None;
+                }
+                Some(x) => x.clone(),
+            };
+            let dir_name = match crate_config.i18n_dir.as_ref() {
+                None => {
+                    return None;
+                }
+                Some(x) => x.clone(),
+            };
+            Some((dir_name, locale_name))
+        })
+    };
+}
+
 static CUR_LOCALE: Lazy<Result<Option<Locale>, String>> = Lazy::new(|| read_locale());
+static FORMAT_METADATA_OUTPUT: Lazy<Option<Mutex<std::fs::File>>> = Lazy::new(|| {
+    maomi_tools::config::crate_config(|crate_config| {
+        if crate_config.i18n_format_metadata {
+            DIR_LOCALE_NAME.with(|x| {
+                if let Some((dir_name, locale_name)) = x.as_ref() {
+                    let tmp_dir = dir_name.join("format-metadata");
+                    std::fs::create_dir_all(&tmp_dir).ok()?;
+                    let gitignore = tmp_dir.join(".gitignore");
+                    if !std::path::Path::exists(&gitignore) {
+                        let _ = std::fs::File::create(&gitignore).map(|mut file| {
+                            write!(file, "*")
+                        });
+                    }
+                    let p = tmp_dir.join(&(locale_name.clone() + ".toml"));
+                    let file = std::fs::File::create(p).ok()?;
+                    Some(Mutex::new(file))
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        }
+    })
+});
 
 fn read_locale() -> Result<Option<Locale>, String> {
-    maomi_skin::config::crate_config(|crate_config| {
-        let locale_name = match crate_config.i18n_locale.as_ref() {
-            None => {
-                return Ok(None);
-            }
-            Some(x) => x.clone(),
-        };
-        let dir_name = match crate_config.i18n_dir.as_ref() {
-            None => {
-                return Err(format!("i18n directory is illegal"));
-            }
-            Some(x) => x.clone(),
-        };
-        let file_name = dir_name.join(&(locale_name + ".toml"));
-        let content = std::fs::read(&file_name)
-            .map_err(|_| format!("cannot read i18n file {:?}", file_name))?;
-        let locale = toml::from_slice(&content)
-            .map_err(|x| format!("parsing i18n TOML failed: {}", x))?;
-        Ok(Some(locale))
+    DIR_LOCALE_NAME.with(|x| {
+        if let Some((dir_name, locale_name)) = x.as_ref() {
+            let file_name = dir_name.join(&(locale_name.clone() + ".toml"));
+            let content = std::fs::read(&file_name)
+                .map_err(|_| format!("cannot read i18n file {:?}", file_name))?;
+            let locale = toml::from_str(&String::from_utf8_lossy(&content))
+                .map_err(|x| format!("parsing i18n TOML failed: {}", x))?;
+            Ok(Some(locale))
+        } else {
+            Ok(None)
+        }
     })
 }
 
-type Locale = FxHashMap<String, FxHashMap<String, String>>;
-
 pub(crate) struct LocaleGroup {
+    namespace: Option<String>,
     inner: Option<&'static FxHashMap<String, String>>,
 }
 
@@ -44,10 +83,14 @@ impl LocaleGroup {
             if let Some(locale) = locale {
                 match locale.get(group) {
                     None => Err(format!("no translation group {:?} found", group)),
-                    Some(x) => Ok(Self { inner: Some(x) }),
+                    Some(x) => Ok(Self {
+                        namespace: FORMAT_METADATA_OUTPUT.as_ref().map(|_| group.to_string()),
+                        inner: Some(x),
+                    }),
                 }
             } else {
                 Ok(Self {
+                    namespace: FORMAT_METADATA_OUTPUT.as_ref().map(|_| group.to_string()),
                     inner: None,
                 })
             }
@@ -60,16 +103,33 @@ impl LocaleGroup {
 
     pub(crate) fn trans<'a>(&'a self, s: &'a str) -> TransRes<'a> {
         if let Some(x) = &self.inner {
-            match x.get(s) {
+            let ret = match x.get(s) {
                 None => TransRes::LackTrans,
                 Some(s) => TransRes::Done(s),
+            };
+            if let Some(file) = &*FORMAT_METADATA_OUTPUT {
+                let file = &mut *file.lock().unwrap();
+                let items = FormatMetadata {
+                    item: vec![FormatMetadataItem {
+                        namespace: self.namespace.as_ref().unwrap(),
+                        src: s,
+                        translated: if let TransRes::Done(s) = &ret {
+                            Some(*s)
+                        } else {
+                            None
+                        },
+                    }],
+                };
+                write!(file, "{}", toml::to_string(&items).unwrap()).unwrap();
             }
+            ret
         } else {
             TransRes::NotNeeded
         }
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TransRes<'a> {
     NotNeeded,
     Done(&'a str),

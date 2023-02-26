@@ -10,7 +10,7 @@ use maomi_skin::write_css::{CssWriter, WriteCss, CssWritePlaceholder};
 use maomi_skin::{css_token::*, VarDynValue, MaybeDyn, ArgType};
 use maomi_skin::style_sheet::*;
 use maomi_skin::{ParseError, pseudo};
-use maomi_skin::config::CssOutMode;
+use maomi_tools::config::CssOutMode;
 
 mod media_cond;
 use media_cond::*;
@@ -31,7 +31,7 @@ const CLASS_START_CHARS: [char; 52] = [
 
 thread_local! {
     static CSS_OUT_FILE_NAME: Option<PathBuf> = {
-        maomi_skin::config::crate_config(|crate_config| {
+        maomi_tools::config::crate_config(|crate_config| {
             crate_config.css_out_dir.clone().map(|mut dir| {
                 let file_name = crate_config.crate_name.as_ref()
                     .map(|x| x.as_str())
@@ -44,7 +44,7 @@ thread_local! {
         })
     };
     static CSS_OUT_MODE: Cell<CssOutMode> = {
-        maomi_skin::config::crate_config(|crate_config| {
+        maomi_tools::config::crate_config(|crate_config| {
             Cell::new(crate_config.css_out_mode)
         })
     };
@@ -68,7 +68,7 @@ static CSS_OUT_FILE: Lazy<Option<std::sync::Mutex<File>>> = Lazy::new(|| {
 
 fn generate_span_hash(span: proc_macro2::Span) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    maomi_skin::config::crate_config(|crate_config| {
+    maomi_tools::config::crate_config(|crate_config| {
         hasher.write(crate_config.crate_name.as_ref().map(|x| x.as_str()).unwrap_or("").as_bytes());
     });
     hasher.write(format!("{:?}", span).as_bytes());

@@ -10,7 +10,6 @@ pub mod write_css;
 pub mod style_sheet;
 pub mod pseudo;
 pub mod module;
-pub mod config;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
