@@ -730,6 +730,10 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                 let span = content.span();
                 let translated = match locale_group.trans(&content.value()) {
                     TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
+                    TransRes::LackTransGroup(x) => {
+                        let msg = format!("translation group {:?} not found", x);
+                        quote_spanned! {span=> compile_error!(#msg) }
+                    }
                     TransRes::Done(x) => {
                         let s = LitStr::new(x, span);
                         quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }

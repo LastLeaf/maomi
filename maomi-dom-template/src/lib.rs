@@ -78,15 +78,14 @@ pub fn wasm_main() {
     let backend_context = BackendContext::new(dom_backend);
 
     // create a mount point
-    backend_context
+    let mount_point = backend_context
         .enter_sync(move |ctx| {
-            let mount_point = ctx.attach(|_: &mut HelloWorld| {}).unwrap();
-            // leak the mount point, so that event callbacks still work
-            std::mem::forget(mount_point);
+            ctx.attach(|_: &mut HelloWorld| {})
         })
         .map_err(|_| "Cannot init mount point")
         .unwrap();
 
     // leak the backend context, so that event callbacks still work
+    std::mem::forget(mount_point);
     std::mem::forget(backend_context);
 }

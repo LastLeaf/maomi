@@ -5,6 +5,8 @@ pub mod i18n {
 
     pub type Locale = FxHashMap<String, FxHashMap<String, String>>;
 
+    pub const METADATA_VERSION: u32 = 1;
+
     #[derive(serde::Serialize)]
     pub struct FormatMetadata<'a> {
         pub item: Vec<FormatMetadataItem<'a>>,

@@ -9,6 +9,11 @@ use std::{fmt::Display, ops::Deref};
 pub trait ToLocaleStr {
     /// Get the translated text.
     fn to_locale_str(&self) -> &str;
+
+    /// Get the owned string of the translated text.
+    fn to_locale_string(&self) -> LocaleString {
+        LocaleString::translated(self.to_locale_str())
+    }
 }
 
 /// A translated static str.
@@ -21,11 +26,6 @@ impl LocaleStaticStr {
     /// Make sure the string is translated!
     pub const fn translated(s: &'static str) -> Self {
         Self(s)
-    }
-
-    /// Convert to a `LocaleString` .
-    pub fn to_locale_string(&self) -> LocaleString {
-        LocaleString(self.0.to_string())
     }
 }
 

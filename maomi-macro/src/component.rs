@@ -154,17 +154,9 @@ impl ComponentBody {
                 quote_spanned! {span=> #path }
             }
         };
-        let locale_group = {
-            let r = match locale_group_name {
-                None => LocaleGroup::get_default(),
-                Some(x) => LocaleGroup::get(&x.to_string()),
-            };
-            match r {
-                Err(x) => {
-                    return Err(Error::new(inner.span(), x));
-                }
-                Ok(x) => x,
-            }
+        let locale_group = match locale_group_name {
+            None => LocaleGroup::get_default(),
+            Some(x) => LocaleGroup::get(&x.to_string()),
         };
 
         // find component name and type params

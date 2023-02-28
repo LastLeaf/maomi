@@ -41,7 +41,8 @@ static FORMAT_METADATA_OUTPUT: Lazy<Option<Mutex<std::fs::File>>> = Lazy::new(||
                         });
                     }
                     let p = tmp_dir.join(&(locale_name.clone() + ".toml"));
-                    let file = std::fs::File::create(p).ok()?;
+                    let mut file = std::fs::File::create(p).ok()?;
+                    writeln!(file, "version = {}", METADATA_VERSION).ok()?;
                     Some(Mutex::new(file))
                 } else {
                     None
@@ -70,61 +71,90 @@ fn read_locale() -> Result<Option<Locale>, String> {
 
 pub(crate) struct LocaleGroup {
     namespace: Option<String>,
-    inner: Option<&'static FxHashMap<String, String>>,
+    inner: LocaleGroupStatus,
+}
+
+enum LocaleGroupStatus {
+    NotNeeded,
+    Normal(&'static FxHashMap<String, String>),
+    Missing(String),
 }
 
 impl LocaleGroup {
-    pub(crate) fn get_default() -> Result<LocaleGroup, String> {
+    pub(crate) fn get_default() -> LocaleGroup {
         Self::get(DEFAULT_GROUP_NAME)
     }
 
-    pub(crate) fn get(group: &str) -> Result<LocaleGroup, String> {
-        CUR_LOCALE.as_ref().map_err(|x| x.clone()).and_then(|locale| {
-            if let Some(locale) = locale {
-                match locale.get(group) {
-                    None => Err(format!("no translation group {:?} found", group)),
-                    Some(x) => Ok(Self {
-                        namespace: FORMAT_METADATA_OUTPUT.as_ref().map(|_| group.to_string()),
-                        inner: Some(x),
-                    }),
-                }
-            } else {
-                Ok(Self {
-                    namespace: FORMAT_METADATA_OUTPUT.as_ref().map(|_| group.to_string()),
-                    inner: None,
-                })
+    pub(crate) fn get(group: &str) -> LocaleGroup {
+        let locale = CUR_LOCALE.as_ref().ok().and_then(|locale| {
+            locale.as_ref()
+        });
+        if let Some(locale) = locale {
+            let inner = match locale.get(group) {
+                Some(x) => LocaleGroupStatus::Normal(x),
+                None => LocaleGroupStatus::Missing(group.to_string()),
+            };
+            Self {
+                namespace: FORMAT_METADATA_OUTPUT.as_ref().map(|_| group.to_string()),
+                inner,
             }
-        })
+        } else {
+            Self {
+                namespace: FORMAT_METADATA_OUTPUT.as_ref().map(|_| group.to_string()),
+                inner: LocaleGroupStatus::NotNeeded,
+            }
+        }
     }
 
     pub(crate) fn need_trans(&self) -> bool {
-        self.inner.is_some()
+        if let LocaleGroupStatus::NotNeeded = self.inner {
+            false
+        } else {
+            true
+        }
     }
 
     pub(crate) fn trans<'a>(&'a self, s: &'a str) -> TransRes<'a> {
-        if let Some(x) = &self.inner {
-            let ret = match x.get(s) {
-                None => TransRes::LackTrans,
-                Some(s) => TransRes::Done(s),
-            };
-            if let Some(file) = &*FORMAT_METADATA_OUTPUT {
-                let file = &mut *file.lock().unwrap();
-                let items = FormatMetadata {
-                    item: vec![FormatMetadataItem {
-                        namespace: self.namespace.as_ref().unwrap(),
-                        src: s,
-                        translated: if let TransRes::Done(s) = &ret {
-                            Some(*s)
-                        } else {
-                            None
-                        },
-                    }],
+        match &self.inner {
+            LocaleGroupStatus::Normal(x) => {
+                let ret = match x.get(s) {
+                    None => TransRes::LackTrans,
+                    Some(s) => TransRes::Done(s),
                 };
-                write!(file, "{}", toml::to_string(&items).unwrap()).unwrap();
+                if let Some(file) = &*FORMAT_METADATA_OUTPUT {
+                    let file = &mut *file.lock().unwrap();
+                    let items = FormatMetadata {
+                        item: vec![FormatMetadataItem {
+                            namespace: self.namespace.as_ref().unwrap(),
+                            src: s,
+                            translated: if let TransRes::Done(s) = &ret {
+                                Some(*s)
+                            } else {
+                                None
+                            },
+                        }],
+                    };
+                    write!(file, "{}", toml::to_string(&items).unwrap()).unwrap();
+                }
+                ret
             }
-            ret
-        } else {
-            TransRes::NotNeeded
+            LocaleGroupStatus::Missing(x) => {
+                if let Some(file) = &*FORMAT_METADATA_OUTPUT {
+                    let file = &mut *file.lock().unwrap();
+                    let items = FormatMetadata {
+                        item: vec![FormatMetadataItem {
+                            namespace: self.namespace.as_ref().unwrap(),
+                            src: s,
+                            translated: None,
+                        }],
+                    };
+                    write!(file, "{}", toml::to_string(&items).unwrap()).unwrap();
+                }
+                TransRes::LackTransGroup(x.as_str())
+            }
+            LocaleGroupStatus::NotNeeded => {
+                TransRes::NotNeeded
+            }
         }
     }
 }
@@ -134,6 +164,7 @@ pub(crate) enum TransRes<'a> {
     NotNeeded,
     Done(&'a str),
     LackTrans,
+    LackTransGroup(&'a str),
 }
 
 pub(crate) mod mac {
@@ -141,53 +172,142 @@ pub(crate) mod mac {
     use syn::*;
     use syn::parse::*;
 
-    pub(crate) struct I18nArgs {
-        group: Option<Ident>,
-        s: LitStr,
+    pub(crate) struct I18nGroupArgs {
+        group: Ident,
+        macro_name: Ident,
     }
-    
-    impl Parse for I18nArgs {
+
+    impl Parse for I18nGroupArgs {
         fn parse(input: ParseStream) -> Result<Self> {
-            let la = input.lookahead1();
-            let ret = if la.peek(Ident) {
-                let group = input.parse()?;
-                let _: token::Comma = input.parse()?;
-                let s = input.parse()?;
-                Self { group, s }
-            } else {
-                let s = input.parse()?;
-                Self { group: None, s }
-            };
-            Ok(ret)
+            let group = input.parse()?;
+            input.parse::<Token![as]>()?;
+            let macro_name = input.parse()?;
+            Ok(Self { group, macro_name })
         }
     }
-    
-    impl ToTokens for I18nArgs {
+
+    impl ToTokens for I18nGroupArgs {
         fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-            let locale_group_res = match &self.group {
-                None => super::LocaleGroup::get_default(),
-                Some(group) => super::LocaleGroup::get(&group.to_string()),
-            };
-            let r = match locale_group_res {
-                Err(e) => {
-                    let hint = format!("{}", e);
-                    quote! { compile_error!(#hint) }
-                }
-                Ok(locale_group) => {
-                    let s = &self.s;
-                    let span = s.span();
-                    match locale_group.trans(&s.value()) {
-                        super::TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
-                        super::TransRes::Done(x) => {
-                            let s = LitStr::new(x, span);
-                            quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }
-                        }
-                        super::TransRes::NotNeeded => quote_spanned! {span=> maomi::locale_string::LocaleStaticStr::translated(#s) },
+            let Self { group, macro_name } = self;
+            tokens.append_all(quote! {
+                macro_rules! #macro_name {
+                    ($($t: tt)*) => {
+                        maomi::prelude::i18n_group_format!(#group, $($t)*)
                     }
+                }
+            });
+        }
+    }
+
+    struct I18nVar {
+        name: Option<Ident>,
+        expr: Expr,
+    }
+
+    impl Parse for I18nVar {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Ident) && input.peek2(Token![=]) {
+                let name = input.parse()?;
+                input.parse::<Token![=]>()?;
+                let expr = input.parse()?;
+                Ok(Self { name: Some(name), expr })
+            } else {
+                let expr = input.parse()?;
+                Ok(Self { name: None, expr })
+            }
+        }
+    }
+
+    impl ToTokens for I18nVar {
+        fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+            let expr = &self.expr;
+            let r = if let Some(name) = self.name.as_ref() {
+                quote! {
+                    #name = maomi::locale_string::ToLocaleStr::to_locale_str(&(#expr))
+                }
+            } else {
+                quote! {
+                    maomi::locale_string::ToLocaleStr::to_locale_str(&(#expr))
                 }
             };
             tokens.append_all(r);
         }
+    }
+
+    pub(crate) struct I18nArgs {
+        s: LitStr,
+        vars: Vec<I18nVar>,
+    }
+    
+    impl Parse for I18nArgs {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let s = input.parse()?;
+            let mut vars = vec![];
+            while !input.is_empty() {
+                input.parse::<Token![,]>()?;
+                vars.push(input.parse()?);
+            }
+            Ok(Self { s, vars })
+        }
+    }
+
+    impl ToTokens for I18nArgs {
+        fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+            trans_to_tokens(&self, None, tokens);
+        }
+    }
+
+    pub(crate) struct I18nGroupFormatArgs {
+        group: Ident,
+        args: I18nArgs,
+    }
+
+    impl Parse for I18nGroupFormatArgs {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let group = input.parse()?;
+            input.parse::<Token![,]>()?;
+            let args = input.parse()?;
+            Ok(Self { group, args })
+        }
+    }
+
+    impl ToTokens for I18nGroupFormatArgs {
+        fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+            trans_to_tokens(&self.args, Some(&self.group), tokens);
+        }
+    }
+
+    fn trans_to_tokens(args: &I18nArgs, group: Option<&Ident>, tokens: &mut proc_macro2::TokenStream) {
+        let locale_group = match group {
+            None => super::LocaleGroup::get_default(),
+            Some(group) => super::LocaleGroup::get(&group.to_string()),
+        };
+        let s = &args.s;
+        let vars = &args.vars;
+        let span = s.span();
+        let r = match locale_group.trans(&s.value()) {
+            super::TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
+            super::TransRes::LackTransGroup(x) => {
+                let msg = format!("translation group {:?} not found", x);
+                quote_spanned! {span=> compile_error!(#msg) }
+            },
+            super::TransRes::Done(x) => {
+                let s = LitStr::new(x, span);
+                if args.vars.len() == 0 {
+                    quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }
+                } else {
+                    quote! { maomi::locale_string::LocaleString::translated(format!(#s, #(#vars),*)) }
+                }
+            }
+            super::TransRes::NotNeeded => {
+                if args.vars.len() == 0 {
+                    quote_spanned! {span=> maomi::locale_string::LocaleStaticStr::translated(#s) }
+                } else {
+                    quote_spanned! {span=> maomi::locale_string::LocaleString::translated(format!(#s, #(#vars),*)) }
+                }
+            }
+        };
+        tokens.append_all(r);
     }
 }
 
