@@ -218,21 +218,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
         Self: Sized;
 
     /// Create a component within the specified shadow root.
-    fn template_create<'b>(
-        &'b mut self,
-        backend_context: &'b BackendContext<B>,
-        backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
-        slot_fn: &mut dyn FnMut(
-            &mut ForestNodeMut<B::GeneralElement>,
-            &ForestToken,
-            &Self::SlotData,
-        ) -> Result<(), Error>,
-    ) -> Result<(), Error>
-    where
-        Self: Sized;
-
-    /// Update a component.
-    fn template_update<'b>(
+    fn template_create_or_update<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
@@ -254,7 +240,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
         Self: Sized,
     {
         let mut slot_changes: Vec<SlotChange<(), ForestToken, ()>> = Vec::with_capacity(0);
-        self.template_update(backend_context, backend_element, &mut |slot_change| {
+        self.template_create_or_update(backend_context, backend_element, &mut |slot_change| {
             match slot_change {
                 SlotChange::Unchanged(..) => {}
                 SlotChange::DataChanged(_, n, _) => {

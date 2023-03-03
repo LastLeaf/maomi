@@ -321,8 +321,7 @@ impl ToTokens for ComponentBody {
         // write the component template
         match template.as_ref() {
             Ok(template) => {
-                let template_create = template.to_create(backend_param, locale_group);
-                let template_update = template.to_update(backend_param, locale_group);
+                let template_children = template.to_children(backend_param, locale_group);
                 quote! {
                     impl #impl_type_params_without_backend_param maomi::template::ComponentSlotKind for #component_name {
                         type SlotChildren<C> = #slot_kind<maomi::backend::tree::ForestTokenAddr, C>;
@@ -354,35 +353,7 @@ impl ToTokens for ComponentBody {
                         }
 
                         #[inline]
-                        fn template_create<'__m_b>(
-                            &'__m_b mut self,
-                            __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
-                            __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
-                                <#backend_param as maomi::backend::Backend>::GeneralElement,
-                            >,
-                            __m_slot_fn: &mut dyn FnMut(
-                                &mut maomi::backend::tree::ForestNodeMut<
-                                    <#backend_param as maomi::backend::Backend>::GeneralElement,
-                                >,
-                                &maomi::backend::tree::ForestToken,
-                                &Self::SlotData,
-                            ) -> Result<(), maomi::error::Error>,
-                        ) -> Result<(), maomi::error::Error>
-                        where
-                            Self: Sized,
-                        {
-                            let __m_event_self_weak = maomi::template::TemplateHelper::component_weak(
-                                &self.#template_field,
-                            ).unwrap();
-                            let __m_slot_scopes = &mut self.#template_field.__m_slot_scopes;
-                            let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
-                            let __m_parent_element = __m_backend_element;
-                            self.#template_field.__m_structure = Some(#template_create);
-                            Ok(())
-                        }
-
-                        #[inline]
-                        fn template_update<'__m_b>(
+                        fn template_create_or_update<'__m_b>(
                             &'__m_b mut self,
                             __m_backend_context: &'__m_b maomi::BackendContext<#backend_param>,
                             __m_backend_element: &'__m_b mut maomi::backend::tree::ForestNodeMut<
@@ -409,12 +380,10 @@ impl ToTokens for ComponentBody {
                                 let __m_slot_scopes = &mut __m_slot_scopes;
                                 let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                                 let __m_parent_element = __m_backend_element;
-                                let __m_children = self
-                                    .#template_field
-                                    .__m_structure
-                                    .as_mut()
-                                    .ok_or(maomi::error::Error::TreeNotCreated)?;
-                                #template_update
+                                let __m_children = self.#template_field.__m_structure.as_mut();
+                                if let Some(__m_children) = (#template_children)(__m_parent_element, __m_children)? {
+                                    self.#template_field.__m_structure = Some(__m_children);
+                                }
                             }
                             maomi::node::SlotKindUpdateTrait::finish(__m_slot_scopes, |_, (n, _)| {
                                 __m_slot_fn(maomi::node::SlotChange::Removed(&n))?;

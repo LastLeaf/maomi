@@ -611,11 +611,16 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             let mut force_dirty = false;
             update_fn(&mut comp, &mut force_dirty);
             <C as Component>::before_template_apply(&mut comp);
-            <C as ComponentTemplate<B>>::template_create(
+            <C as ComponentTemplate<B>>::template_create_or_update(
                 &mut comp,
                 backend_context,
                 &mut backend_element,
-                &mut slot_fn,
+                &mut |slot_change| {
+                    match slot_change {
+                        SlotChange::Added(n, t, d) => slot_fn(n, t, d),
+                        _ => Err(Error::TreeNotCreated),
+                    }
+                },
             )?;
             #[cfg(not(feature = "prerendering"))]
             <C as Component>::created(&comp);
@@ -647,7 +652,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                 // if any data changed, do updates
                 let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
                 <C as Component>::before_template_apply(&mut comp);
-                <C as ComponentTemplate<B>>::template_update(
+                <C as ComponentTemplate<B>>::template_create_or_update(
                     &mut comp,
                     backend_context,
                     &mut backend_element,
