@@ -294,6 +294,9 @@ impl ToTokens for ComponentBody {
             locale_group,
         } = self;
 
+        // write the struct
+        inner.to_tokens(tokens);
+
         // find generics for impl
         let impl_type_params = {
             let items = inner
@@ -315,8 +318,8 @@ impl ToTokens for ComponentBody {
             }
         };
 
-        // impl the component template
-        let impl_component_template = match template.as_ref() {
+        // write the component template
+        match template.as_ref() {
             Ok(template) => {
                 let template_create = template.to_create(backend_param, locale_group);
                 let template_update = template.to_update(backend_param, locale_group);
@@ -325,7 +328,8 @@ impl ToTokens for ComponentBody {
                         type SlotChildren<C> = #slot_kind<maomi::backend::tree::ForestTokenAddr, C>;
                         type SlotData = #slot_data_ty;
                     }
-
+                }.to_tokens(tokens);
+                quote! {
                     impl #impl_type_params maomi::template::ComponentTemplate<#backend_param> for #component_name {
                         type TemplateField = maomi::template::Template<
                             Self,
@@ -419,26 +423,23 @@ impl ToTokens for ComponentBody {
                             Ok(())
                         }
                     }
-                }
+                }.to_tokens(tokens);
             }
-            Err(err) => err.to_compile_error(),
-        };
-
-        quote! {
-            #inner
-            #impl_component_template
+            Err(err) => {
+                err.to_compile_error().to_tokens(tokens);
+            },
         }
-        .to_tokens(tokens);
     }
 }
 
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let component_attr = parse_macro_input!(attr as ComponentAttr);
     match ComponentBody::new(component_attr, parse_macro_input!(item as ItemStruct)) {
-        Ok(component_body) => quote! {
-            #component_body
+        Ok(component_body) => {
+            quote! {
+                #component_body
+            }.into()
         }
-        .into(),
         Err(err) => err.to_compile_error().into(),
     }
 }

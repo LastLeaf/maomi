@@ -20,7 +20,7 @@ fn add_global_attrs(
         });
     };
     add_attr("id", parse_quote! { attribute!(&str in web_sys::Element) });
-    add_attr("title", parse_quote! { attribute!(&str in web_sys::HtmlElement) });
+    add_attr("title", parse_quote! { attribute!(&str in web_sys::HtmlElement) }); // FIXME use LocaleStr
     add_attr("hidden", parse_quote! { attribute!(bool in web_sys::HtmlElement) });
     add_attr("touch_start", parse_quote! { event!(event::touch::TouchStart) });
     add_attr("touch_move", parse_quote! { event!(event::touch::TouchMove) });

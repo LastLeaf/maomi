@@ -292,16 +292,19 @@ pub struct PrerenderingData<C: PrerenderableComponent> {
 
 impl<C: PrerenderableComponent> PrerenderingData<C> {
     /// Wrap the prerendering data.
+    #[inline]
     pub fn new(data: C::PrerenderingData) -> Self {
         Self { data }
     }
 
     /// Get the underlying prerendering data.
+    #[inline]
     pub fn get(&self) -> &C::PrerenderingData {
         &self.data
     }
 
     /// Unwrap the data.
+    #[inline]
     pub fn unwrap(self) -> C::PrerenderingData {
         self.data
     }

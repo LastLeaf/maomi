@@ -157,6 +157,7 @@ pub struct Prop<T> {
 
 impl<T> Prop<T> {
     /// Create the property with initial value.
+    #[inline]
     pub fn new(inner: T) -> Self {
         Self { inner }
     }
@@ -165,24 +166,28 @@ impl<T> Prop<T> {
 impl<T> Deref for Prop<T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl<T> AsRef<T> for Prop<T> {
+    #[inline]
     fn as_ref(&self) -> &T {
         &self.inner
     }
 }
 
 impl<T> Borrow<T> for Prop<T> {
+    #[inline]
     fn borrow(&self) -> &T {
         &self.inner
     }
 }
 
 impl<T: Display> Display for Prop<T> {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.inner.fmt(f)
     }
@@ -204,10 +209,12 @@ pub trait PropAsRef<S: ?Sized + PartialEq> {
 }
 
 impl<S: ?Sized + PartialEq + ToOwned<Owned = T>, T: Borrow<S>> PropAsRef<S> for T {
+    #[inline]
     fn property_as_ref(&self) -> &S {
         self.borrow()
     }
 
+    #[inline]
     fn property_to_owned(s: &S) -> Self
     where
         Self: Sized,
@@ -219,6 +226,7 @@ impl<S: ?Sized + PartialEq + ToOwned<Owned = T>, T: Borrow<S>> PropAsRef<S> for 
 impl<S: ?Sized + PartialEq, T: PropAsRef<S>> PropertyUpdate<S> for Prop<T> {
     type UpdateContext = bool;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut bool) {
         if dest.inner.property_as_ref() == src {
             return;
@@ -236,21 +244,25 @@ pub struct BindingProp<T> {
 
 impl<T> BindingProp<T> {
     /// Create the property with initial value.
+    #[inline]
     pub fn new(default_value: T) -> Self {
         Self { value: BindingValue::new(default_value) }
     }
 
     /// Set the value.
+    #[inline]
     pub fn set(&mut self, v: T) {
         self.value.set(v);
     }
 
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
+    #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
         self.value.with(f)
     }
 
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
+    #[inline]
     pub fn update<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         self.value.update(f)
     }
@@ -266,6 +278,7 @@ impl<T: Clone> BindingProp<T> {
 impl<T> PropertyUpdate<BindingValue<T>> for BindingProp<T> {
     type UpdateContext = bool;
 
+    #[inline]
     fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<T>, ctx: &mut Self::UpdateContext) {
         if BindingValue::ptr_eq(&dest.value, src) {
             return;
@@ -286,16 +299,19 @@ pub struct BindingValue<T> {
 
 impl<T> BindingValue<T> {
     /// Create the property with initial value.
+    #[inline]
     pub fn new(default_value: T) -> Self {
         Self { inner: Rc::new(RefCell::new(default_value)) }
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn ptr_eq(a: &Self, b: &Self) -> bool {
         Rc::ptr_eq(&a.inner, &b.inner)
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn clone_ref(&self) -> Self {
         if Rc::strong_count(&self.inner) > 1 {
             panic!("A `BindingValue` cannot be associated to more than one `BindingProp`");
@@ -304,16 +320,19 @@ impl<T> BindingValue<T> {
     }
 
     /// Set the value.
+    #[inline]
     pub fn set(&mut self, v: T) {
         *self.inner.borrow_mut() = v;
     }
 
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
+    #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
         f(&(*self.inner).borrow())
     }
 
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
+    #[inline]
     pub fn update<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         f(&mut (*self.inner).borrow_mut())
     }
@@ -392,6 +411,7 @@ pub struct ListProp<T: Default> {
 
 impl<T: Default> ListProp<T> {
     /// Create the property with no item.
+    #[inline]
     pub fn new() -> Self {
         Self {
             inner: Box::new([]),
@@ -403,6 +423,7 @@ impl<'a, T: Default> IntoIterator for &'a ListProp<T> {
     type IntoIter = std::slice::Iter<'a, T>;
     type Item = &'a T;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.inner.into_iter()
     }
@@ -411,18 +432,21 @@ impl<'a, T: Default> IntoIterator for &'a ListProp<T> {
 impl<T: Default> Deref for ListProp<T> {
     type Target = [T];
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl<T: Default> AsRef<[T]> for ListProp<T> {
+    #[inline]
     fn as_ref(&self) -> &[T] {
         &self.inner
     }
 }
 
 impl<T: Default> Borrow<[T]> for ListProp<T> {
+    #[inline]
     fn borrow(&self) -> &[T] {
         &self.inner
     }

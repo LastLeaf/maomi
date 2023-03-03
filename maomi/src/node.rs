@@ -119,6 +119,9 @@ pub trait SlotKindTrait<K, C>: Default {
         K: 'a,
         C: 'a;
 
+    /// Whether the slot may update after created
+    fn may_update(&self) -> bool;
+
     /// Add a slot with the slot content.
     #[doc(hidden)]
     fn add(&mut self, k: K, c: C) -> Result<(), Error>;
@@ -177,6 +180,11 @@ impl<K, C> Default for NoneSlot<K, C> {
 impl<K, C> SlotKindTrait<K, C> for NoneSlot<K, C> {
     type Update<'a> = NoneSlotUpdate<'a, K, C> where K: 'a, C: 'a;
     type Iter<'a> = std::iter::Empty<(&'a K, &'a C)> where K: 'a, C: 'a;
+
+    #[inline(always)]
+    fn may_update(&self) -> bool {
+        false
+    }
 
     #[inline]
     fn add(&mut self, _: K, _: C) -> Result<(), Error> {
@@ -257,6 +265,11 @@ impl<K, C> Default for StaticSingleSlot<K, C> {
 impl<K, C> SlotKindTrait<K, C> for StaticSingleSlot<K, C> {
     type Update<'a> = StaticSingleSlotUpdate<'a, K, C> where K: 'a, C: 'a;
     type Iter<'a> = std::option::IntoIter<(&'a K, &'a C)> where K: 'a, C: 'a;
+
+    #[inline(always)]
+    fn may_update(&self) -> bool {
+        false
+    }
 
     #[inline]
     fn add(&mut self, k: K, c: C) -> Result<(), Error> {
@@ -359,6 +372,11 @@ impl<K, C> Default for DynamicSlot<K, C> {
 impl<K: Hash + Eq, C> SlotKindTrait<K, C> for DynamicSlot<K, C> {
     type Update<'a> = DynamicSlotUpdate<'a, K, C> where K: 'a, C: 'a;
     type Iter<'a> = std::collections::hash_map::Iter<'a, K, C> where K: 'a, C: 'a;
+
+    #[inline(always)]
+    fn may_update(&self) -> bool {
+        true
+    }
 
     #[inline]
     fn add(&mut self, k: K, v: C) -> Result<(), Error> {

@@ -244,7 +244,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
         Self: Sized;
 
     /// Update a component and store the slot changes.
-    #[inline]
+    #[inline(never)]
     fn template_update_store_slot_changes<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
@@ -278,7 +278,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
     }
 
     /// Iterate over slots.
-    #[inline]
+    #[inline(never)]
     fn for_each_slot_scope<'b>(
         &'b mut self,
         backend_element: &'b mut ForestNodeMut<B::GeneralElement>,

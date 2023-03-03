@@ -66,7 +66,7 @@ impl<C: 'static> ComponentRc<C> {
 
     /// Schedule an update in another task, getting the component mutable reference.
     ///
-    /// The `f` will be called asynchously.
+    /// The `f` will be called asynchronously.
     /// The template is always updated after `f` being called.
     /// Panics if any error occurred during update.
     pub fn task<R: 'static>(
@@ -83,7 +83,7 @@ impl<C: 'static> ComponentRc<C> {
 
     /// Schedule an update in another task, getting the component mutable reference.
     ///
-    /// The `f` will be called asynchously.
+    /// The `f` will be called asynchronously.
     /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
     /// Panics if any error occurred during update.
     pub fn task_with<R: 'static>(
@@ -101,7 +101,7 @@ impl<C: 'static> ComponentRc<C> {
 
     /// Schedule an update, getting the component mutable reference.
     ///
-    /// The `f` will be called asynchously.
+    /// The `f` will be called asynchronously.
     /// The template is always updated after `f` being called.
     pub async fn update<R: 'static>(
         &self,
@@ -126,7 +126,7 @@ impl<C: 'static> ComponentRc<C> {
 
     /// Schedule a visiting task, getting the component mutable reference.
     ///
-    /// The `f` will be called asynchously.
+    /// The `f` will be called asynchronously.
     /// If the template is needed to be updated, `ComponentMutCtx::need_update` should be called during `f` execution.
     pub async fn update_with<R: 'static>(
         &self,
@@ -152,7 +152,7 @@ impl<C: 'static> ComponentRc<C> {
 
     /// Schedule a visiting task, getting the component reference.
     ///
-    /// The `f` will be called asynchously.
+    /// The `f` will be called asynchronously.
     pub async fn get<R: 'static>(&self, f: impl 'static + FnOnce(&C) -> R) -> R {
         let ret = Rc::new(Cell::<Option<R>>::new(None));
         let ret2 = ret.clone();
@@ -482,9 +482,9 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeInBackend<B, 
     ) -> Result<(), Error> {
         let has_slot_changes = {
             let mut comp = this.inner.borrow_mut();
-            let force_schdule_update = f(&mut comp);
+            let force_schedule_update = f(&mut comp);
             if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
-                || force_schdule_update
+                || force_schedule_update
             {
                 let mut backend_element = this.forest_node_rc.borrow_mut();
                 <C as Component>::before_template_apply(&mut comp);
@@ -568,7 +568,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
     type UpdateTarget = C;
     type UpdateContext = bool;
 
-    #[inline]
+    #[inline(never)]
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
@@ -594,7 +594,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         Ok((this, backend_element))
     }
 
-    #[inline]
+    #[inline(never)]
     fn create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
@@ -630,7 +630,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         }
     }
 
-    #[inline]
+    #[inline(never)]
     fn apply_updates<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,

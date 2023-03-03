@@ -696,16 +696,19 @@ impl<'a> ToTokens for TemplateCreate<'a> {
             locale_group,
         } = self;
         let Template { children } = template;
-        let children = children.into_iter().map(|x| TemplateNodeCreate {
-            inside_update: false,
-            template_node: x,
-            backend_param,
-            locale_group,
-        });
-        quote! {
-            (#({#children},)*)
-        }
-        .to_tokens(tokens)
+        let mut ts = quote!();
+        children
+            .into_iter()
+            .for_each(|x| {
+                let c = TemplateNodeCreate {
+                    inside_update: false,
+                    template_node: x,
+                    backend_param,
+                    locale_group,
+                };
+                quote! { {#c}, }.to_tokens(&mut ts);
+            });
+        quote!((#ts)).to_tokens(tokens);
     }
 }
 
@@ -748,7 +751,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     __m_child
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
@@ -764,7 +767,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
                     __m_child
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
@@ -815,7 +818,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_backend_element_token,
                         (),
                     )
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
@@ -871,11 +874,12 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_child,
                         __m_slot_children,
                     )
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::IfElse { branches } => {
                 let branch_ty = get_branch_ty(branches.len());
-                let branches = branches.iter().enumerate().map(|(index, x)| {
+                let mut branches_ts = quote! {};
+                branches.iter().enumerate().for_each(|(index, x)| {
                     let branch_selected = get_branch_selected(index);
                     let TemplateIfElse { else_token, if_cond, children, .. } = x;
                     let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
@@ -888,13 +892,13 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         #else_token #if_cond {
                             maomi::node::#branch_ty::#branch_selected((#({#children},)*))
                         }
-                    }
+                    }.to_tokens(&mut branches_ts);
                 });
                 quote! {
                     let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                     let __m_slot_children = {
                         let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                        #(#branches)*
+                        #branches_ts
                     };
                     let __m_backend_element_token = __m_backend_element.token();
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
@@ -902,7 +906,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_backend_element_token,
                         __m_slot_children,
                     )
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::Match { match_token, expr, arms, .. } => {
                 let branch_ty = get_branch_ty(arms.len());
@@ -935,7 +939,7 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_backend_element_token,
                         __m_slot_children,
                     )
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
                 let span = for_token.span();
@@ -980,9 +984,9 @@ impl<'a> ToTokens for TemplateNodeCreate<'a> {
                         __m_backend_element_token,
                         __m_list_diff_algo,
                     )
-                }
+                }.to_tokens(tokens);
             }
-        }.to_tokens(tokens);
+        }
     }
 }
 
@@ -1000,19 +1004,18 @@ impl<'a> ToTokens for TemplateUpdate<'a> {
             locale_group,
         } = self;
         let Template { children } = template;
-        let children = children
+        children
             .into_iter()
             .enumerate()
-            .map(|(index, x)| TemplateNodeUpdate {
-                child_index: Index::from(index),
-                template_node: x,
-                backend_param,
-                locale_group,
+            .for_each(|(index, x)| {
+                let c = TemplateNodeUpdate {
+                    child_index: Index::from(index),
+                    template_node: x,
+                    backend_param,
+                    locale_group,
+                };
+                quote! { {#c} }.to_tokens(tokens);
             });
-        quote! {
-            #({#children})*
-        }
-        .to_tokens(tokens);
     }
 }
 
@@ -1033,7 +1036,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
         } = self;
         match template_node {
             TemplateNode::StaticText { .. } => {
-                quote! {}
+                // empty
             }
             TemplateNode::DynamicText { brace_token, expr } => {
                 let span = brace_token.span;
@@ -1044,7 +1047,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 quote_spanned! {span=>
                     let __m_child = &mut __m_children.#child_index;
                     __m_child.set_text::<#backend_param>(__m_parent_element, #translated)?;
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::Slot { tag_lt_token, data, .. } => {
                 let span = tag_lt_token.span();
@@ -1090,7 +1093,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     } else {
                         __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
                     }
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
                 let span = tag_lt_token.span();
@@ -1142,28 +1145,40 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         #[inline] |__m_slot_change| {
                             match __m_slot_change {
                                 maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
-                                    let __m_children = (#({#create_children},)*);
-                                    maomi::node::SlotKindTrait::add(__m_slot_children, __m_backend_element_token.stable_addr(), __m_children)?;
+                                    if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
+                                        let __m_children = (#({#create_children},)*);
+                                        maomi::node::SlotKindTrait::add(__m_slot_children, __m_backend_element_token.stable_addr(), __m_children)?;
+                                    }
                                 }
                                 maomi::node::SlotChange::DataChanged(__m_parent_element, __m_backend_element_token, #slot_var_name)
                                     | maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name)
                                     => {
-                                    let __m_children =
-                                        maomi::node::SlotKindTrait::get_mut(__m_slot_children, __m_backend_element_token.stable_addr())?;
-                                    #({#update_children})*
+                                        let __m_children =
+                                            maomi::node::SlotKindTrait::get_mut(__m_slot_children, __m_backend_element_token.stable_addr())?;
+                                        #({#update_children})*
                                 }
                                 maomi::node::SlotChange::Removed(__m_backend_element_token) => {
-                                    maomi::node::SlotKindTrait::remove(__m_slot_children, __m_backend_element_token.stable_addr())?;
+                                    if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
+                                        maomi::node::SlotKindTrait::remove(__m_slot_children, __m_backend_element_token.stable_addr())?;
+                                    }
                                 }
                             }
                             Ok(())
                         },
                     )?;
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::IfElse { branches } => {
                 let branch_ty = get_branch_ty(branches.len());
-                let branches = branches.iter().enumerate().map(|(index, x)| {
+                quote! {
+                    let maomi::node::ControlNode {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                }.to_tokens(tokens);
+                branches.iter().enumerate().for_each(|(index, x)| {
                     let branch_selected = get_branch_selected(index);
                     let TemplateIfElse { else_token, if_cond, children, .. } = x;
                     let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
@@ -1199,17 +1214,8 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::replace_with(__m_backend_element, __m_backend_element_new);
                             }
                         }
-                    }
+                    }.to_tokens(tokens);
                 });
-                quote! {
-                    let maomi::node::ControlNode {
-                        forest_token: ref mut __m_backend_element_token,
-                        content: ref mut __m_slot_children,
-                    } = __m_children.#child_index;
-                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
-                        .ok_or(maomi::error::Error::ListChangeWrong)?;
-                    #(#branches)*
-                }
             }
             TemplateNode::Match { match_token, expr, arms, .. } => {
                 let branch_ty = get_branch_ty(arms.len());
@@ -1261,7 +1267,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     #match_token #expr {
                         #(#branches)*
                     }
-                }
+                }.to_tokens(tokens);
             }
             TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
                 let span = for_token.span();
@@ -1315,9 +1321,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         )?;
                     }
                     __m_list_update_iter.end()?;
-                }
+                }.to_tokens(tokens);
             }
-        }.to_tokens(tokens);
+        }
     }
 }
 
@@ -1345,7 +1351,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #ref_sign #value,
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         maomi::prop::PropertyUpdate::compare_and_set_ref(
@@ -1353,7 +1359,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #ref_sign #value,
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 }
             }
             TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, eq_token, .. } => {
@@ -1371,7 +1377,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         maomi::prop::PropertyUpdate::compare_and_set_ref(
@@ -1379,7 +1385,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 }
             }
             TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
@@ -1403,11 +1409,10 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                         }),
                         __m_update_ctx,
                     );
-                }
+                }.to_tokens(tokens);
             }
             TemplateAttribute::Slot { .. } => unreachable!(),
         }
-        .to_tokens(tokens)
     }
 }
 
@@ -1421,7 +1426,7 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
         let Self { attr, list_index } = self;
         match attr {
             TemplateAttribute::StaticProperty { .. } => {
-                quote! {}
+                // empty
             }
             TemplateAttribute::DynamicProperty {
                 ref_token,
@@ -1445,7 +1450,7 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         maomi::prop::PropertyUpdate::compare_and_set_ref(
@@ -1453,7 +1458,7 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 }
             }
             TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
@@ -1478,13 +1483,12 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             }),
                             __m_update_ctx,
                         );
-                    }
+                    }.to_tokens(tokens);
                 } else {
-                    quote! {}
+                    // empty
                 }
             }
             TemplateAttribute::Slot { .. } => unreachable!(),
         }
-        .to_tokens(tokens)
     }
 }
