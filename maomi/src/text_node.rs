@@ -12,7 +12,7 @@ pub struct TextNode {
 
 impl TextNode {
     /// Create a text node.
-    #[inline(never)]
+    #[inline]
     pub fn create<B: Backend>(
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,
         content: impl ToLocaleStr,
@@ -39,7 +39,7 @@ impl TextNode {
     }
 
     /// Set the text content.
-    #[inline(never)]
+    #[inline]
     pub fn set_text<B: Backend>(
         &mut self,
         owner: &mut tree::ForestNodeMut<B::GeneralElement>,

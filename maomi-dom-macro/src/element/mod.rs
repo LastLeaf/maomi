@@ -359,7 +359,7 @@ impl ToTokens for DomElementDefinition {
                     Ok((this, backend_element))
                 }
             
-                #[inline(never)]
+                #[inline]
                 fn create<'b>(
                     &'b mut self,
                     _backend_context: &'b BackendContext<DomBackend>,
@@ -379,7 +379,7 @@ impl ToTokens for DomElementDefinition {
                     Ok(())
                 }
             
-                #[inline(never)]
+                #[inline]
                 fn apply_updates<'b>(
                     &'b mut self,
                     _backend_context: &'b BackendContext<DomBackend>,

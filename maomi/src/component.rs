@@ -568,7 +568,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
     type UpdateTarget = C;
     type UpdateContext = bool;
 
-    #[inline(never)]
+    #[inline]
     fn init<'b>(
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
