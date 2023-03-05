@@ -898,13 +898,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             __m_child,
                             __m_backend_context,
                             __m_parent_element,
-                            #[inline] |
+                            Box::new(|
                                 __m_child: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
                                 __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
                             | {
                                 #(#attrs_update)*
-                            },
-                            #[inline] |__m_slot_change| {
+                            }),
+                            &mut |__m_slot_change| {
                                 match __m_slot_change {
                                     maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name) => {
                                         if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
@@ -944,7 +944,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             &mut __m_child,
                             __m_backend_context,
                             __m_parent_element,
-                            #[inline] |__m_child, __m_update_ctx| {
+                            Box::new(|__m_child, __m_update_ctx| {
                                 #(
                                     maomi::prop::ListPropertyInit::init_list(
                                         &mut __m_child.#list_prop_name,
@@ -953,8 +953,8 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                     );
                                 )*
                                 #(#attrs_create)*
-                            },
-                            #[inline] |__m_parent_element, __m_backend_element_token, #slot_var_name| {
+                            }),
+                            &mut |__m_parent_element, __m_backend_element_token, #slot_var_name| {
                                 maomi::node::SlotKindTrait::add(
                                     &mut __m_slot_children,
                                     __m_backend_element_token.stable_addr(),

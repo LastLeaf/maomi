@@ -44,8 +44,8 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
             &mut component_node,
             backend_context,
             parent,
-            |comp, _| init(comp),
-            |_, _, _| Ok(()),
+            Box::new(|comp, _| init(comp)),
+            &mut |_, _, _| Ok(()),
         )?;
         let this = Self {
             component_node,

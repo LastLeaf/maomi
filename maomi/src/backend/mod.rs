@@ -199,8 +199,8 @@ pub trait BackendComponent<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext),
-        slot_fn: impl FnMut(
+        update_fn: Box<dyn 'b + FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext)>,
+        slot_fn: &mut dyn FnMut(
             &mut tree::ForestNodeMut<B::GeneralElement>,
             &ForestToken,
             &Self::SlotData,
@@ -212,8 +212,8 @@ pub trait BackendComponent<B: Backend> {
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: impl FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext),
-        slot_fn: impl FnMut(
+        update_fn: Box<dyn 'b + FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext)>,
+        slot_fn: &mut dyn FnMut(
             SlotChange<&mut tree::ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error>;

@@ -599,8 +599,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<<B as Backend>::GeneralElement>,
-        update_fn: impl FnOnce(&mut C, &mut bool),
-        mut slot_fn: impl FnMut(
+        update_fn: Box<dyn 'b + FnOnce(&mut C, &mut bool)>,
+        slot_fn: &mut dyn FnMut(
             &mut ForestNodeMut<B::GeneralElement>,
             &ForestToken,
             &Self::SlotData,
@@ -640,8 +640,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         &'b mut self,
         backend_context: &'b BackendContext<B>,
         owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: impl FnOnce(&mut C, &mut bool),
-        mut slot_fn: impl FnMut(
+        update_fn: Box<dyn 'b + FnOnce(&mut C, &mut bool)>,
+        mut slot_fn: &mut dyn FnMut(
             SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {

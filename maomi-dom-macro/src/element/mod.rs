@@ -364,8 +364,8 @@ impl ToTokens for DomElementDefinition {
                     &'b mut self,
                     _backend_context: &'b BackendContext<DomBackend>,
                     owner: &'b mut ForestNodeMut<DomGeneralElement>,
-                    update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
-                    mut slot_fn: impl FnMut(
+                    update_fn: Box<dyn 'b + FnOnce(&mut Self, &mut Self::UpdateContext)>,
+                    slot_fn: &mut dyn FnMut(
                         &mut ForestNodeMut<DomGeneralElement>,
                         &ForestToken,
                         &Self::SlotData,
@@ -384,8 +384,8 @@ impl ToTokens for DomElementDefinition {
                     &'b mut self,
                     _backend_context: &'b BackendContext<DomBackend>,
                     owner: &'b mut ForestNodeMut<<DomBackend as maomi::backend::Backend>::GeneralElement>,
-                    update_fn: impl FnOnce(&mut Self, &mut Self::UpdateContext),
-                    mut slot_fn: impl FnMut(
+                    update_fn: Box<dyn 'b + FnOnce(&mut Self, &mut Self::UpdateContext)>,
+                    slot_fn: &mut dyn FnMut(
                         SlotChange<&mut ForestNodeMut<DomGeneralElement>, &ForestToken, &Self::SlotData>,
                     ) -> Result<(), Error>,
                 ) -> Result<(), Error> {
