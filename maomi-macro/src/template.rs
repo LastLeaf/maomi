@@ -709,9 +709,11 @@ impl<'a> ToTokens for TemplateChildren<'a> {
             | {
                 let __m_children_results = (#({#children},)*);
                 Ok(if __m_children.is_some() {
-                    None
+                    maomi::node::UnionOption::none()
                 } else {
-                    Some((#(__m_children_results.#result_index.unwrap(),)*))
+                    unsafe {
+                        maomi::node::UnionOption::some((#(__m_children_results.#result_index.unwrap(),)*))
+                    }
                 })
             },).0
         }.to_tokens(tokens);
@@ -909,7 +911,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                             maomi::node::SlotKindTrait::add(
                                                 __m_slot_children,
                                                 __m_backend_element_token.stable_addr(),
-                                                __m_children_results(__m_parent_element, None)?.unwrap(),
+                                                unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() },
                                             )?;
                                         }
                                     }
@@ -956,7 +958,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 maomi::node::SlotKindTrait::add(
                                     &mut __m_slot_children,
                                     __m_backend_element_token.stable_addr(),
-                                    __m_children_results(__m_parent_element, None)?.unwrap(),
+                                    unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() },
                                 )?;
                                 Ok(())
                             },
@@ -1002,7 +1004,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                         *__m_backend_element_token = __m_backend_element.token();
                                         *__m_slot_children = {
                                             let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                            maomi::node::#branch_ty::#branch_selected(__m_children_results(__m_parent_element, None)?.unwrap())
+                                            maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
                                         };
                                         __m_backend_element
                                     };
@@ -1013,7 +1015,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                                 let __m_slot_children = {
                                     let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                    maomi::node::#branch_ty::#branch_selected(__m_children_results(__m_parent_element, None)?.unwrap())
+                                    maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
                                 };
                                 let __m_backend_element_token = __m_backend_element.token();
                                 <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
@@ -1060,7 +1062,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                         *__m_backend_element_token = __m_backend_element.token();
                                         *__m_slot_children = {
                                             let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                            maomi::node::#branch_ty::#branch_selected(__m_children_results(__m_parent_element, None)?.unwrap())
+                                            maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
                                         };
                                         __m_backend_element
                                     };
@@ -1071,7 +1073,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                                 let __m_slot_children = {
                                     let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                    maomi::node::#branch_ty::#branch_selected(__m_children_results(__m_parent_element, None)?.unwrap())
+                                    maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
                                 };
                                 let __m_backend_element_token = __m_backend_element.token();
                                 <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
@@ -1130,7 +1132,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                         __m_children_results(__m_parent_element, Some(__m_children))?;
                                         Ok(None)
                                     } else {
-                                        Ok(Some(__m_children_results(__m_parent_element, None)?.unwrap()))
+                                        Ok(Some(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }))
                                     }
                                 },
                             )?;
@@ -1149,7 +1151,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 __m_list_update_iter.next(
                                     #next_arg
                                     #[inline] |__m_parent_element| {
-                                        Ok(__m_children_results(__m_parent_element, None)?.unwrap())
+                                        Ok(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
                                     },
                                 )?;
                             }

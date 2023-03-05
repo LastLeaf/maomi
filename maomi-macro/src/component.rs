@@ -380,9 +380,11 @@ impl ToTokens for ComponentBody {
                                 let __m_slot_scopes = &mut __m_slot_scopes;
                                 let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                                 let __m_parent_element = __m_backend_element;
-                                let __m_children = self.#template_field.__m_structure.as_mut();
-                                if let Some(__m_children) = (#template_children)(__m_parent_element, __m_children)? {
-                                    self.#template_field.__m_structure = Some(__m_children);
+                                let mut __m_children_results = #template_children;
+                                if let Some(__m_children) = self.#template_field.__m_structure.as_mut() {
+                                    __m_children_results(__m_parent_element, Some(__m_children))?;
+                                } else {
+                                    self.#template_field.__m_structure = Some(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() });
                                 }
                             }
                             maomi::node::SlotKindUpdateTrait::finish(__m_slot_scopes, |_, (n, _)| {

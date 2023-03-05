@@ -181,6 +181,7 @@ impl<T, const N: usize> SliceAlloc<T, N> {
         } else {
             if inner.last_used_count == N {
                 let new_buf = SliceBuf {
+                    // TODO is it safe?
                     slices: Box::pin(unsafe { MaybeUninit::uninit().assume_init() }),
                 };
                 inner.slices.push(new_buf);

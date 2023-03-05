@@ -8,6 +8,32 @@ use crate::{
 };
 use tree::ForestTokenAddr;
 
+/// An unsafe option as a union used to reduce some checking overhead.
+pub union UnionOption<T> {
+    none: (),
+    some: std::mem::ManuallyDrop<T>,
+}
+
+impl<T> UnionOption<T> {
+    /// Create a none value.
+    #[inline]
+    pub fn none() -> Self {
+        Self { none: () }
+    }
+
+    /// Create a none value.
+    #[inline]
+    pub fn some(inner: T) -> Self {
+        Self { some: std::mem::ManuallyDrop::new(inner) }
+    }
+
+    /// Assume it is not none and get the contained value.
+    #[inline]
+    pub unsafe fn unwrap_unchecked(self) -> T {
+        std::mem::ManuallyDrop::into_inner(self.some)
+    }
+}
+
 /// A weak ref to the owner.
 /// 
 /// This is used by the backend implementor.
