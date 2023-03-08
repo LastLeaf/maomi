@@ -272,7 +272,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
             SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        for (_, (t, d)) in self.template_mut().slot_scopes().iter() {
+        for (t, d) in self.template_mut().slot_scopes().iter() {
             let n = &mut backend_element
                 .borrow_mut_token(t)
                 .ok_or(Error::TreeNodeReleased)?;

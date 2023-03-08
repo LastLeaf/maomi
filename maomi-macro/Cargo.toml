@@ -11,6 +11,7 @@ edition = "2021"
 
 [lib]
 proc-macro = true
+doctest = false
 
 [dependencies]
 maomi-tools = { version = "=0.4.0", path = "../maomi-tools" }

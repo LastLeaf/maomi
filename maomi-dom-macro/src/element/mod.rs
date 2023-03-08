@@ -397,7 +397,7 @@ impl ToTokens for DomElementDefinition {
             }
 
             impl SupportBackend for #tag_name {
-                type Target = Self;
+                type Target = Box<Self>;
                 type SlotChildren<C> = StaticSingleSlot<ForestTokenAddr, C>;
             }
         });

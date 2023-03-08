@@ -346,24 +346,39 @@ mod test {
         r
     }
 
-    pub(crate) fn parse_str(s: &str) -> String {
-        let ss: mac::I18nArgs = syn::parse_str(s).unwrap();
-        quote::quote!(#ss).to_string()
+    #[test]
+    #[serial]
+    fn simple_translation() {
+        fn parse_str(s: &str) -> String {
+            let ss: mac::I18nArgs = syn::parse_str(s).unwrap();
+            quote::quote!(#ss).to_string()
+        }
+        let a = setup_env("test", |env| {
+            env.write_locale_file("test.toml", r#"
+                [translation]
+                "abc" = "def"
+            "#);
+            parse_str(r#""abc""#)
+        });
+        assert_eq!(a, r#"maomi :: locale_string :: LocaleStaticStr :: translated ("def")"#);
     }
 
     #[test]
     #[serial]
-    fn simple_translation() {
-        let (a, b) = setup_env("test", |env| {
+    fn scoped_translation() {
+        fn parse_str(s: &str) -> String {
+            let ss: mac::I18nGroupFormatArgs = syn::parse_str(s).unwrap();
+            quote::quote!(#ss).to_string()
+        }
+        let a = setup_env("test", |env| {
             env.write_locale_file("test.toml", r#"
                 [translation]
                 "abc" = "def"
                 [tt]
                 "abc" = "ghi"
             "#);
-            (parse_str(r#""abc""#), parse_str(r#"tt, "abc""#))
+            parse_str(r#"tt, "abc""#)
         });
-        assert_eq!(a, r#"maomi :: locale_string :: LocaleStaticStr :: translated ("def")"#);
-        assert_eq!(b, r#"maomi :: locale_string :: LocaleStaticStr :: translated ("ghi")"#);
+        assert_eq!(a, r#"maomi :: locale_string :: LocaleStaticStr :: translated ("ghi")"#);
     }
 }

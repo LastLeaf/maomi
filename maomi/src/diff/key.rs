@@ -40,31 +40,37 @@ pub struct KeyList<K: Eq + Hash, C> {
 
 impl<K: Eq + Hash, C> KeyList<K, C> {
     #[doc(hidden)]
+    #[inline]
     pub fn list_diff_new<'a, 'b, B: Backend>(
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
-    ) -> ListKeyAlgoNew<'a, 'b, B, K, C> {
-        ListKeyAlgoNew {
-            cur_len: 0,
-            map: HashMap::with_capacity(size_hint),
-            backend_element,
-            _phantom: PhantomData,
-        }
+    ) -> ListAlgo<ListKeyAlgoNew<'a, 'b, B, K, C>, ListKeyAlgoUpdate<'a, 'b, B, K, C>> {
+        ListAlgo::New(
+            ListKeyAlgoNew {
+                cur_len: 0,
+                map: HashMap::with_capacity(size_hint),
+                backend_element,
+                _phantom: PhantomData,
+            }
+        )
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn list_diff_update<'a, 'b, B: Backend>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
-    ) -> ListKeyAlgoUpdate<'a, 'b, B, K, C> {
-        ListKeyAlgoUpdate {
-            map: &mut self.map,
-            new_map: HashMap::with_capacity(size_hint),
-            stable_pos: Vec::with_capacity(size_hint),
-            backend_element,
-            _phantom: PhantomData,
-        }
+    ) -> ListAlgo<ListKeyAlgoNew<'a, 'b, B, K, C>, ListKeyAlgoUpdate<'a, 'b, B, K, C>> {
+        ListAlgo::Update(
+            ListKeyAlgoUpdate {
+                map: &mut self.map,
+                new_map: HashMap::with_capacity(size_hint),
+                stable_pos: Vec::with_capacity(size_hint),
+                backend_element,
+                _phantom: PhantomData,
+            }
+        )
     }
 }
 
@@ -114,6 +120,7 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoNew<'a, 'b, B, K, C> {
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn end(self) -> KeyList<K, C> {
         KeyList {
             map: self.map,

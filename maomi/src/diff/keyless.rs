@@ -19,32 +19,38 @@ pub struct KeylessList<C> {
 
 impl<C> KeylessList<C> {
     #[doc(hidden)]
+    #[inline]
     pub fn list_diff_new<'a, 'b, B: Backend>(
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
-    ) -> ListKeylessAlgoNew<'a, 'b, B, C> {
-        ListKeylessAlgoNew {
-            list: Vec::with_capacity(size_hint),
-            backend_element,
-            _phantom: PhantomData,
-        }
+    ) -> ListAlgo<ListKeylessAlgoNew<'a, 'b, B, C>, ListKeylessAlgoUpdate<'a, 'b, B, C>> {
+        ListAlgo::New(
+            ListKeylessAlgoNew {
+                list: Vec::with_capacity(size_hint),
+                backend_element,
+                _phantom: PhantomData,
+            }
+        )
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn list_diff_update<'a, 'b, B: Backend>(
         &'a mut self,
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
-    ) -> ListKeylessAlgoUpdate<'a, 'b, B, C> {
+    ) -> ListAlgo<ListKeylessAlgoNew<'a, 'b, B, C>, ListKeylessAlgoUpdate<'a, 'b, B, C>> {
         if size_hint > self.list.len() {
             self.list.reserve_exact(size_hint - self.list.len());
         }
-        ListKeylessAlgoUpdate {
-            cur_index: 0,
-            list: &mut self.list,
-            backend_element,
-            _phantom: PhantomData,
-        }
+        ListAlgo::Update(
+            ListKeylessAlgoUpdate {
+                cur_index: 0,
+                list: &mut self.list,
+                backend_element,
+                _phantom: PhantomData,
+            }
+        )
     }
 }
 
@@ -74,6 +80,7 @@ impl<'a, 'b, B: Backend, C> ListKeylessAlgoNew<'a, 'b, B, C> {
     }
 
     #[doc(hidden)]
+    #[inline]
     pub fn end(self) -> KeylessList<C> {
         KeylessList {
             list: self.list,

@@ -387,7 +387,7 @@ impl ToTokens for ComponentBody {
                                     self.#template_field.__m_structure = Some(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() });
                                 }
                             }
-                            maomi::node::SlotKindUpdateTrait::finish(__m_slot_scopes, |_, (n, _)| {
+                            maomi::node::SlotKindUpdateTrait::finish(__m_slot_scopes, |(n, _)| {
                                 __m_slot_fn(maomi::node::SlotChange::Removed(&n))?;
                                 Ok(())
                             })?;

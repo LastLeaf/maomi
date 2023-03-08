@@ -13,3 +13,12 @@ Key features:
 
 See [dom-template](./maomi-dom-template/) for examples.
 Compile with `wasm-pack build maomi-dom-template --target no-modules` .
+
+## Run Tests
+
+General rust tests and wasm-pack tests are both needed.
+
+```sh
+cargo test
+wasm-pack test --firefox maomi-dom # or --chrome
+```

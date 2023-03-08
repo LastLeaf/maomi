@@ -559,7 +559,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
 }
 
 impl<C: Component + ComponentSlotKind> SupportBackend for C {
-    type Target = ComponentNode<C>;
+    type Target = Box<ComponentNode<C>>;
     type SlotChildren<SlotContent> = <C as ComponentSlotKind>::SlotChildren<SlotContent>;
 }
 
@@ -594,7 +594,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         Ok((this, backend_element))
     }
 
-    #[inline(never)]
+    #[inline]
     fn create<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,
@@ -635,7 +635,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         }
     }
 
-    #[inline(never)]
+    #[inline]
     fn apply_updates<'b>(
         &'b mut self,
         backend_context: &'b BackendContext<B>,

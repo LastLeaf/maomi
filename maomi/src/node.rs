@@ -32,6 +32,12 @@ impl<T> UnionOption<T> {
     pub unsafe fn unwrap_unchecked(self) -> T {
         std::mem::ManuallyDrop::into_inner(self.some)
     }
+
+    /// Assume it is not none and get the reference.
+    #[inline]
+    pub unsafe fn as_ref_unchecked(&self) -> &T {
+        &self.some
+    }
 }
 
 /// A weak ref to the owner.
@@ -139,10 +145,9 @@ pub trait SlotKindTrait<K, C>: Default {
         C: 'a;
 
     /// The iterator type.
-    type Iter<'a>: Iterator<Item = (&'a K, &'a C)>
+    type Iter<'a>: Iterator<Item = &'a C>
     where
         Self: 'a,
-        K: 'a,
         C: 'a;
 
     /// Whether the slot may update after created
@@ -187,7 +192,7 @@ pub trait SlotKindUpdateTrait<'a, K: 'a, C: 'a> {
 
     /// Finish update, handling unused items
     #[doc(hidden)]
-    fn finish(self, remove_item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error>;
+    fn finish(self, remove_item_fn: impl FnMut(C) -> Result<(), Error>) -> Result<(), Error>;
 }
 
 /// A slot list that is always empty.
@@ -205,7 +210,7 @@ impl<K, C> Default for NoneSlot<K, C> {
 
 impl<K, C> SlotKindTrait<K, C> for NoneSlot<K, C> {
     type Update<'a> = NoneSlotUpdate<'a, K, C> where K: 'a, C: 'a;
-    type Iter<'a> = std::iter::Empty<(&'a K, &'a C)> where K: 'a, C: 'a;
+    type Iter<'a> = std::iter::Empty<&'a C> where K: 'a, C: 'a;
 
     #[inline(always)]
     fn may_update(&self) -> bool {
@@ -267,7 +272,7 @@ impl<'a, K: 'a, C: 'a> SlotKindUpdateTrait<'a, K, C> for NoneSlotUpdate<'a, K, C
     }
 
     #[inline]
-    fn finish(self, _: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
+    fn finish(self, _: impl FnMut(C) -> Result<(), Error>) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -278,53 +283,54 @@ impl<'a, K: 'a, C: 'a> SlotKindUpdateTrait<'a, K, C> for NoneSlotUpdate<'a, K, C
 /// Do not touch unless you know how it works exactly.
 #[derive(Debug)]
 pub struct StaticSingleSlot<K, C> {
-    kc: Option<(K, C)>,
+    kc: Option<C>,
+    phantom: PhantomData<K>,
 }
 
 impl<K, C> Default for StaticSingleSlot<K, C> {
     #[inline]
     fn default() -> Self where Self: Sized {
-        Self { kc: None }
+        Self { kc: None, phantom: PhantomData }
     }
 }
 
 impl<K, C> SlotKindTrait<K, C> for StaticSingleSlot<K, C> {
     type Update<'a> = StaticSingleSlotUpdate<'a, K, C> where K: 'a, C: 'a;
-    type Iter<'a> = std::option::IntoIter<(&'a K, &'a C)> where K: 'a, C: 'a;
+    type Iter<'a> = std::option::IntoIter<&'a C> where K: 'a, C: 'a;
 
     #[inline(always)]
     fn may_update(&self) -> bool {
         false
     }
 
-    #[inline]
-    fn add(&mut self, k: K, c: C) -> Result<(), Error> {
+    #[inline(always)]
+    fn add(&mut self, _: K, c: C) -> Result<(), Error> {
         if self.kc.is_some() {
             return Err(Error::ListChangeWrong);
         }
-        self.kc = Some((k, c));
+        self.kc = Some(c);
         Ok(())
     }
 
-    #[inline]
+    #[inline(always)]
     fn remove(&mut self, _: K) -> Result<C, Error> {
         if self.kc.is_none() {
             return Err(Error::ListChangeWrong);
         }
         match self.kc.take() {
-            Some((_, c)) => Ok(c),
+            Some(c) => Ok(c),
             None => Err(Error::ListChangeWrong),
         }
     }
 
     #[inline]
     fn get(&self, _: K) -> Result<&C, Error> {
-        self.kc.as_ref().ok_or(Error::ListChangeWrong).map(|(_, c)| c)
+        self.kc.as_ref().ok_or(Error::ListChangeWrong)
     }
 
     #[inline]
     fn get_mut(&mut self, _: K) -> Result<&mut C, Error> {
-        self.kc.as_mut().ok_or(Error::ListChangeWrong).map(|(_, c)| c)
+        self.kc.as_mut().ok_or(Error::ListChangeWrong)
     }
 
     #[inline]
@@ -334,12 +340,12 @@ impl<K, C> SlotKindTrait<K, C> for StaticSingleSlot<K, C> {
 
     #[inline]
     fn iter<'a>(&'a self) -> Self::Iter<'a> {
-        self.kc.as_ref().map(|(k, c)| (k, c)).into_iter()
+        self.kc.as_ref().into_iter()
     }
 
     #[inline]
     fn single_slot(&self) -> Option<&C> {
-        self.kc.as_ref().map(|(_, c)| c)
+        self.kc.as_ref()
     }
 }
 
@@ -369,10 +375,10 @@ impl<'a, K, C> SlotKindUpdateTrait<'a, K, C> for StaticSingleSlotUpdate<'a, K, C
     }
 
     #[inline]
-    fn finish(self, mut remove_item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
+    fn finish(self, mut remove_item_fn: impl FnMut(C) -> Result<(), Error>) -> Result<(), Error> {
         if !self.visited {
-            if let Some((k, c)) = self.s.kc.take() {
-                return remove_item_fn(k, c);
+            if let Some(c) = self.s.kc.take() {
+                return remove_item_fn(c);
             }
         }
         Ok(())
@@ -397,7 +403,7 @@ impl<K, C> Default for DynamicSlot<K, C> {
 
 impl<K: Hash + Eq, C> SlotKindTrait<K, C> for DynamicSlot<K, C> {
     type Update<'a> = DynamicSlotUpdate<'a, K, C> where K: 'a, C: 'a;
-    type Iter<'a> = std::collections::hash_map::Iter<'a, K, C> where K: 'a, C: 'a;
+    type Iter<'a> = std::collections::hash_map::Values<'a, K, C> where K: 'a, C: 'a;
 
     #[inline(always)]
     fn may_update(&self) -> bool {
@@ -435,7 +441,7 @@ impl<K: Hash + Eq, C> SlotKindTrait<K, C> for DynamicSlot<K, C> {
 
     #[inline]
     fn iter(&self) -> Self::Iter<'_> {
-        self.slots.iter()
+        self.slots.values()
     }
 
     #[inline]
@@ -468,10 +474,10 @@ impl<'a, K: Hash + Eq, C> SlotKindUpdateTrait<'a, K, C> for DynamicSlotUpdate<'a
     }
 
     #[inline]
-    fn finish(self, mut item_fn: impl FnMut(K, C) -> Result<(), Error>) -> Result<(), Error> {
+    fn finish(self, mut item_fn: impl FnMut(C) -> Result<(), Error>) -> Result<(), Error> {
         let r = std::mem::replace(&mut self.old.slots, self.cur_map);
-        for (k, c) in r {
-            item_fn(k, c)?;
+        for (_, c) in r {
+            item_fn(c)?;
         }
         Ok(())
     }

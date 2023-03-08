@@ -78,3 +78,47 @@ use crate::{
 };
 pub mod key;
 pub mod keyless;
+
+#[doc(hidden)]
+pub enum ListAlgo<N, U> {
+    New(N),
+    Update(U),
+}
+
+impl<N, U> ListAlgo<N, U> {
+    #[doc(hidden)]
+    #[inline]
+    pub fn as_new(&mut self) -> &mut N {
+        match self {
+            Self::New(x) => x,
+            Self::Update(_) => panic!("illegal list update"),
+        }
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn as_update(&mut self) -> &mut U {
+        match self {
+            Self::Update(x) => x,
+            Self::New(_) => panic!("illegal list update"),
+        }
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn into_new(self) -> N {
+        match self {
+            Self::New(x) => x,
+            Self::Update(_) => panic!("illegal list update"),
+        }
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn into_update(self) -> U {
+        match self {
+            Self::Update(x) => x,
+            Self::New(_) => panic!("illegal list update"),
+        }
+    }
+}
