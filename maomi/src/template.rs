@@ -2,6 +2,8 @@
 //! 
 //! Most utilities in this module is used by `#[component]` .
 
+use std::cell::{Cell, RefCell, Ref};
+
 use crate::{
     backend::{tree::*, Backend},
     component::*,
@@ -25,7 +27,7 @@ pub trait TemplateHelper<C: ?Sized, S, L>: Default {
     ///
     /// It is auto-managed by the `#[component]` .
     /// Do not touch unless you know how it works exactly.
-    fn mark_dirty(&mut self)
+    fn mark_dirty(&self)
     where
         C: 'static;
 
@@ -33,7 +35,7 @@ pub trait TemplateHelper<C: ?Sized, S, L>: Default {
     ///
     /// It is auto-managed by the `#[component]` .
     /// Do not touch unless you know how it works exactly.
-    fn clear_dirty(&mut self) -> bool
+    fn clear_dirty(&self) -> bool
     where
         C: 'static;
 
@@ -41,7 +43,10 @@ pub trait TemplateHelper<C: ?Sized, S, L>: Default {
     fn is_initialized(&self) -> bool;
 
     /// Get the template inner node tree.
-    fn structure(&self) -> Option<&S>;
+    fn structure(&self) -> Option<Ref<S>>;
+
+    /// Get the template inner node tree.
+    fn slot_scopes(&self) -> Ref<L>;
 
     /// Get the corresponding `ComponentRc` .
     fn component_rc(&self) -> Result<ComponentRc<C>, Error>
@@ -54,11 +59,8 @@ pub trait TemplateHelper<C: ?Sized, S, L>: Default {
         C: 'static + Sized;
 
     #[doc(hidden)]
-    fn slot_scopes(&self) -> &L;
-
-    #[doc(hidden)]
-    fn pending_slot_changes(
-        &mut self,
+    fn extract_pending_slot_changes(
+        &self,
         new_changes: Vec<SlotChange<(), ForestToken, ()>>,
     ) -> Vec<SlotChange<(), ForestToken, ()>>;
 
@@ -74,13 +76,13 @@ pub struct Template<C, S, L: Default> {
     #[doc(hidden)]
     pub __m_self_owner_weak: Option<Box<dyn OwnerWeak>>,
     updater: Option<ComponentWeak<C>>,
-    dirty: bool,
+    dirty: Cell<bool>,
     #[doc(hidden)]
-    pub __m_structure: Option<S>,
+    pub __m_structure: Option<RefCell<S>>,
     #[doc(hidden)]
-    pub __m_slot_scopes: L,
+    pub __m_slot_scopes: RefCell<L>,
     #[doc(hidden)]
-    pub __m_pending_slot_changes: Vec<SlotChange<(), ForestToken, ()>>,
+    pub __m_pending_slot_changes: Cell<Vec<SlotChange<(), ForestToken, ()>>>,
 }
 
 impl<C, S, L: Default> Default for Template<C, S, L> {
@@ -88,10 +90,10 @@ impl<C, S, L: Default> Default for Template<C, S, L> {
         Self {
             __m_self_owner_weak: None,
             updater: None,
-            dirty: false,
+            dirty: Cell::new(false),
             __m_structure: None,
-            __m_slot_scopes: L::default(),
-            __m_pending_slot_changes: Vec::with_capacity(0),
+            __m_slot_scopes: RefCell::new(L::default()),
+            __m_pending_slot_changes: Cell::new(Vec::with_capacity(0)),
         }
     }
 }
@@ -107,25 +109,21 @@ impl<C: 'static, S, L: Default> Template<C, S, L> {
 
 impl<C, S, L: Default> TemplateHelper<C, S, L> for Template<C, S, L> {
     #[inline]
-    fn mark_dirty(&mut self)
+    fn mark_dirty(&self)
     where
         C: 'static,
     {
-        if self.__m_structure.is_some() && !self.dirty {
-            self.dirty = true;
+        if self.__m_structure.is_some() {
+            self.dirty.set(true);
         }
     }
 
     #[inline]
-    fn clear_dirty(&mut self) -> bool
+    fn clear_dirty(&self) -> bool
     where
         C: 'static,
     {
-        if !self.dirty {
-            return false;
-        }
-        self.dirty = false;
-        true
+        self.dirty.replace(false)
     }
 
     #[inline]
@@ -134,8 +132,15 @@ impl<C, S, L: Default> TemplateHelper<C, S, L> for Template<C, S, L> {
     }
 
     #[inline]
-    fn structure(&self) -> Option<&S> {
-        self.__m_structure.as_ref()
+    fn structure(&self) -> Option<Ref<S>> {
+        self.__m_structure.as_ref().and_then(|x| {
+            x.try_borrow().ok()
+        })
+    }
+
+    #[inline]
+    fn slot_scopes(&self) -> Ref<L> {
+        self.__m_slot_scopes.borrow()
     }
 
     #[inline]
@@ -161,16 +166,11 @@ impl<C, S, L: Default> TemplateHelper<C, S, L> for Template<C, S, L> {
     }
 
     #[inline]
-    fn slot_scopes(&self) -> &L {
-        &self.__m_slot_scopes
-    }
-
-    #[inline]
-    fn pending_slot_changes(
-        &mut self,
+    fn extract_pending_slot_changes(
+        &self,
         new_changes: Vec<SlotChange<(), ForestToken, ()>>,
     ) -> Vec<SlotChange<(), ForestToken, ()>> {
-        std::mem::replace(&mut self.__m_pending_slot_changes, new_changes)
+        self.__m_pending_slot_changes.replace(new_changes)
     }
 
     #[inline]
@@ -208,9 +208,6 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
 
     /// Get a reference of the template field of the component.
     fn template(&self) -> &Self::TemplateField;
-
-    /// Get a mutable reference of the template field of the component.
-    fn template_mut(&mut self) -> &mut Self::TemplateField;
 
     /// Initialize a template.
     fn template_init(&mut self, init: TemplateInit<Self>)
@@ -254,7 +251,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
             Ok(())
         })?;
         if slot_changes.len() > 0 {
-            if self.template_mut().pending_slot_changes(slot_changes).len() > 0 {
+            if self.template().extract_pending_slot_changes(slot_changes).len() > 0 {
                 Err(Error::ListChangeWrong)?;
             }
             Ok(true)
@@ -272,7 +269,7 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
             SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
         ) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        for (t, d) in self.template_mut().slot_scopes().iter() {
+        for (t, d) in self.template().slot_scopes().iter() {
             let n = &mut backend_element
                 .borrow_mut_token(t)
                 .ok_or(Error::TreeNodeReleased)?;

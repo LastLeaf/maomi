@@ -16,25 +16,25 @@ pub union UnionOption<T> {
 
 impl<T> UnionOption<T> {
     /// Create a none value.
-    #[inline]
+    #[inline(always)]
     pub fn none() -> Self {
         Self { none: () }
     }
 
     /// Create a none value.
-    #[inline]
+    #[inline(always)]
     pub fn some(inner: T) -> Self {
         Self { some: std::mem::ManuallyDrop::new(inner) }
     }
 
     /// Assume it is not none and get the contained value.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn unwrap_unchecked(self) -> T {
         std::mem::ManuallyDrop::into_inner(self.some)
     }
 
     /// Assume it is not none and get the reference.
-    #[inline]
+    #[inline(always)]
     pub unsafe fn as_ref_unchecked(&self) -> &T {
         &self.some
     }

@@ -163,8 +163,8 @@ async fn cold_event_in_prerendered() {
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
-                let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
-                simulate_event(dom_elem, "scroll", false, []);
+                let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                simulate_event(&dom_elem, "scroll", false, []);
             });
         }
     }
@@ -227,12 +227,12 @@ async fn hot_event_in_prerendered() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
                     simulate_event(
-                        dom_elem,
+                        &dom_elem,
                         "touchstart",
                         true,
-                        [("changedTouches", generate_fake_touch(dom_elem, 1, 12, 34))],
+                        [("changedTouches", generate_fake_touch(&dom_elem, 1, 12, 34))],
                     );
                 })
                 .await;

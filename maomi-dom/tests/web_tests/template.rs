@@ -830,16 +830,16 @@ async fn binding_prop() {
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
-                let dom_elem = this.template_structure().unwrap().0.tag.dom_element();
+                let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
                 dom_elem.dyn_ref::<web_sys::HtmlInputElement>().unwrap().set_value("abc");
                 simulate_event(
-                    dom_elem,
+                    &dom_elem,
                     "input",
                     false,
                     [],
                 );
                 simulate_event(
-                    dom_elem,
+                    &dom_elem,
                     "change",
                     false,
                     [],

@@ -343,11 +343,6 @@ impl ToTokens for ComponentBody {
                         }
 
                         #[inline]
-                        fn template_mut(&mut self) -> &mut Self::TemplateField {
-                            &mut self.#template_field
-                        }
-
-                        #[inline]
                         fn template_init(&mut self, __m_init: maomi::template::TemplateInit<#component_name>) {
                             self.#template_field.init(__m_init);
                         }
@@ -375,16 +370,19 @@ impl ToTokens for ComponentBody {
                             let __m_event_self_weak = maomi::template::TemplateHelper::component_weak(
                                 &self.#template_field,
                             ).unwrap();
-                            let mut __m_slot_scopes = maomi::node::SlotKindTrait::update(&mut self.#template_field.__m_slot_scopes);
+                            let mut __m_slot_scopes = self.#template_field.__m_slot_scopes.borrow_mut();
+                            let mut __m_slot_scopes = maomi::node::SlotKindTrait::update(&mut *__m_slot_scopes);
                             {
                                 let __m_slot_scopes = &mut __m_slot_scopes;
                                 let __m_self_owner_weak = self.#template_field.__m_self_owner_weak.as_ref().unwrap();
                                 let __m_parent_element = __m_backend_element;
                                 let mut __m_children_results = #template_children;
-                                if let Some(__m_children) = self.#template_field.__m_structure.as_mut() {
-                                    __m_children_results(__m_parent_element, Some(__m_children))?;
+                                if let Some(__m_children) = self.#template_field.__m_structure.as_ref() {
+                                    __m_children_results(__m_parent_element, Some(&mut *__m_children.borrow_mut()))?;
                                 } else {
-                                    self.#template_field.__m_structure = Some(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() });
+                                    self.#template_field.__m_structure = Some(std::cell::RefCell::new(
+                                        unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                    ));
                                 }
                             }
                             maomi::node::SlotKindUpdateTrait::finish(__m_slot_scopes, |(n, _)| {

@@ -18,7 +18,7 @@
 
 use async_trait::async_trait;
 use std::{
-    cell::{Cell, RefCell},
+    cell::{Cell, RefCell, Ref},
     marker::PhantomData,
     rc::{Rc, Weak},
 };
@@ -266,7 +266,7 @@ pub trait ComponentExt<B: Backend, C> {
     ///
     /// The components in the template can be visited within the structure.
     /// If the component has not been fully created yet, `None` is returned.
-    fn template_structure(&self) -> Option<&Self::TemplateStructure>;
+    fn template_structure(&self) -> Option<Ref<Self::TemplateStructure>>;
 
     /// Manually trigger an update for the template.
     /// 
@@ -315,7 +315,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     type TemplateStructure = T::TemplateStructure;
 
     #[inline]
-    fn template_structure(&self) -> Option<&Self::TemplateStructure> {
+    fn template_structure(&self) -> Option<Ref<Self::TemplateStructure>> {
         <Self as ComponentTemplate<B>>::template(self).structure()
     }
 
@@ -324,7 +324,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     where
         T: 'static,
     {
-        <Self as ComponentTemplate<B>>::template_mut(self).mark_dirty();
+        <Self as ComponentTemplate<B>>::template(self).mark_dirty();
         self.rc().update(|_| {}).await
     }
 
@@ -483,7 +483,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeInBackend<B, 
         let has_slot_changes = {
             let mut comp = this.inner.borrow_mut();
             let force_schedule_update = f(&mut comp);
-            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty()
+            if <C as ComponentTemplate<B>>::template(&mut comp).clear_dirty()
                 || force_schedule_update
             {
                 let mut backend_element = this.forest_node_rc.borrow_mut();
@@ -541,7 +541,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
     fn sync_update(&self) -> Result<(), Error> {
         let has_slot_changes = {
             let mut comp = self.inner.borrow_mut();
-            <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty();
+            <C as ComponentTemplate<B>>::template(&mut comp).clear_dirty();
             let mut backend_element = self.forest_node_rc.borrow_mut();
             <C as Component>::before_template_apply(&mut comp);
             let has_slot_changes = <C as ComponentTemplate<B>>::template_update_store_slot_changes(
@@ -648,7 +648,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
         if let Ok(mut comp) = self.component().try_borrow_mut() {
             let mut force_dirty = false;
             update_fn(&mut comp, &mut force_dirty);
-            if <C as ComponentTemplate<B>>::template_mut(&mut comp).clear_dirty() || force_dirty {
+            if <C as ComponentTemplate<B>>::template(&mut comp).clear_dirty() || force_dirty {
                 // if any data changed, do updates
                 let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
                 <C as Component>::before_template_apply(&mut comp);
@@ -659,8 +659,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     &mut slot_fn,
                 )
             } else {
-                let changes = <C as ComponentTemplate<B>>::template_mut(&mut comp)
-                    .pending_slot_changes(Vec::with_capacity(0));
+                let changes = <C as ComponentTemplate<B>>::template(&mut comp)
+                    .extract_pending_slot_changes(Vec::with_capacity(0));
                 if changes.len() > 0 {
                     // if there is pending slot changes, use it
                     for slot_change in changes {
@@ -674,7 +674,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                                         .as_mut()
                                         .ok_or(Error::ListChangeWrong)?,
                                     &t,
-                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp)
+                                    &<C as ComponentTemplate<B>>::template(&mut comp)
                                         .slot_scopes()
                                         .get(addr)?
                                         .1,
@@ -688,7 +688,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                                         .as_mut()
                                         .ok_or(Error::ListChangeWrong)?,
                                     &t,
-                                    &<C as ComponentTemplate<B>>::template_mut(&mut comp)
+                                    &<C as ComponentTemplate<B>>::template(&mut comp)
                                         .slot_scopes()
                                         .get(addr)?
                                         .1,
