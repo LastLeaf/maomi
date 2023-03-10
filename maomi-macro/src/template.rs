@@ -705,6 +705,9 @@ impl<'a> ToTokens for TemplateChildren<'a> {
         let ty = template_children.into_iter().map(|template_node| {
             template_node.gen_type()
         });
+        let ty2 = template_children.into_iter().map(|template_node| {
+            template_node.gen_type()
+        });
         let result_index = (0..template_children.len()).map(|i| syn::Index::from(i));
         let slot_var_name_def = match slot_var_name {
             Some(x) => quote! { #x: &_, },
@@ -722,7 +725,7 @@ impl<'a> ToTokens for TemplateChildren<'a> {
                 >,
                 mut __m_children: Option<&mut (#(#ty,)*)>,
                 #slot_var_name_def
-            | {
+            | -> Result<maomi::node::UnionOption<Box<(#(#ty2,)*)>>, maomi::error::Error> {
                 let __m_children_results = (#({#children},)*);
                 Ok(if __m_children.is_some() {
                     maomi::node::UnionOption::none()
@@ -768,22 +771,35 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     }
                     TransRes::NotNeeded => quote! { maomi::locale_string::LocaleStaticStr::translated(#content) },
                 };
-                quote! {
-                    if let Some(__m_children) = __m_children.as_mut() {
-                        maomi::node::UnionOption::none()
-                    } else {
-                        let (__m_child, __m_backend_element) =
-                            maomi::text_node::TextNode::create::<#backend_param>(
-                                __m_parent_element,
-                                #translated,
-                            )?;
-                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
-                            __m_parent_element,
-                            &__m_backend_element,
-                        );
-                        maomi::node::UnionOption::some(__m_child)
-                    }
-                }.to_tokens(tokens);
+                let update = quote_spanned! {span=>
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let (__m_child, __m_backend_element) =
+                    maomi::text_node::TextNode::create::<#backend_param>(
+                        __m_parent_element,
+                        #translated,
+                    )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
+                        __m_parent_element,
+                        &__m_backend_element,
+                    );
+                    maomi::node::UnionOption::some(__m_child)
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #update
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
             }
 
             // dynamic text node
@@ -793,24 +809,37 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     true => quote! { #expr },
                     false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
                 };
-                quote_spanned! {span=>
-                    if let Some(__m_children) = __m_children.as_mut() {
-                        let __m_child = &mut __m_children.#child_index;
-                        __m_child.set_text::<#backend_param>(__m_parent_element, #translated)?;
-                        maomi::node::UnionOption::none()
-                    } else {
-                        let (__m_child, __m_backend_element) =
-                            maomi::text_node::TextNode::create::<#backend_param>(
-                                __m_parent_element,
-                                #translated,
-                            )?;
-                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
+                let update = quote_spanned! {span=>
+                    let __m_child = &mut __m_children.#child_index;
+                    __m_child.set_text::<#backend_param>(__m_parent_element, #translated)?;
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let (__m_child, __m_backend_element) =
+                        maomi::text_node::TextNode::create::<#backend_param>(
                             __m_parent_element,
-                            &__m_backend_element,
-                        );
-                        maomi::node::UnionOption::some(__m_child)
-                    }
-                }.to_tokens(tokens);
+                            #translated,
+                        )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
+                        __m_parent_element,
+                        &__m_backend_element,
+                    );
+                    maomi::node::UnionOption::some(__m_child)
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
             }
 
             // slot node
@@ -839,48 +868,61 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         }
                     },
                 };
-                quote_spanned! {span=>
-                    if let Some(__m_children) = __m_children.as_mut() {
-                        let maomi::node::ControlNode {
-                            forest_token: ref mut __m_backend_element_token,
-                            content: ref mut __m_slot_children,
-                        } = __m_children.#child_index;
-                        let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
-                            .ok_or(maomi::error::Error::ListChangeWrong)?;
-                        let __m_slot_data = &mut maomi::node::SlotKindUpdateTrait::reuse(__m_slot_scopes, __m_backend_element_token.stable_addr())?.1;
-                        let mut __m_slot_data_changed = false;
-                        maomi::prop::PropertyUpdate::compare_and_set_ref(
-                            __m_slot_data,
-                            #data_expr,
-                            &mut __m_slot_data_changed,
-                        );
-                        if __m_slot_data_changed {
-                            __m_slot_fn(maomi::node::SlotChange::DataChanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
-                        } else {
-                            __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
-                        }
-                        maomi::node::UnionOption::none()
+                let update = quote_spanned! {span=>
+                    let maomi::node::ControlNode {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                    let __m_slot_data = &mut maomi::node::SlotKindUpdateTrait::reuse(__m_slot_scopes, __m_backend_element_token.stable_addr())?.1;
+                    let mut __m_slot_data_changed = false;
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(
+                        __m_slot_data,
+                        #data_expr,
+                        &mut __m_slot_data_changed,
+                    );
+                    if __m_slot_data_changed {
+                        __m_slot_fn(maomi::node::SlotChange::DataChanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
                     } else {
-                        let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
-                        {
-                            let __m_backend_element_token = __m_backend_element.token();
-                            let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                            let __m_slot_data = maomi::prop::Prop::new(maomi::prop::PropAsRef::property_to_owned(#data_expr));
-                            __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &__m_slot_data))?;
-                            {
-                                #[allow(unused_imports)]
-                                use maomi::node::{SlotKindTrait, SlotKindUpdateTrait};
-                                __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data))?;
-                            }
-                        }
-                        let __m_backend_element_token = __m_backend_element.token();
-                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                        maomi::node::UnionOption::some(maomi::node::ControlNode::new(
-                            __m_backend_element_token,
-                            (),
-                        ))
+                        __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
                     }
-                }.to_tokens(tokens);
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                    {
+                        let __m_backend_element_token = __m_backend_element.token();
+                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        let __m_slot_data = maomi::prop::Prop::new(maomi::prop::PropAsRef::property_to_owned(#data_expr));
+                        __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &__m_slot_data))?;
+                        {
+                            #[allow(unused_imports)]
+                            use maomi::node::{SlotKindTrait, SlotKindUpdateTrait};
+                            __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data))?;
+                        }
+                    }
+                    let __m_backend_element_token = __m_backend_element.token();
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                    maomi::node::UnionOption::some(maomi::node::ControlNode::new(
+                        __m_backend_element_token,
+                        (),
+                    ))
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
             }
 
             // common node
@@ -910,97 +952,111 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     Some(x) => quote! { #x },
                     None => quote_spanned! {span=> __m_slot_data },
                 };
-                quote_spanned! {span=>
-                    let mut __m_children_results = #template_children;
-                    if let Some(__m_children) = __m_children.as_mut() {
-                        let maomi::node::Node {
-                            tag: ref mut __m_child,
-                            child_nodes: ref mut __m_slot_children,
-                        } = __m_children.#child_index;
-                        <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
-                            __m_child,
-                            __m_backend_context,
-                            __m_parent_element,
-                            Box::new(|
-                                __m_child: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
-                                __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
-                            | {
-                                #(#attrs_update)*
-                            }),
-                            &mut |__m_slot_change| {
-                                if #has_children {
-                                    match __m_slot_change {
-                                        maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name_def) => {
-                                            if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
-                                                maomi::node::SlotKindTrait::add(
-                                                    __m_slot_children,
-                                                    __m_backend_element_token.stable_addr(),
-                                                    unsafe { __m_children_results(__m_parent_element, None, #slot_var_name)?.unwrap_unchecked() },
-                                                )?;
-                                            }
+                let update = quote_spanned! {span=>
+                    let maomi::node::Node {
+                        tag: ref mut __m_child,
+                        child_nodes: ref mut __m_slot_children,
+                    } = __m_children.#child_index;
+                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
+                        __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        Box::new(|
+                            __m_child: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateTarget,
+                            __m_update_ctx: &mut <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::UpdateContext,
+                        | {
+                            #(#attrs_update)*
+                        }),
+                        &mut |__m_slot_change| {
+                            if #has_children {
+                                match __m_slot_change {
+                                    maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name_def) => {
+                                        if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
+                                            maomi::node::SlotKindTrait::add(
+                                                __m_slot_children,
+                                                __m_backend_element_token.stable_addr(),
+                                                unsafe { __m_children_results(__m_parent_element, None, #slot_var_name)?.unwrap_unchecked() },
+                                            )?;
                                         }
-                                        maomi::node::SlotChange::DataChanged(__m_parent_element, __m_backend_element_token, #slot_var_name_def)
-                                            | maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name_def)
-                                            => {
-                                                let __m_children =
-                                                    maomi::node::SlotKindTrait::get_mut(__m_slot_children, __m_backend_element_token.stable_addr())?;
-                                                __m_children_results(__m_parent_element, Some(__m_children), #slot_var_name)?;
-                                        }
-                                        maomi::node::SlotChange::Removed(__m_backend_element_token) => {
-                                            if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
-                                                maomi::node::SlotKindTrait::remove(__m_slot_children, __m_backend_element_token.stable_addr())?;
-                                            }
+                                    }
+                                    maomi::node::SlotChange::DataChanged(__m_parent_element, __m_backend_element_token, #slot_var_name_def)
+                                        | maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name_def)
+                                        => {
+                                            let __m_children =
+                                                maomi::node::SlotKindTrait::get_mut(__m_slot_children, __m_backend_element_token.stable_addr())?;
+                                            __m_children_results(__m_parent_element, Some(__m_children), #slot_var_name)?;
+                                    }
+                                    maomi::node::SlotChange::Removed(__m_backend_element_token) => {
+                                        if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
+                                            maomi::node::SlotKindTrait::remove(__m_slot_children, __m_backend_element_token.stable_addr())?;
                                         }
                                     }
                                 }
-                                Ok(())
-                            },
-                        )?;
-                        maomi::node::UnionOption::none()
-                    } else {
-                        let (__m_child, __m_backend_element) =
-                            <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
-                                __m_backend_context,
-                                __m_parent_element,
-                                __m_self_owner_weak,
-                            )?;
-                        let mut __m_node = maomi::node::Node::new(
-                            __m_child,
-                            <<#tag_name as maomi::backend::SupportBackend>::SlotChildren<_> as Default>::default(),
-                        );
-                        let maomi::node::Node {
-                            tag: ref mut __m_child,
-                            child_nodes: ref mut __m_slot_children,
-                        } = __m_node;
-                        <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
-                            __m_child,
+                            }
+                            Ok(())
+                        },
+                    )?;
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let (__m_child, __m_backend_element) =
+                        <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
-                            Box::new(|__m_child, __m_update_ctx| {
-                                #(
-                                    maomi::prop::ListPropertyInit::init_list(
-                                        &mut __m_child.#list_prop_name,
-                                        #list_prop_count,
-                                        __m_update_ctx,
-                                    );
-                                )*
-                                #(#attrs_create)*
-                            }),
-                            &mut |__m_parent_element, __m_backend_element_token, #slot_var_name_def| {
-                                if #has_children {
-                                    maomi::node::SlotKindTrait::add(
-                                        __m_slot_children,
-                                        __m_backend_element_token.stable_addr(),
-                                        unsafe { __m_children_results(__m_parent_element, None, #slot_var_name)?.unwrap_unchecked() },
-                                    )?;
-                                }
-                                Ok(())
-                            },
+                            __m_self_owner_weak,
                         )?;
-                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                        maomi::node::UnionOption::some(__m_node)
-                    }
-                }.to_tokens(tokens);
+                    let mut __m_node = maomi::node::Node::new(
+                        __m_child,
+                        <<#tag_name as maomi::backend::SupportBackend>::SlotChildren<_> as Default>::default(),
+                    );
+                    let maomi::node::Node {
+                        tag: ref mut __m_child,
+                        child_nodes: ref mut __m_slot_children,
+                    } = __m_node;
+                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
+                        __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        Box::new(|__m_child, __m_update_ctx| {
+                            #(
+                                maomi::prop::ListPropertyInit::init_list(
+                                    &mut __m_child.#list_prop_name,
+                                    #list_prop_count,
+                                    __m_update_ctx,
+                                );
+                            )*
+                            #(#attrs_create)*
+                        }),
+                        &mut |__m_parent_element, __m_backend_element_token, #slot_var_name_def| {
+                            if #has_children {
+                                maomi::node::SlotKindTrait::add(
+                                    __m_slot_children,
+                                    __m_backend_element_token.stable_addr(),
+                                    unsafe { __m_children_results(__m_parent_element, None, #slot_var_name)?.unwrap_unchecked() },
+                                )?;
+                            }
+                            Ok(())
+                        },
+                    )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                    maomi::node::UnionOption::some(__m_node)
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        let mut __m_children_results = #template_children;
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        let mut __m_children_results = #template_children;
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
             }
 
             // if branches

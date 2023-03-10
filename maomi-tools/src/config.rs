@@ -10,6 +10,7 @@ pub struct CrateConfig {
     pub i18n_locale: Option<String>,
     pub i18n_dir: Option<PathBuf>,
     pub i18n_format_metadata: bool,
+    pub rust_analyzer_env: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -101,6 +102,10 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
         "on" => true,
         _ => false,
     };
+    let rust_analyzer_env = match std::env::var("MAOMI_RUST_ANALYZER").unwrap_or_default().as_str() {
+        "on" => true,
+        _ => false,
+    };
 
     CrateConfig {
         crate_name,
@@ -110,6 +115,7 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
         i18n_locale,
         i18n_dir,
         i18n_format_metadata,
+        rust_analyzer_env,
     }
 });
 

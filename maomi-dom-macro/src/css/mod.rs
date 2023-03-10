@@ -32,6 +32,7 @@ const CLASS_START_CHARS: [char; 52] = [
 thread_local! {
     static CSS_OUT_FILE_NAME: Option<PathBuf> = {
         maomi_tools::config::crate_config(|crate_config| {
+            if crate_config.rust_analyzer_env { return None };
             crate_config.css_out_dir.clone().map(|mut dir| {
                 let file_name = crate_config.crate_name.as_ref()
                     .map(|x| x.as_str())
