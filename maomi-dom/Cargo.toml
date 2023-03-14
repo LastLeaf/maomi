@@ -16,8 +16,8 @@ prerendering-apply = ["maomi/prerendering-apply"]
 all = ["prerendering", "prerendering-apply"]
 
 [dependencies]
-maomi = { version = "=0.4.0", path = "../maomi" }
-maomi-dom-macro = { version = "=0.4.0", path = "../maomi-dom-macro" }
+maomi = "=0.4.0"
+maomi-dom-macro = "=0.4.0"
 log = "0.4"
 js-sys = "0.3"
 wasm-bindgen = "0.2"

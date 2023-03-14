@@ -14,8 +14,8 @@ proc-macro = true
 doctest = false
 
 [dependencies]
-maomi-tools = { version = "=0.4.0", path = "../maomi-tools" }
-maomi-skin = { version = "=0.4.0", path = "../maomi-skin" }
+maomi-tools = "=0.4.0"
+maomi-skin = "=0.4.0"
 proc-macro2 = "1.0"
 syn = { version = "1.0", features = ["parsing"] }
 quote = "1.0"

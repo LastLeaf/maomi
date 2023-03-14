@@ -16,7 +16,7 @@ prerendering-apply = []
 all = ["prerendering", "prerendering-apply"]
 
 [dependencies]
-maomi-macro = { version = "=0.4.0", path = "../maomi-macro" }
-maomi-tree = { version = "=0.4.0", path = "../maomi-tree" }
+maomi-macro = "=0.4.0"
+maomi-tree = "=0.4.0"
 log = "0.4"
 async-trait = "0.1"

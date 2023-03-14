@@ -11,8 +11,18 @@ members = [
     "dom-bench/keyed",
     "dom-bench/keyed-comp",
 ]
+resolver = "2"
 
 [profile.release]
 opt-level = "z"
 lto = true
 codegen-units = 1
+
+[patch.crates-io]
+"maomi" = { path = "./maomi" }
+"maomi-dom" = { path = "./maomi-dom" }
+"maomi-dom-macro" = { path = "./maomi-dom-macro" }
+"maomi-macro" = { path = "./maomi-macro" }
+"maomi-skin" = { path = "./maomi-skin" }
+"maomi-tools" = { path = "./maomi-tools" }
+"maomi-tree" = { path = "./maomi-tree" }

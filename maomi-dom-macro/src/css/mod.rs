@@ -372,7 +372,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                         for (index, c) in cssw.target().char_indices() {
                                             while p_next_index == Some(index) {
                                                 value_str += match p_next.unwrap() {
-                                                    CssWritePlaceholder::ColorHash(_) => "{value}",
+                                                    CssWritePlaceholder::ColorHash(_) => "#{value}",
                                                     CssWritePlaceholder::QuoteStr(_) => "{value:?}",
                                                     CssWritePlaceholder::Num(_) => "{value}",
                                                 };
@@ -389,7 +389,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                         }
                                         while p_next.is_some() {
                                             value_str += match p_next.unwrap() {
-                                                CssWritePlaceholder::ColorHash(_) => "{value}",
+                                                CssWritePlaceholder::ColorHash(_) => "#{value}",
                                                 CssWritePlaceholder::QuoteStr(_) => "{value:?}",
                                                 CssWritePlaceholder::Num(_) => "{value}",
                                             };
@@ -697,6 +697,7 @@ impl StyleSheetConstructor for DomStyleSheet {
             proc_macro2::Span::call_site(),
         );
         tokens.append_all(quote! {
+            #[allow(non_snake_case)]
             fn #fn_name() {
                 #inner_tokens
             }

@@ -59,7 +59,7 @@ async fn skin_style() {
         style opacity(v: f32) {
             opacity = v;
         }
-        style color(v: &str) {
+        style text_color(v: &str) {
             color = Color(v);
         }
         style url(v: &str) {
@@ -71,7 +71,7 @@ async fn skin_style() {
     struct MyComp {
         callback: Option<ComponentTestCb>,
         template: template! {
-            <div style:opacity=0 style:color="abc" style:url="a.png"></div>
+            <div style:opacity=0 style:text_color="abc" style:url="a.png"></div>
         },
     }
 
