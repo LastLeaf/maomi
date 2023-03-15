@@ -32,8 +32,9 @@ async fn skin_class() {
             self.rc().task_with(|this, _| {
                 assert_eq!(
                     this.template_structure()
+                        .unwrap()[0]
+                        .downcast_ref::<maomi::node::Node<div>>()
                         .unwrap()
-                        .0
                         .tag
                         .dom_element()
                         .outer_html(),
@@ -86,8 +87,9 @@ async fn skin_style() {
         fn created(&self) {
             self.rc().task_with(|this, _| {
                 let style = this.template_structure()
+                    .unwrap()[0]
+                    .downcast_ref::<maomi::node::Node<div>>()
                     .unwrap()
-                    .0
                     .tag
                     .dom_element()
                     .dyn_ref::<web_sys::HtmlElement>()

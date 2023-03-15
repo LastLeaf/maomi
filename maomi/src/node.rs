@@ -1,6 +1,6 @@
 //! Helper types for node trees.
 
-use std::{collections::HashMap, hash::Hash, marker::PhantomData};
+use std::{collections::HashMap, hash::Hash, marker::PhantomData, any::Any};
 
 use crate::{
     backend::{tree, SupportBackend},
@@ -51,31 +51,37 @@ pub trait OwnerWeak {
     fn clone_owner_weak(&self) -> Box<dyn OwnerWeak>;
 }
 
+/// A general node type.
+pub type DynNode = Box<dyn Any>;
+
+/// A general node list.
+pub type DynNodeList = Box<[DynNode]>;
+
 /// A helper type for a node with child nodes.
 #[derive(Debug)]
-pub struct Node<N: SupportBackend, C> {
+pub struct Node<N: SupportBackend> {
     /// The node itself.
     pub tag: N::Target,
     /// The child nodes of the node.
-    pub child_nodes: N::SlotChildren<C>,
+    pub child_nodes: N::SlotChildren,
 }
 
-impl<N: SupportBackend, C> Node<N, C> {
+impl<N: SupportBackend> Node<N> {
     /// Create a node with specified children.
     #[inline(always)]
-    pub fn new(tag: N::Target, child_nodes: N::SlotChildren<C>) -> Self {
+    pub fn new(tag: N::Target, child_nodes: N::SlotChildren) -> Self {
         Self { tag, child_nodes }
     }
 
     /// Iterator over slots of the node.
     #[inline]
-    pub fn iter_slots(&self) -> <N::SlotChildren::<C> as SlotKindTrait<ForestTokenAddr, C>>::Iter<'_> {
+    pub fn iter_slots(&self) -> <N::SlotChildren as SlotKindTrait<ForestTokenAddr, DynNodeList>>::Iter<'_> {
         self.child_nodes.iter()
     }
 
     /// If the node has only one slot, returns it.
     #[inline]
-    pub fn single_slot(&self) -> Option<&C> {
+    pub fn single_slot(&self) -> Option<&DynNodeList> {
         self.child_nodes.single_slot()
     }
 }
@@ -103,34 +109,13 @@ impl<C> ControlNode<C> {
     }
 }
 
-macro_rules! gen_branch_node {
-    ($t: ident, $($n: ident),*) => {
-        /// A helper type for "if" and "match" node.
-        #[derive(Debug, Clone, PartialEq)]
-        pub enum $t<$($n),*> {
-            $(
-                /// A branch in "if...else" or "match" node.
-                $n($n),
-            )*
-        }
-    };
+/// A helper type for "if" and "match" node.
+pub struct Branch {
+    /// The current branch index.
+    pub cur: usize,
+    /// Child node list in "if...else" or "match" node.
+    pub children: DynNodeList,
 }
-gen_branch_node!(Branch1, B0);
-gen_branch_node!(Branch2, B0, B1);
-gen_branch_node!(Branch3, B0, B1, B2);
-gen_branch_node!(Branch4, B0, B1, B2, B3);
-gen_branch_node!(Branch5, B0, B1, B2, B3, B4);
-gen_branch_node!(Branch6, B0, B1, B2, B3, B4, B5);
-gen_branch_node!(Branch7, B0, B1, B2, B3, B4, B5, B6);
-gen_branch_node!(Branch8, B0, B1, B2, B3, B4, B5, B6, B7);
-gen_branch_node!(Branch9, B0, B1, B2, B3, B4, B5, B6, B7, B8);
-gen_branch_node!(Branch10, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9);
-gen_branch_node!(Branch11, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10);
-gen_branch_node!(Branch12, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11);
-gen_branch_node!(Branch13, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12);
-gen_branch_node!(Branch14, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13);
-gen_branch_node!(Branch15, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14);
-gen_branch_node!(Branch16, B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15);
 
 /// A helper trait for managing slot list and slot content.
 /// 

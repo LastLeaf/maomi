@@ -29,7 +29,7 @@ use crate::{
         SupportBackend,
     },
     error::Error,
-    node::{OwnerWeak, SlotChange, SlotKindTrait},
+    node::{OwnerWeak, SlotChange, SlotKindTrait, DynNodeList},
     template::*,
     BackendContext,
 };
@@ -559,8 +559,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
 }
 
 impl<C: Component + ComponentSlotKind> SupportBackend for C {
-    type Target = Box<ComponentNode<C>>;
-    type SlotChildren<SlotContent> = <C as ComponentSlotKind>::SlotChildren<SlotContent>;
+    type Target = ComponentNode<C>;
+    type SlotChildren = <C as ComponentSlotKind>::SlotChildren<DynNodeList>;
 }
 
 impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for ComponentNode<C> {

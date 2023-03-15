@@ -7,7 +7,7 @@ use tree::*;
 
 use crate::{
     error::Error,
-    node::{OwnerWeak, SlotChange, SlotKindTrait},
+    node::{OwnerWeak, SlotChange, SlotKindTrait, DynNodeList},
 };
 pub mod context;
 use context::BackendContext;
@@ -225,52 +225,7 @@ pub trait BackendComponent<B: Backend> {
 /// *In most cases, it should not be used in component implementors.*
 pub trait SupportBackend {
     /// The converted `BackendComponent` type.
-    type Target;
+    type Target: 'static;
     /// The slot list type.
-    type SlotChildren<C>: SlotKindTrait<ForestTokenAddr, C>;
-}
-
-impl<B: Backend, T: BackendComponent<B>> BackendComponent<B> for Box<T> {
-    type SlotData = T::SlotData;
-    type UpdateContext = T::UpdateContext;
-    type UpdateTarget = T::UpdateTarget;
-
-    #[inline(never)]
-    fn init<'b>(
-        backend_context: &'b BackendContext<B>,
-        owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        owner_weak: &Box<dyn OwnerWeak>,
-    ) -> Result<(Self, ForestNodeRc<B::GeneralElement>), Error>
-    where
-        Self: Sized {
-        T::init(backend_context, owner, owner_weak).map(|(x, y)| (Box::new(x), y))
-    }
-
-    #[inline(never)]
-    fn create<'b>(
-        &'b mut self,
-        backend_context: &'b BackendContext<B>,
-        owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: Box<dyn 'b + FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext)>,
-        slot_fn: &mut dyn FnMut(
-            &mut tree::ForestNodeMut<B::GeneralElement>,
-            &ForestToken,
-            &Self::SlotData,
-        ) -> Result<(), Error>,
-    ) -> Result<(), Error> {
-        (**self).create(backend_context, owner, update_fn, slot_fn)
-    }
-
-    #[inline(never)]
-    fn apply_updates<'b>(
-        &'b mut self,
-        backend_context: &'b BackendContext<B>,
-        owner: &'b mut ForestNodeMut<B::GeneralElement>,
-        update_fn: Box<dyn 'b + FnOnce(&mut Self::UpdateTarget, &mut Self::UpdateContext)>,
-        slot_fn: &mut dyn FnMut(
-            SlotChange<&mut tree::ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
-        ) -> Result<(), Error>,
-    ) -> Result<(), Error> {
-        (**self).apply_updates(backend_context, owner, update_fn, slot_fn)
-    }
+    type SlotChildren: SlotKindTrait<ForestTokenAddr, DynNodeList>;
 }

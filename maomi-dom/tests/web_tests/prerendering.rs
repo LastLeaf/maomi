@@ -78,8 +78,9 @@ async fn generate_prerendering_html() {
                 this.update(|this| {
                     assert_eq!(
                         this.template_structure()
+                            .unwrap()[0]
+                            .downcast_ref::<maomi::node::Node<div>>()
                             .unwrap()
-                            .0
                             .tag
                             .dom_element()
                             .inner_html(),
@@ -97,8 +98,9 @@ async fn generate_prerendering_html() {
                     this.update_with(|this, _| {
                         assert_eq!(
                             this.template_structure()
+                                .unwrap()[0]
+                                .downcast_ref::<maomi::node::Node<div>>()
                                 .unwrap()
-                                .0
                                 .tag
                                 .dom_element()
                                 .outer_html(),
@@ -163,7 +165,13 @@ async fn cold_event_in_prerendered() {
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
-                let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                let dom_elem = this.template_structure()
+                    .unwrap()[0]
+                    .downcast_ref::<maomi::node::Node<div>>()
+                    .unwrap()
+                    .tag
+                    .dom_element()
+                    .clone();
                 simulate_event(&dom_elem, "scroll", false, []);
             });
         }
@@ -227,7 +235,13 @@ async fn hot_event_in_prerendered() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                    let dom_elem = this.template_structure()
+                        .unwrap()[0]
+                        .downcast_ref::<maomi::node::Node<div>>()
+                        .unwrap()
+                        .tag
+                        .dom_element()
+                        .clone();
                     simulate_event(
                         &dom_elem,
                         "touchstart",

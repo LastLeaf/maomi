@@ -8,14 +8,6 @@ use syn::*;
 
 use crate::i18n::{LocaleGroup, TransRes};
 
-fn get_branch_ty(len: usize) -> Ident {
-    Ident::new(&format!("Branch{}", len), proc_macro2::Span::call_site())
-}
-
-fn get_branch_selected(index: usize) -> Ident {
-    Ident::new(&format!("B{}", index), proc_macro2::Span::call_site())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum SlotType {
     None,
@@ -28,17 +20,6 @@ pub(super) struct Template {
 }
 
 impl Template {
-    pub(super) fn gen_type(&self, md: &MacroDelimiter) -> Type {
-        let Self { children } = self;
-        let span = match md {
-            MacroDelimiter::Paren(x) => x.span,
-            MacroDelimiter::Brace(x) => x.span,
-            MacroDelimiter::Bracket(x) => x.span,
-        };
-        let children = children.iter().map(|c| c.gen_type());
-        parse_quote_spanned!(span=> Box<(#(#children,)*)> )
-    }
-
     pub(super) fn slot_type(&self) -> SlotType {
         fn rec(children: &Vec<TemplateNode>, st: &mut SlotType, in_list: bool) {
             for n in children {
@@ -183,65 +164,6 @@ pub(super) struct TemplateMatchArm {
     brace_token: token::Brace,
     children: Vec<TemplateNode>,
     comma: Option<token::Comma>,
-}
-
-impl TemplateNode {
-    fn gen_type(&self) -> Type {
-        match self {
-            Self::StaticText { content } => {
-                let span = content.span();
-                parse_quote_spanned!(span=> maomi::text_node::TextNode )
-            }
-            Self::DynamicText { brace_token, .. } => {
-                let span = brace_token.span;
-                parse_quote_spanned!(span=> maomi::text_node::TextNode )
-            }
-            Self::Slot { tag_lt_token, .. } => {
-                let span = tag_lt_token.span();
-                parse_quote_spanned!(span=> maomi::node::ControlNode<()> )
-            }
-            Self::Tag {
-                tag_lt_token, tag_name, children, ..
-            } => {
-                let span = tag_lt_token.span();
-                let children = children.iter().map(|c| c.gen_type());
-                parse_quote_spanned!(span=> maomi::node::Node<#tag_name, Box<(#(#children,)*)>> )
-            }
-            Self::IfElse { branches } => {
-                let branch_ty = get_branch_ty(branches.len());
-                let branches = branches.iter().map(|x| {
-                    let span = x.brace_token.span;
-                    let children = x.children.iter().map(|c| c.gen_type());
-                    quote_spanned!(span=> Box<(#(#children,)*)> )
-                });
-                parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
-            }
-            Self::Match { arms, .. } => {
-                let branch_ty = get_branch_ty(arms.len());
-                let branches = arms.iter().map(|x| {
-                    let span = x.brace_token.span;
-                    let children = x.children.iter().map(|c| c.gen_type());
-                    quote_spanned!(span=> Box<(#(#children,)*)> )
-                });
-                parse_quote!(maomi::node::ControlNode<maomi::node::#branch_ty<#(#branches),*>> )
-            }
-            Self::ForLoop {
-                brace_token,
-                children,
-                key,
-                ..
-            } => {
-                let span = brace_token.span;
-                let children = children.iter().map(|c| c.gen_type());
-                let ty = if let Some((_, _, _, key_ty)) = key.as_ref() {
-                    quote_spanned!(span=> maomi::diff::key::KeyList<#key_ty, Box<(#(#children,)*)>>)
-                } else {
-                    quote_spanned!(span=> maomi::diff::keyless::KeylessList<Box<(#(#children,)*)>>)
-                };
-                parse_quote_spanned!(span=> maomi::node::ControlNode<#ty> )
-            }
-        }
-    }
 }
 
 impl Parse for TemplateNode {
@@ -702,12 +624,6 @@ impl<'a> ToTokens for TemplateChildren<'a> {
                 locale_group,
             }
         });
-        let ty = template_children.into_iter().map(|template_node| {
-            template_node.gen_type()
-        });
-        let ty2 = template_children.into_iter().map(|template_node| {
-            template_node.gen_type()
-        });
         let result_index = (0..template_children.len()).map(|i| syn::Index::from(i));
         let slot_var_name_def = match slot_var_name {
             Some(x) => quote! { #x: &_, },
@@ -723,15 +639,15 @@ impl<'a> ToTokens for TemplateChildren<'a> {
                 __m_parent_element: &mut maomi::backend::tree::ForestNodeMut<
                     <#backend_param as maomi::backend::Backend>::GeneralElement,
                 >,
-                mut __m_children: Option<&mut (#(#ty,)*)>,
+                mut __m_children: Option<&mut maomi::node::DynNodeList>,
                 #slot_var_name_def
-            | -> Result<maomi::node::UnionOption<Box<(#(#ty2,)*)>>, maomi::error::Error> {
-                let __m_children_results = (#({#children},)*);
+            | -> Result<maomi::node::UnionOption<maomi::node::DynNodeList>, maomi::error::Error> {
+                let __m_children_results = ( #({ #children },)* );
                 Ok(if __m_children.is_some() {
                     maomi::node::UnionOption::none()
                 } else {
                     unsafe {
-                        maomi::node::UnionOption::some(Box::new((#(__m_children_results.#result_index.unwrap_unchecked(),)*)))
+                        maomi::node::UnionOption::some(Box::new([ #(__m_children_results.#result_index.unwrap_unchecked(),)* ]))
                     }
                 })
             },).0
@@ -740,7 +656,7 @@ impl<'a> ToTokens for TemplateChildren<'a> {
 }
 
 struct TemplateNodeUpdate<'a> {
-    child_index: Index,
+    child_index: usize,
     template_node: &'a TemplateNode,
     backend_param: &'a TokenStream,
     locale_group: &'a LocaleGroup,
@@ -784,7 +700,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         __m_parent_element,
                         &__m_backend_element,
                     );
-                    maomi::node::UnionOption::some(__m_child)
+                    maomi::node::UnionOption::some(Box::new(__m_child))
                 };
                 let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
@@ -810,7 +726,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
                 };
                 let update = quote_spanned! {span=>
-                    let __m_child = &mut __m_children.#child_index;
+                    let __m_child: &mut maomi::text_node::TextNode = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
                     __m_child.set_text::<#backend_param>(__m_parent_element, #translated)?;
                     maomi::node::UnionOption::none()
                 };
@@ -824,7 +740,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         __m_parent_element,
                         &__m_backend_element,
                     );
-                    maomi::node::UnionOption::some(__m_child)
+                    maomi::node::UnionOption::some(Box::new(__m_child))
                 };
                 let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
@@ -869,10 +785,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     },
                 };
                 let update = quote_spanned! {span=>
-                    let maomi::node::ControlNode {
+                    let maomi::node::ControlNode::<()> {
                         forest_token: ref mut __m_backend_element_token,
                         content: ref mut __m_slot_children,
-                    } = __m_children.#child_index;
+                    } = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
                     let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                         .ok_or(maomi::error::Error::ListChangeWrong)?;
                     let __m_slot_data = &mut maomi::node::SlotKindUpdateTrait::reuse(__m_slot_scopes, __m_backend_element_token.stable_addr())?.1;
@@ -904,10 +820,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     }
                     let __m_backend_element_token = __m_backend_element.token();
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                    maomi::node::UnionOption::some(maomi::node::ControlNode::new(
+                    maomi::node::UnionOption::some(Box::new(maomi::node::ControlNode::new(
                         __m_backend_element_token,
                         (),
-                    ))
+                    )))
                 };
                 let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
@@ -953,10 +869,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     None => quote_spanned! {span=> __m_slot_data },
                 };
                 let update = quote_spanned! {span=>
-                    let maomi::node::Node {
+                    let maomi::node::Node::<#tag_name> {
                         tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
-                    } = __m_children.#child_index;
+                    } = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
                     <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
@@ -1005,9 +921,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             __m_parent_element,
                             __m_self_owner_weak,
                         )?;
-                    let mut __m_node = maomi::node::Node::new(
+                    let mut __m_node = maomi::node::Node::<#tag_name>::new(
                         __m_child,
-                        <<#tag_name as maomi::backend::SupportBackend>::SlotChildren<_> as Default>::default(),
+                        <<#tag_name as maomi::backend::SupportBackend>::SlotChildren as Default>::default(),
                     );
                     let maomi::node::Node {
                         tag: ref mut __m_child,
@@ -1039,7 +955,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         },
                     )?;
                     <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                    maomi::node::UnionOption::some(__m_node)
+                    maomi::node::UnionOption::some(Box::new(__m_node))
                 };
                 let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
@@ -1061,9 +977,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
 
             // if branches
             TemplateNode::IfElse { branches } => {
-                let branch_ty = get_branch_ty(branches.len());
                 for (index, x) in branches.iter().enumerate() {
-                    let branch_selected = get_branch_selected(index);
                     let TemplateIfElse { else_token, if_cond, children, .. } = x;
                     let template_children = TemplateChildren {
                         template_children: children,
@@ -1081,15 +995,15 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         #else_token #if_cond {
                             let mut __m_children_results = #template_children;
                             if let Some(__m_children) = __m_children.as_mut() {
-                                let maomi::node::ControlNode {
+                                let maomi::node::ControlNode::<maomi::node::Branch> {
                                     forest_token: ref mut __m_backend_element_token,
                                     content: ref mut __m_slot_children,
-                                } = __m_children.#child_index;
+                                } = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
                                 let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                                     .ok_or(maomi::error::Error::ListChangeWrong)?;
-                                if let maomi::node::#branch_ty::#branch_selected(__m_children) = __m_slot_children {
+                                if __m_slot_children.cur == #index {
                                     let __m_parent_element = &mut __m_backend_element;
-                                    __m_children_results(__m_parent_element, Some(__m_children))?;
+                                    __m_children_results(__m_parent_element, Some(&mut __m_slot_children.children))?;
                                 } else {
                                     let __m_backend_element_new = {
                                         let __m_parent_element = &mut __m_backend_element;
@@ -1097,7 +1011,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                         *__m_backend_element_token = __m_backend_element.token();
                                         *__m_slot_children = {
                                             let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                            maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
+                                            maomi::node::Branch {
+                                                cur: #index,
+                                                children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                            }
                                         };
                                         __m_backend_element
                                     };
@@ -1108,14 +1025,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                                 let __m_slot_children = {
                                     let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                    maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
+                                    maomi::node::Branch {
+                                        cur: #index,
+                                        children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                    }
                                 };
                                 let __m_backend_element_token = __m_backend_element.token();
                                 <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                                maomi::node::UnionOption::some(maomi::node::ControlNode::new(
+                                maomi::node::UnionOption::some(Box::new(maomi::node::ControlNode::new(
                                     __m_backend_element_token,
                                     __m_slot_children,
-                                ))
+                                )))
                             }
                         }
                     }.to_tokens(tokens);
@@ -1124,11 +1044,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
 
             // match branches
             TemplateNode::Match { match_token, expr, arms, .. } => {
-                let branch_ty = get_branch_ty(arms.len());
                 let span = match_token.span();
                 let mut branches_ts = quote! {};
                 for (index, x) in arms.iter().enumerate() {
-                    let branch_selected = get_branch_selected(index);
                     let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
                     let template_children = TemplateChildren {
                         template_children: children,
@@ -1145,15 +1063,15 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         #pat #guard #fat_arrow_token {
                             let mut __m_children_results = #template_children;
                             if let Some(__m_children) = __m_children.as_mut() {
-                                let maomi::node::ControlNode {
+                                let maomi::node::ControlNode::<maomi::node::Branch> {
                                     forest_token: ref mut __m_backend_element_token,
                                     content: ref mut __m_slot_children,
-                                } = __m_children.#child_index;
+                                } = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
                                 let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
                                     .ok_or(maomi::error::Error::ListChangeWrong)?;
-                                if let maomi::node::#branch_ty::#branch_selected(__m_children) = __m_slot_children {
+                                if __m_slot_children.cur == #index {
                                     let __m_parent_element = &mut __m_backend_element;
-                                    __m_children_results(__m_parent_element, Some(__m_children))?;
+                                    __m_children_results(__m_parent_element, Some(&mut __m_slot_children.children))?;
                                 } else {
                                     let __m_backend_element_new = {
                                         let __m_parent_element = &mut __m_backend_element;
@@ -1161,7 +1079,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                         *__m_backend_element_token = __m_backend_element.token();
                                         *__m_slot_children = {
                                             let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                            maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
+                                            maomi::node::Branch {
+                                                cur: #index,
+                                                children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                            }
                                         };
                                         __m_backend_element
                                     };
@@ -1172,14 +1093,17 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                                 let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
                                 let __m_slot_children = {
                                     let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
-                                    maomi::node::#branch_ty::#branch_selected(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
+                                    maomi::node::Branch {
+                                        cur: #index,
+                                        children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                    }
                                 };
                                 let __m_backend_element_token = __m_backend_element.token();
                                 <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
-                                maomi::node::UnionOption::some(maomi::node::ControlNode::new(
+                                maomi::node::UnionOption::some(Box::new(maomi::node::ControlNode::new(
                                     __m_backend_element_token,
                                     __m_slot_children,
-                                ))
+                                )))
                             }
                         } #comma
                     }.to_tokens(&mut branches_ts);
@@ -1203,12 +1127,12 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let span = for_token.span();
                 let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
                     (
-                        quote_spanned!(span=> maomi::diff::key::KeyList::<#key_ty, _>),
+                        quote_spanned!(span=> maomi::diff::key::KeyList::<#key_ty, maomi::node::DynNodeList>),
                         quote_spanned!(span=> #key_expr,),
                     )
                 } else {
                     (
-                        quote_spanned!(span=> maomi::diff::keyless::KeylessList::<_>),
+                        quote_spanned!(span=> maomi::diff::keyless::KeylessList::<maomi::node::DynNodeList>),
                         quote!(),
                     )
                 };
@@ -1222,17 +1146,27 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     let __m_backend_element = if __m_is_list_update {
                         maomi::node::UnionOption::none()
                     } else {
-                        maomi::node::UnionOption::some(<<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?)
+                        maomi::node::UnionOption::some(
+                            <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?,
+                        )
                     };
                     let __m_list_diff_algo = {
                         let mut __m_parent_element = if let Some(__m_children) = __m_children.as_mut() {
-                            __m_parent_element.borrow_mut_token(&__m_children.#child_index.forest_token)
+                            let maomi::node::ControlNode::<#algo> {
+                                forest_token: ref mut __m_backend_element_token,
+                                ..
+                            } = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
+                            __m_parent_element.borrow_mut_token(__m_backend_element_token)
                                 .ok_or(maomi::error::Error::ListChangeWrong)?
                         } else {
                             __m_parent_element.borrow_mut(unsafe { __m_backend_element.as_ref_unchecked() })
                         };
                         let mut __m_list_update_iter = if let Some(__m_children) = __m_children.as_mut() {
-                            let __m_list_update_iter = __m_children.#child_index.content.list_diff_update::<#backend_param>(
+                            let maomi::node::ControlNode::<#algo> {
+                                content: ref mut __m_children,
+                                ..
+                            } = unsafe { __m_children.get_unchecked_mut(#child_index).downcast_mut().unwrap() };
+                            let __m_list_update_iter = __m_children.list_diff_update::<#backend_param>(
                                 &mut __m_parent_element,
                                 __m_size_hint,
                             );
@@ -1284,10 +1218,10 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             __m_parent_element,
                             &__m_backend_element,
                         );
-                        maomi::node::UnionOption::some(maomi::node::ControlNode::new(
+                        maomi::node::UnionOption::some(Box::new(maomi::node::ControlNode::new(
                             __m_backend_element_token,
                             __m_list_diff_algo,
-                        ))
+                        )))
                     }
                 }.to_tokens(tokens);
             }

@@ -80,7 +80,6 @@ struct ComponentBody {
     slot_data_ty: proc_macro2::TokenStream,
     template: Result<Template>,
     template_field: Ident,
-    template_ty: Type,
     locale_group: LocaleGroup,
 }
 
@@ -192,7 +191,6 @@ impl ComponentBody {
         // find `template!` invoke
         let mut template = None;
         let mut template_field = None;
-        let mut template_ty = None;
         if let Fields::Named(fields) = &mut inner.fields {
             for field in &mut fields.named {
                 let mut has_template = false;
@@ -215,10 +213,6 @@ impl ComponentBody {
                     if let Type::Macro(m) = &mut field.ty {
                         let tokens = m.mac.tokens.clone();
                         let t = Template::parse.parse2(tokens);
-                        let structure_ty = match t.as_ref() {
-                            Ok(x) => x.gen_type(&m.mac.delimiter),
-                            Err(_) => parse_quote! { () },
-                        };
                         if let Ok(x) = &t {
                             match x.slot_type() {
                                 SlotType::None => {}
@@ -237,11 +231,10 @@ impl ComponentBody {
                         field.ty = parse_quote! {
                             maomi::template::Template<
                                 #component_name,
-                                #structure_ty,
+                                maomi::node::DynNodeList,
                                 #slot_kind<maomi::backend::tree::ForestTokenAddr, (maomi::backend::tree::ForestToken, maomi::prop::Prop<#slot_data_ty>)>,
                             >
                         };
-                        template_ty = Some(structure_ty);
                         template = Some(t);
                         template_field = field.ident.clone();
                     } else {
@@ -273,7 +266,6 @@ impl ComponentBody {
             slot_data_ty,
             template,
             template_field: template_field.unwrap(),
-            template_ty: template_ty.unwrap(),
             locale_group,
         })
     }
@@ -290,7 +282,6 @@ impl ToTokens for ComponentBody {
             slot_data_ty,
             template,
             template_field,
-            template_ty,
             locale_group,
         } = self;
 
@@ -335,7 +326,7 @@ impl ToTokens for ComponentBody {
                             Self::TemplateStructure,
                             Self::SlotChildren<(maomi::backend::tree::ForestToken, maomi::prop::Prop<Self::SlotData>)>,
                         >;
-                        type TemplateStructure = #template_ty;
+                        type TemplateStructure = maomi::node::DynNodeList;
 
                         #[inline]
                         fn template(&self) -> &Self::TemplateField {
