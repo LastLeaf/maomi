@@ -3,9 +3,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LANG");
     if let Ok(lang) = std::env::var("LANG") {
         let locale = lang.split('.').next().unwrap();
-        println!(
-            "cargo:rustc-env=MAOMI_I18N_LOCALE={}",
-            locale,
-        );
+        if std::env::var("MAOMI_I18N_LOCALE").is_err() {
+            println!(
+                "cargo:rustc-env=MAOMI_I18N_LOCALE={}",
+                locale,
+            );
+        }
     }
 }

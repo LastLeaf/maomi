@@ -320,6 +320,9 @@ impl<T> BindingValue<T> {
     }
 
     /// Set the value.
+    /// 
+    /// Updates of the value will NOT be applied to template!
+    /// To change the value and apply in templates, create a new `BindingValue` instead.
     #[inline]
     pub fn set(&mut self, v: T) {
         *self.inner.borrow_mut() = v;
@@ -332,6 +335,9 @@ impl<T> BindingValue<T> {
     }
 
     /// Get a reference of the value.
+    /// 
+    /// Updates of the value will NOT be applied to template!
+    /// To change the value and apply in templates, create a new `BindingValue` instead.
     #[inline]
     pub fn update<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         f(&mut (*self.inner).borrow_mut())

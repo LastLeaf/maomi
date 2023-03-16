@@ -649,7 +649,7 @@ pub struct DomBindingStrAttr {
 }
 
 impl DomBindingStrAttr {
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
     #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&String) -> R) -> R {
         (*self.inner).borrow().with(f)
@@ -702,7 +702,7 @@ pub struct DomBindingBoolAttr {
 }
 
 impl DomBindingBoolAttr {
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
     #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&bool) -> R) -> R {
         (*self.inner).borrow().with(f)
@@ -759,7 +759,7 @@ pub struct DomBindingF64Attr {
 }
 
 impl DomBindingF64Attr {
-    /// Get a referrence of the value.
+    /// Get a reference of the value.
     #[inline]
     pub fn with<R>(&self, f: impl FnOnce(&f64) -> R) -> R {
         (*self.inner).borrow().with(f)

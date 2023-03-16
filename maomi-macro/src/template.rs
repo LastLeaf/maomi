@@ -789,7 +789,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
                     quote_spanned! {span=>
-                        #update
+                        #create
                     }.to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
