@@ -55,7 +55,7 @@ async fn animation_event() {
             match state {
                 0 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>0</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -71,7 +71,7 @@ async fn animation_event() {
                 }
                 1 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>1</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -87,7 +87,7 @@ async fn animation_event() {
                 }
                 2 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>2</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -103,7 +103,7 @@ async fn animation_event() {
                 }
                 3 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>3</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -119,7 +119,7 @@ async fn animation_event() {
                 }
                 _ => this
                     .update_with(|this, _| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>4</div>"#,);
                         (this.callback.take().unwrap())();
                     })
@@ -188,7 +188,7 @@ async fn transition_event() {
             match state {
                 0 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>0</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -204,7 +204,7 @@ async fn transition_event() {
                 }
                 1 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>1</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -220,7 +220,7 @@ async fn transition_event() {
                 }
                 2 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>2</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -236,7 +236,7 @@ async fn transition_event() {
                 }
                 3 => {
                     this.get(|this| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>3</div>"#,);
                         simulate_event(
                             &dom_elem,
@@ -252,7 +252,7 @@ async fn transition_event() {
                 }
                 _ => this
                     .update_with(|this, _| {
-                        let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                        let dom_elem = first_dom!(this, div).clone();
                         assert_eq!(dom_elem.outer_html(), r#"<div>4</div>"#,);
                         (this.callback.take().unwrap())();
                     })
@@ -293,7 +293,7 @@ async fn scroll_event() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                    let dom_elem = first_dom!(this, div).clone();
                     simulate_event(&dom_elem, "scroll", false, []);
                 })
                 .await;
@@ -346,7 +346,7 @@ macro_rules! test_touch_events {
                     let this = self.rc();
                     async_task(async move {
                         this.get(|this| {
-                            let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                            let dom_elem = first_dom!(this, div).clone();
                             simulate_event(
                                 &dom_elem,
                                 $ev_js_name,
@@ -413,7 +413,7 @@ macro_rules! test_mouse_events {
                     let this = self.rc();
                     async_task(async move {
                         this.get(|this| {
-                            let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                            let dom_elem = first_dom!(this, div).clone();
                             simulate_event(
                                 &dom_elem,
                                 $ev_js_name,
@@ -484,7 +484,7 @@ async fn tap() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                    let dom_elem = first_dom!(this, div).clone();
                     simulate_event(
                         &dom_elem,
                         "mousedown",
@@ -556,7 +556,7 @@ async fn cancel_tap() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                    let dom_elem = first_dom!(this, div).clone();
                     simulate_event(
                         &dom_elem,
                         "mousedown",
@@ -628,7 +628,7 @@ async fn long_tap() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                    let dom_elem = first_dom!(this, div).clone();
                     simulate_event(
                         &dom_elem,
                         "mousedown",

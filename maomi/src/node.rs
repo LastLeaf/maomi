@@ -52,7 +52,35 @@ pub trait OwnerWeak {
 }
 
 /// A general node type.
-pub type DynNode = Box<dyn Any>;
+pub struct DynNode {
+    inner: Box<dyn Any>,
+}
+
+impl DynNode {
+    /// Build from a node.
+    #[inline(always)]
+    pub fn new<N: 'static>(n: N) -> Self {
+        Self { inner: Box::new(n) }
+    }
+
+    /// Cast into a node of specified type.
+    #[inline(always)]
+    pub unsafe fn node_unchecked<N: 'static>(&mut self) -> &mut N {
+        &mut *(&mut *self.inner as *mut dyn Any as *mut N)
+    }
+
+    /// Cast into a node of specified type.
+    #[inline(always)]
+    pub fn as_mut<N: 'static>(&mut self) -> &mut N {
+        self.inner.downcast_mut().unwrap()
+    }
+
+    /// Cast into a node of specified type.
+    #[inline(always)]
+    pub fn as_ref<N: 'static>(&self) -> &N {
+        self.inner.downcast_ref().unwrap()
+    }
+}
 
 /// A general node list.
 pub type DynNodeList = Box<[DynNode]>;

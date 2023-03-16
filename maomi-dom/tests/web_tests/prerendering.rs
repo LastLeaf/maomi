@@ -77,12 +77,7 @@ async fn generate_prerendering_html() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()[0]
-                            .downcast_ref::<maomi::node::Node<div>>()
-                            .unwrap()
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div title="789&quot;"></div>456&lt;<!---->123"#,
                     );
@@ -97,12 +92,7 @@ async fn generate_prerendering_html() {
                 async_task(async move {
                     this.update_with(|this, _| {
                         assert_eq!(
-                            this.template_structure()
-                                .unwrap()[0]
-                                .downcast_ref::<maomi::node::Node<div>>()
-                                .unwrap()
-                                .tag
-                                .dom_element()
+                            first_dom!(this, div)
                                 .outer_html(),
                             r#"<div class="abc" style="opacity: 1; height: 50px;"><div title="789"></div>456<!---->+123</div>"#,
                         );
@@ -165,12 +155,7 @@ async fn cold_event_in_prerendered() {
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
-                let dom_elem = this.template_structure()
-                    .unwrap()[0]
-                    .downcast_ref::<maomi::node::Node<div>>()
-                    .unwrap()
-                    .tag
-                    .dom_element()
+                let dom_elem = first_dom!(this, div)
                     .clone();
                 simulate_event(&dom_elem, "scroll", false, []);
             });
@@ -235,12 +220,7 @@ async fn hot_event_in_prerendered() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = this.template_structure()
-                        .unwrap()[0]
-                        .downcast_ref::<maomi::node::Node<div>>()
-                        .unwrap()
-                        .tag
-                        .dom_element()
+                    let dom_elem = first_dom!(this, div)
                         .clone();
                     simulate_event(
                         &dom_elem,

@@ -90,7 +90,7 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
         .or_else(|| {
             manifest_dir.as_ref().map(|s| rel_path.join(&s).join("src").join("lib.mcss"))
         });
-    let i18n_locale = std::env::var("MAOMI_I18N_LOCALE").ok();
+    let i18n_locale = std::env::var("MAOMI_I18N_LOCALE").ok().and_then(|x| if x.len() > 0 { Some(x) } else { None });
     let i18n_dir = std::env::var("MAOMI_I18N_DIR")
         .ok()
         .or(i18n_dir)
