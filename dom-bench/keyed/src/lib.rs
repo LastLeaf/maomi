@@ -61,7 +61,7 @@ struct HelloWorld {
                   class:btn_primary
                   class:btn_block
                   id="run"
-                  tap=@run()
+                  click=@run()
                 >
                   "Create 1,000 rows"
                 </button>
@@ -73,7 +73,7 @@ struct HelloWorld {
                   class:btn_primary
                   class:btn_block
                   id="runlots"
-                  tap=@run_lots()
+                  click=@run_lots()
                 >
                   "Create 10,000 rows"
                 </button>
@@ -85,7 +85,7 @@ struct HelloWorld {
                   class:btn_primary
                   class:btn_block
                   id="add"
-                  tap=@add()
+                  click=@add()
                 >
                   "Append 1,000 rows"
                 </button>
@@ -97,7 +97,7 @@ struct HelloWorld {
                   class:btn_primary
                   class:btn_block
                   id="update"
-                  tap=@update()
+                  click=@update()
                 >
                   "Update every 10th row"
                 </button>
@@ -109,7 +109,7 @@ struct HelloWorld {
                   class:btn_primary
                   class:btn_block
                   id="clear"
-                  tap=@clear()
+                  click=@clear()
                 >
                   "Clear"
                 </button>
@@ -121,7 +121,7 @@ struct HelloWorld {
                   class:btn_primary
                   class:btn_block
                   id="swaprows"
-                  tap=@swap_rows()
+                  click=@swap_rows()
                 >
                   "Swap Rows"
                 </button>
@@ -142,7 +142,7 @@ struct HelloWorld {
                 </td>
                 <td class:col_md_1>
                 <a>
-                    <span class:glyphicon class:glyphicon_remove aria_hidden="true" click=@remove(&item.id)></span>
+                    <span class:glyphicon class:glyphicon_remove aria_hidden="true" tap=@remove(&item.id)></span>
                 </a>
                 </td>
                 <td class:col_md_6></td>
@@ -185,7 +185,7 @@ impl Component for HelloWorld {
 }
 
 impl HelloWorld {
-    fn add(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn add(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows.append(&mut data::build(1000));
@@ -195,7 +195,7 @@ impl HelloWorld {
         });
     }
 
-    fn remove(this: ComponentRc<Self>, _detail: &mut MouseEvent, id: &usize) {
+    fn remove(this: ComponentRc<Self>, _detail: &mut TapEvent, id: &usize) {
         let id = *id;
         async_task(async move {
             this.update(move |this| {
@@ -218,7 +218,7 @@ impl HelloWorld {
         });
     }
 
-    fn run(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn run(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows = data::build(1000);
@@ -229,7 +229,7 @@ impl HelloWorld {
         });
     }
 
-    fn update(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn update(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 let mut i = 0;
@@ -243,7 +243,7 @@ impl HelloWorld {
         });
     }
 
-    fn run_lots(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn run_lots(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows = data::build(10000);
@@ -254,7 +254,7 @@ impl HelloWorld {
         });
     }
 
-    fn clear(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn clear(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows = Vec::with_capacity(0);
@@ -265,7 +265,7 @@ impl HelloWorld {
         });
     }
 
-    fn swap_rows(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn swap_rows(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 let rows = &mut this.rows;

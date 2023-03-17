@@ -10,6 +10,7 @@ use maomi::{
 };
 use maomi_dom_macro::dom_element_definition;
 use wasm_bindgen::JsCast;
+use crate::MaybeJsStr;
 
 use crate::{
     base_element::*,

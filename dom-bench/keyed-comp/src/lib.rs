@@ -186,7 +186,7 @@ impl Component for HelloWorld {
 }
 
 impl HelloWorld {
-    fn add(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn add(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows.append(&mut data::build(1000));
@@ -196,7 +196,7 @@ impl HelloWorld {
         });
     }
 
-    fn remove(this: ComponentRc<Self>, _detail: &mut MouseEvent, id: &usize) {
+    fn remove(this: ComponentRc<Self>, _detail: &mut TapEvent, id: &usize) {
         let id = *id;
         async_task(async move {
             this.update(move |this| {
@@ -208,7 +208,7 @@ impl HelloWorld {
         });
     }
 
-    fn select(this: ComponentRc<Self>, _detail: &mut TapEvent, id: &usize) {
+    fn select(this: ComponentRc<Self>, _detail: &mut MouseEvent, id: &usize) {
         let id = *id;
         async_task(async move {
             this.update(move |this| {
@@ -219,7 +219,7 @@ impl HelloWorld {
         });
     }
 
-    fn run(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn run(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows = data::build(1000);
@@ -230,7 +230,7 @@ impl HelloWorld {
         });
     }
 
-    fn update(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn update(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 let mut i = 0;
@@ -244,7 +244,7 @@ impl HelloWorld {
         });
     }
 
-    fn run_lots(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn run_lots(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows = data::build(10000);
@@ -255,7 +255,7 @@ impl HelloWorld {
         });
     }
 
-    fn clear(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn clear(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 this.rows = Vec::with_capacity(0);
@@ -266,7 +266,7 @@ impl HelloWorld {
         });
     }
 
-    fn swap_rows(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn swap_rows(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
         async_task(async move {
             this.update(|this| {
                 let rows = &mut this.rows;

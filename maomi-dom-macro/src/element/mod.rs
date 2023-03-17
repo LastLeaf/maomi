@@ -340,7 +340,10 @@ impl ToTokens for DomElementDefinition {
                 where
                     Self: Sized,
                 {
-                    let elem = owner.create_dom_element_by_tag_name(#tag_name_str);
+                    thread_local! {
+                        static tag_name: &'static MaybeJsStr = MaybeJsStr::new_leaked(#tag_name_str);
+                    }
+                    let elem = tag_name.with(|m| owner.create_dom_element_by_tag_name(m));
                     let backend_element = crate::DomGeneralElement::wrap_dom_element(owner, &elem);
                     let this = Self {
                         backend_element_token: backend_element.token(),

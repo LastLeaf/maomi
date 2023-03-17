@@ -7,7 +7,7 @@ use maomi::{
 use std::{
     borrow::Borrow,
     mem::{ManuallyDrop, MaybeUninit},
-    ops::Deref, rc::Rc, cell::RefCell,
+    ops::Deref, rc::Rc, cell::RefCell, num::NonZeroUsize,
 };
 use wasm_bindgen::{prelude::*, JsCast};
 
@@ -20,9 +20,9 @@ use crate::{
 extern "C" {
     type MaomiDomElement;
     #[wasm_bindgen(method, getter)]
-    fn maomi(this: &MaomiDomElement) -> Option<u32>;
+    fn maomi(this: &MaomiDomElement) -> Option<usize>;
     #[wasm_bindgen(method, setter)]
-    fn set_maomi(this: &MaomiDomElement, ptr: Option<u32>);
+    fn set_maomi(this: &MaomiDomElement, ptr: usize);
 }
 
 #[cfg(feature = "prerendering")]
@@ -188,7 +188,7 @@ impl Drop for DomElement {
         if self.hot_event_list.is_some() || self.cold_event_list.is_some() {
             match &self.elem {
                 DomState::Normal(x) => {
-                    x.unchecked_ref::<MaomiDomElement>().set_maomi(None);
+                    x.unchecked_ref::<MaomiDomElement>().set_maomi(0);
                 }
                 #[cfg(feature = "prerendering")]
                 DomState::Prerendering(_) => {}
@@ -311,10 +311,10 @@ impl DomElement {
         dom_elem: &web_sys::Element,
         bubbles: bool,
     ) -> Option<ForestNodeRc<DomGeneralElement>> {
-        let ptr = dom_elem.unchecked_ref::<MaomiDomElement>().maomi();
+        let ptr = dom_elem.unchecked_ref::<MaomiDomElement>().maomi().and_then(|x| NonZeroUsize::new(x));
         if let Some(ptr) = ptr {
             return unsafe {
-                ForestTokenAddr::from_ptr(ptr as *const ())
+                ForestTokenAddr::from_ptr(ptr.get() as *const ())
                     .token()
                     .unsafe_resolve_token()
             };
@@ -324,10 +324,10 @@ impl DomElement {
         }
         let mut next = dom_elem.parent_element();
         while let Some(cur) = next.as_ref() {
-            let ptr = cur.unchecked_ref::<MaomiDomElement>().maomi();
+            let ptr = cur.unchecked_ref::<MaomiDomElement>().maomi().and_then(|x| NonZeroUsize::new(x));
             if let Some(ptr) = ptr {
                 return unsafe {
-                    ForestTokenAddr::from_ptr(ptr as *const ())
+                    ForestTokenAddr::from_ptr(ptr.get() as *const ())
                         .token()
                         .unsafe_resolve_token()
                 };
@@ -342,7 +342,7 @@ impl DomElement {
         match &self.elem {
             DomState::Normal(x) => {
                 x.unchecked_ref::<MaomiDomElement>()
-                    .set_maomi(Some(ptr as u32));
+                    .set_maomi(ptr as usize);
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => {}

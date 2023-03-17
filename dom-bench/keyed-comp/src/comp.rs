@@ -27,12 +27,12 @@ pub(crate) struct Span {
         <span
             class:DomExternalClasses={&self.class}
             aria_hidden={&*self.aria_hidden}
-            click=@click()
+            tap=@click()
         ><slot /></span>
     },
     pub(crate) class: DomExternalClasses,
     pub(crate) aria_hidden: Prop<String>,
-    pub(crate) click: Event<MouseEvent>,
+    pub(crate) click: Event<TapEvent>,
 }
 
 impl Component for Span {
@@ -47,7 +47,7 @@ impl Component for Span {
 }
 
 impl Span {
-    fn click(this: ComponentRc<Self>, detail: &mut MouseEvent) {
+    fn click(this: ComponentRc<Self>, detail: &mut TapEvent) {
         let mut detail = detail.clone();
         async_task(async move {
             this.get(move |this| {
@@ -84,13 +84,13 @@ pub(crate) struct Button {
             class:DomExternalClasses={&self.class}
             r#type={&*self.r#type}
             id={&*self.id}
-            tap=@tap()
+            click=@tap()
         ><slot /></button>
     },
     pub(crate) class: DomExternalClasses,
     pub(crate) r#type: Prop<String>,
     pub(crate) id: Prop<String>,
-    pub(crate) tap: Event<TapEvent>,
+    pub(crate) tap: Event<MouseEvent>,
 }
 
 impl Component for Button {
@@ -106,7 +106,7 @@ impl Component for Button {
 }
 
 impl Button {
-    fn tap(this: ComponentRc<Self>, detail: &mut TapEvent) {
+    fn tap(this: ComponentRc<Self>, detail: &mut MouseEvent) {
         let mut detail = detail.clone();
         async_task(async move {
             this.get(move |this| {
@@ -122,11 +122,11 @@ pub(crate) struct A {
     template: template! {
         <a
             class:DomExternalClasses={&self.class}
-            tap=@tap()
+            click=@tap()
         ><slot /></a>
     },
     pub(crate) class: DomExternalClasses,
-    pub(crate) tap: Event<TapEvent>,
+    pub(crate) tap: Event<MouseEvent>,
 }
 
 impl Component for A {
@@ -140,7 +140,7 @@ impl Component for A {
 }
 
 impl A {
-    fn tap(this: ComponentRc<Self>, detail: &mut TapEvent) {
+    fn tap(this: ComponentRc<Self>, detail: &mut MouseEvent) {
         let mut detail = detail.clone();
         async_task(async move {
             this.get(move |this| {

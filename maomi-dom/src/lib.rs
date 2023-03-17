@@ -57,11 +57,12 @@
 
 #![warn(missing_docs)]
 
+use js_sys::JsString;
 use maomi::{
     backend::{tree::*, *},
     error::Error,
 };
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::{prelude::*, JsCast, JsValue};
 
 #[cfg(all(not(feature = "prerendering"), not(feature = "prerendering-apply")))]
 macro_rules! dom_state_ty {
@@ -458,6 +459,12 @@ pub enum DomGeneralElement {
     Element(DomElement),
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = document, js_name = createElement)]
+    fn document_create_element(n: &JsString) -> web_sys::Element;
+}
+
 impl std::fmt::Debug for DomGeneralElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -479,12 +486,12 @@ impl DomGeneralElement {
 
     pub(crate) fn create_dom_element_by_tag_name(
         &self,
-        _tag_name: &'static str,
+        _tag_name: &MaybeJsStr,
     ) -> dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem) {
         match self.is_prerendering() {
-            DomState::Normal(_) => DomState::Normal(crate::DOCUMENT.with(|document| document.create_element(_tag_name).unwrap())),
+            DomState::Normal(_) => DomState::Normal(document_create_element(&_tag_name.js)),
             #[cfg(feature = "prerendering")]
-            DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(_tag_name)),
+            DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(_tag_name.s)),
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => DomState::PrerenderingApply(RematchedDomElem::new()),
         }
@@ -745,5 +752,30 @@ impl BackendGeneralElement for DomGeneralElement {
         }
         let ret = this.detach();
         ret
+    }
+}
+
+/// A combination of string and its cache in js as a `JsString`
+#[derive(Debug, Clone)]
+pub struct MaybeJsStr {
+    s: &'static str,
+    js: js_sys::JsString,
+}
+
+impl PartialEq for MaybeJsStr {
+    fn eq(&self, other: &Self) -> bool {
+        self.s == other.s
+    }
+}
+
+impl MaybeJsStr {
+    /// Create a new string with JsString cached.
+    pub fn new_leaked(s: &'static str) -> &'static Self {
+        let js = js_sys::JsString::from(s);
+        let this = Box::new(Self {
+            s,
+            js,
+        });
+        Box::leak(this)
     }
 }

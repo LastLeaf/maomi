@@ -2,25 +2,33 @@
 
 use maomi::prop::{ListPropertyInit, ListPropertyItem, ListPropertyUpdate};
 use std::rc::Rc;
+use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::DomTokenList;
 
-use crate::{base_element::DomElement, DomState};
+use crate::{base_element::DomElement, DomState, MaybeJsStr};
+
+#[wasm_bindgen]
+extern "C" {
+    type DomClassListType;
+    #[wasm_bindgen(method, js_name = toggle)]
+    fn toggle_with_force(this: &DomClassListType, name: &js_sys::JsString, v: bool);
+}
 
 type DomClassListTy = dom_state_ty!(DomTokenList, (), ());
 
-fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &'static str, v: bool, _ctx: &mut DomElement) {
+fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &MaybeJsStr, v: bool, _ctx: &mut DomElement) {
     match class_list {
         DomState::Normal(x) => {
             // TODO if a class is used multiple times in a single element (may through external), this breaks
-            x.toggle_with_force(class_name, v).unwrap();
+            x.unchecked_ref::<DomClassListType>().toggle_with_force(&class_name.js, v);
         }
         #[cfg(feature = "prerendering")]
         DomState::Prerendering(_) => {
             if let DomState::Prerendering(x) = &mut _ctx.elem {
                 if v {
-                    x.add_class(class_name);
+                    x.add_class(class_name.s);
                 } else {
-                    x.remove_class(class_name);
+                    x.remove_class(class_name.s);
                 }
             }
         }
@@ -28,15 +36,15 @@ fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &'static str, 
         class_list => match &mut _ctx.elem {
             DomState::Normal(x) => {
                 let cl = x.class_list();
-                cl.toggle_with_force(class_name, v).unwrap();
+                cl.unchecked_ref::<DomClassListType>().toggle_with_force(&class_name.js, v);
                 *class_list = DomState::Normal(cl);
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
                 if v {
-                    x.add_class(class_name);
+                    x.add_class(class_name.s);
                 } else {
-                    x.remove_class(class_name);
+                    x.remove_class(class_name.s);
                 }
             }
             DomState::PrerenderingApply(_) => {}
@@ -76,7 +84,7 @@ impl ListPropertyInit for DomClassList {
 }
 
 impl ListPropertyUpdate<bool> for DomClassList {
-    type ItemValue = &'static str;
+    type ItemValue = MaybeJsStr;
 
     #[inline]
     fn compare_and_set_item_ref<
@@ -121,10 +129,10 @@ impl ListPropertyUpdate<DomExternalClasses> for DomClassList {
         let class_list = &mut dest.class_list;
         if let DomClassItem::External(x) = old_v {
             src.diff_list(x, &mut |c, enabled| {
-                toggle_class_name(class_list, c, enabled, ctx)
+                toggle_class_name(class_list, &c, enabled, ctx)
             });
         } else {
-            let x = src.init_list(&mut |c, enabled| toggle_class_name(class_list, c, enabled, ctx));
+            let x = src.init_list(&mut |c, enabled| toggle_class_name(class_list, &c, enabled, ctx));
             *old_v = DomClassItem::External(x);
         }
     }
@@ -146,7 +154,7 @@ impl ListPropertyItem<DomClassList, DomExternalClasses> for DomExternalClasses {
 
 /// The external classes type used to pass class list between components.
 ///
-/// This type has similar iterface to the `DomClassList` .
+/// This type has similar interface to the `DomClassList` .
 /// It can be used as a property that accepts classes,
 /// and then pass the classes to other components and elements.
 #[derive(Debug, Clone, PartialEq)]
@@ -157,7 +165,7 @@ pub struct DomExternalClasses {
 
 #[derive(Debug, Clone, PartialEq)]
 enum DomExternalClassItem {
-    Enabled(bool, &'static str),
+    Enabled(bool, MaybeJsStr),
     External(DomExternalClasses),
 }
 
@@ -171,16 +179,16 @@ impl DomExternalClasses {
         }
     }
 
-    fn init_list(&self, update_fn: &mut impl FnMut(&'static str, bool)) -> Self {
+    fn init_list(&self, update_fn: &mut impl FnMut(MaybeJsStr, bool)) -> Self {
         let items = self
             .items
             .iter()
             .map(|item| match item {
                 DomExternalClassItem::Enabled(enabled, class_name) => {
                     if *enabled {
-                        update_fn(class_name, true);
+                        update_fn(class_name.clone(), true);
                     }
-                    DomExternalClassItem::Enabled(*enabled, class_name)
+                    DomExternalClassItem::Enabled(*enabled, class_name.clone())
                 }
                 DomExternalClassItem::External(x) => {
                     DomExternalClassItem::External(x.init_list(update_fn))
@@ -193,12 +201,12 @@ impl DomExternalClasses {
         }
     }
 
-    fn deinit_list(&self, update_fn: &mut impl FnMut(&'static str, bool)) {
+    fn deinit_list(&self, update_fn: &mut impl FnMut(MaybeJsStr, bool)) {
         for item in self.items.iter() {
             match item {
                 DomExternalClassItem::Enabled(enabled, class_name) => {
                     if *enabled {
-                        update_fn(class_name, false);
+                        update_fn(class_name.clone(), false);
                     }
                 }
                 DomExternalClassItem::External(x) => {
@@ -208,15 +216,15 @@ impl DomExternalClasses {
         }
     }
 
-    fn diff_list(&self, old: &mut Self, update_fn: &mut impl FnMut(&'static str, bool)) {
+    fn diff_list(&self, old: &mut Self, update_fn: &mut impl FnMut(MaybeJsStr, bool)) {
         if Rc::ptr_eq(&self.id, &old.id) {
             for (new, old) in self.items.iter().zip(old.items.iter_mut()) {
                 match new {
                     DomExternalClassItem::Enabled(enabled, class_name) => {
                         if *old != *new {
-                            update_fn(class_name, *enabled);
+                            update_fn(class_name.clone(), *enabled);
                         }
-                        *old = DomExternalClassItem::Enabled(*enabled, class_name);
+                        *old = DomExternalClassItem::Enabled(*enabled, class_name.clone());
                     }
                     DomExternalClassItem::External(newc) => {
                         if let DomExternalClassItem::External(oldc) = old {
@@ -240,13 +248,16 @@ impl ListPropertyInit for DomExternalClasses {
     #[inline]
     fn init_list(dest: &mut Self, count: usize, _ctx: &mut Self::UpdateContext) {
         let mut v = Vec::with_capacity(count);
-        v.resize_with(count, || DomExternalClassItem::Enabled(false, ""));
+        thread_local! {
+            static EMPTY_JS_STRING: &'static MaybeJsStr = MaybeJsStr::new_leaked("");
+        }
+        v.resize_with(count, || DomExternalClassItem::Enabled(false, EMPTY_JS_STRING.with(|x| (*x).clone())));
         dest.items = v.into_boxed_slice();
     }
 }
 
 impl ListPropertyUpdate<bool> for DomExternalClasses {
-    type ItemValue = &'static str;
+    type ItemValue = MaybeJsStr;
 
     #[inline]
     fn compare_and_set_item_ref<
@@ -268,7 +279,7 @@ impl ListPropertyUpdate<bool> for DomExternalClasses {
             }
         }
         *ctx = true;
-        *old_v = DomExternalClassItem::Enabled(v, class_name);
+        *old_v = DomExternalClassItem::Enabled(v, class_name.clone());
     }
 }
 

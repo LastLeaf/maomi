@@ -502,13 +502,17 @@ impl StyleSheetConstructor for DomStyleSheet {
                         #[allow(non_camel_case_types)]
                         #extern_vis struct #name {}
                         impl #name {
-                            #[allow(dead_code)]
-                            fn __stylesheet() {
+                            #[inline]
+                            fn css_name() -> &'static maomi_dom::MaybeJsStr {
                                 #(#sub_var_refs;)*
+                                thread_local! {
+                                    static N: &'static maomi_dom::MaybeJsStr = maomi_dom::MaybeJsStr::new_leaked(#class_name);
+                                }
+                                N.with(|x| *x)
                             }
                         }
                         impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomClassList, bool> for #name {
-                            type Value = &'static str;
+                            type Value = maomi_dom::MaybeJsStr;
                             #[inline(always)]
                             fn item_value<'a>(
                                 _dest: &mut maomi_dom::class_list::DomClassList,
@@ -516,19 +520,19 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 _s: &'a bool,
                                 _ctx: &mut <maomi_dom::class_list::DomClassList as maomi::prop::ListPropertyInit>::UpdateContext,
                             ) -> &'a Self::Value {
-                                &#class_name
+                                Self::css_name()
                             }
                         }
                         impl maomi::prop::ListPropertyItem<maomi_dom::class_list::DomExternalClasses, bool> for #name {
-                            type Value = &'static str;
+                            type Value = maomi_dom::MaybeJsStr;
                             #[inline(always)]
                             fn item_value<'a>(
-                                _dest: &mut maomi_dom::class_list::DomExternalClasses,
+                                dest: &mut maomi_dom::class_list::DomExternalClasses,
                                 _index: usize,
                                 _s: &'a bool,
                                 _ctx: &mut <maomi_dom::class_list::DomExternalClasses as maomi::prop::ListPropertyInit>::UpdateContext,
                             ) -> &'a Self::Value {
-                                &#class_name
+                                Self::css_name()
                             }
                         }
                     });
