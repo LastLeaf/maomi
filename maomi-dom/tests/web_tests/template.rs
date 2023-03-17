@@ -38,11 +38,7 @@ async fn template_if_else() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>(empty)</div>"#,
                     );
@@ -52,11 +48,7 @@ async fn template_if_else() {
                 .unwrap();
                 this.update_with(|this, ctx| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>hello</div>"#,
                     );
@@ -67,11 +59,7 @@ async fn template_if_else() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>(too long)</div>"#,
                     );
@@ -121,11 +109,7 @@ async fn template_lonely_if() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
@@ -135,11 +119,7 @@ async fn template_lonely_if() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>hello</div>"#,
                     );
@@ -149,11 +129,7 @@ async fn template_lonely_if() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
@@ -211,11 +187,7 @@ async fn template_match() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>(empty)</div>"#,
                     );
@@ -225,11 +197,7 @@ async fn template_match() {
                 .unwrap();
                 this.update_with(|this, ctx| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>hello</div>"#,
                     );
@@ -240,11 +208,7 @@ async fn template_match() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>(too long)</div>"#,
                     );
@@ -297,11 +261,7 @@ async fn template_for_keyless() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>1</div><div>123</div><div>456</div>"#,
                     );
@@ -311,7 +271,7 @@ async fn template_for_keyless() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure().unwrap().0.tag.dom_element().inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>123</div><div>456</div><div>789</div>"#,
                     );
                     this.list.pop();
@@ -319,11 +279,7 @@ async fn template_for_keyless() {
                 }).await.unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>123</div>"#,
                     );
@@ -334,11 +290,7 @@ async fn template_for_keyless() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
@@ -428,11 +380,7 @@ async fn template_for() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>1</div>1234"#,
                     );
@@ -446,11 +394,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>7812563490"#,
                     );
@@ -464,11 +408,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>1290567834"#,
                     );
@@ -482,11 +422,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>7812563490"#,
                     );
@@ -500,11 +436,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div>126734"#,
                     );
@@ -518,11 +450,7 @@ async fn template_for() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
@@ -583,11 +511,7 @@ async fn class_attr() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div class="static-class"></div>"#,
                     );
@@ -597,11 +521,7 @@ async fn class_attr() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div class="static-class dyn-class"></div>"#,
                     );
@@ -611,11 +531,7 @@ async fn class_attr() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div class="static-class"></div>"#,
                     );
@@ -667,11 +583,7 @@ async fn style_attr() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div style="color: rgb(64, 64, 64);"></div>"#,
                     );
@@ -681,11 +593,7 @@ async fn style_attr() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div style="color: rgb(128, 128, 128);"></div>"#,
                     );
@@ -762,11 +670,7 @@ async fn event_handler() {
                         this.list = vec![(num + 100).to_string()];
                     } else {
                         assert_eq!(
-                            this.template_structure()
-                                .unwrap()
-                                .0
-                                .tag
-                                .dom_element()
+                            first_dom!(this, div)
                                 .outer_html(),
                             r#"<div>400</div>"#,
                         );
@@ -830,7 +734,7 @@ async fn binding_prop() {
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
-                let dom_elem = this.template_structure().unwrap().0.tag.dom_element().clone();
+                let dom_elem = first_dom!(this, input).clone();
                 dom_elem.dyn_ref::<web_sys::HtmlInputElement>().unwrap().set_value("abc");
                 simulate_event(
                     &dom_elem,
@@ -945,11 +849,7 @@ async fn list_prop() {
             let this = self.rc();
             this.task_with(|this, _| {
                 assert_eq!(
-                    this.template_structure()
-                        .unwrap()
-                        .0
-                        .tag
-                        .dom_element()
+                    first_dom!(this, div)
                         .inner_html(),
                     r#"<div>abc</div><div>def</div><div>ghi</div>"#,
                 );

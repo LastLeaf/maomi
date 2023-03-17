@@ -400,8 +400,8 @@ impl ToTokens for DomElementDefinition {
             }
 
             impl SupportBackend for #tag_name {
-                type Target = Box<Self>;
-                type SlotChildren<C> = StaticSingleSlot<ForestTokenAddr, C>;
+                type Target = Self;
+                type SlotChildren = StaticSingleSlot<ForestTokenAddr, maomi::node::DynNodeList>;
             }
         });
     }

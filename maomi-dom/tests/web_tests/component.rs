@@ -97,11 +97,7 @@ async fn single_static_slot() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div><div title="Again"></div>Hello</div>"#,
                     );
@@ -112,11 +108,7 @@ async fn single_static_slot() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .outer_html(),
                         r#"<div><div title="Again">Hello world again!</div></div>"#,
                     );
@@ -195,21 +187,17 @@ async fn single_dynamic_slot() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div></div>"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     this.hello_text = Some("".into());
@@ -218,21 +206,17 @@ async fn single_dynamic_slot() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div><span></span></div>"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_some());
                     this.hello_text = Some("text".into());
@@ -241,21 +225,17 @@ async fn single_dynamic_slot() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div>text<span></span></div>"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_some());
                     this.hello_text = None;
@@ -264,21 +244,17 @@ async fn single_dynamic_slot() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"<div></div>"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     (this.callback.take().unwrap())();
@@ -347,21 +323,17 @@ async fn multiple_slots() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"12A"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_some());
                     this.list.push(34);
@@ -370,21 +342,17 @@ async fn multiple_slots() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"12A34A"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     this.list = vec![];
@@ -393,21 +361,17 @@ async fn multiple_slots() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     this.list = vec![12, 34, 56];
@@ -416,21 +380,17 @@ async fn multiple_slots() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"12A34A56A"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     (this.callback.take().unwrap())();
@@ -514,21 +474,17 @@ async fn multiple_slots_with_data() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     this.list.push(1);
@@ -538,21 +494,17 @@ async fn multiple_slots_with_data() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"1B2A"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     this.list = vec![6, 7, 8];
@@ -561,21 +513,17 @@ async fn multiple_slots_with_data() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"6A7B8A"#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     this.list = vec![];
@@ -584,21 +532,17 @@ async fn multiple_slots_with_data() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#""#,
                     );
                     assert!(this
                         .template_structure()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<div>>()
                         .single_slot()
-                        .unwrap()
-                        .0
+                        .unwrap()[0]
+                        .as_ref::<maomi::node::Node<Child>>()
                         .single_slot()
                         .is_none());
                     (this.callback.take().unwrap())();
@@ -692,11 +636,7 @@ async fn self_update_slot_data() {
             async_task(async move {
                 this.get(|this| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"|abc"#,
                     );
@@ -705,11 +645,11 @@ async fn self_update_slot_data() {
                 let child = this
                     .get(|this| {
                         this.template_structure()
-                            .unwrap()
-                            .0
+                            .unwrap()[0]
+                            .as_ref::<maomi::node::Node<div>>()
                             .single_slot()
-                            .unwrap()
-                            .0
+                            .unwrap()[0]
+                            .as_ref::<maomi::node::Node<Child>>()
                             .tag
                             .rc()
                     })
@@ -717,11 +657,7 @@ async fn self_update_slot_data() {
                 child.get(|c| c.update_data()).await.await;
                 this.update_with(|this, _| {
                     assert_eq!(
-                        this.template_structure()
-                            .unwrap()
-                            .0
-                            .tag
-                            .dom_element()
+                        first_dom!(this, div)
                             .inner_html(),
                         r#"|(empty)|"#,
                     );

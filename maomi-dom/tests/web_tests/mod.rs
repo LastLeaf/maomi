@@ -5,6 +5,18 @@ use wasm_bindgen::{JsCast, JsValue};
 use maomi::{prelude::*, template::ComponentTemplate, AsyncCallback};
 use maomi_dom::{async_task, prelude::*};
 
+macro_rules! first_dom {
+    ($this:expr, $elem:ty) => {
+        (
+            $this.template_structure()
+                .unwrap()[0]
+                .as_ref::<maomi::node::Node<$elem>>()
+                .tag
+                .dom_element()
+        )
+    };
+}
+
 pub mod component;
 pub mod event;
 pub mod prerendering;

@@ -31,12 +31,7 @@ async fn skin_class() {
         fn created(&self) {
             self.rc().task_with(|this, _| {
                 assert_eq!(
-                    this.template_structure()
-                        .unwrap()
-                        .0
-                        .tag
-                        .dom_element()
-                        .outer_html(),
+                    first_dom!(this, div).outer_html(),
                     r#"<div class="a-class"></div>"#,
                 );
                 (this.callback.take().unwrap())();
@@ -85,11 +80,7 @@ async fn skin_style() {
 
         fn created(&self) {
             self.rc().task_with(|this, _| {
-                let style = this.template_structure()
-                    .unwrap()
-                    .0
-                    .tag
-                    .dom_element()
+                let style = first_dom!(this, div)
                     .dyn_ref::<web_sys::HtmlElement>()
                     .unwrap()
                     .style();
