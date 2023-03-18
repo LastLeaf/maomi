@@ -489,7 +489,10 @@ impl DomGeneralElement {
         _tag_name: &MaybeJsStr,
     ) -> dom_state_ty!(web_sys::Element, PrerenderingElement, RematchedDomElem) {
         match self.is_prerendering() {
+            #[cfg(target_arch = "wasm32")]
             DomState::Normal(_) => DomState::Normal(document_create_element(&_tag_name.js)),
+            #[cfg(not(target_arch = "wasm32"))]
+            DomState::Normal(_) => panic!("not available in non-web environment"),
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(_tag_name.s)),
             #[cfg(feature = "prerendering-apply")]
@@ -759,6 +762,7 @@ impl BackendGeneralElement for DomGeneralElement {
 #[derive(Debug, Clone)]
 pub struct MaybeJsStr {
     s: &'static str,
+    #[cfg(target_arch = "wasm32")]
     js: js_sys::JsString,
 }
 
@@ -771,9 +775,11 @@ impl PartialEq for MaybeJsStr {
 impl MaybeJsStr {
     /// Create a new string with JsString cached.
     pub fn new_leaked(s: &'static str) -> &'static Self {
+        #[cfg(target_arch = "wasm32")]
         let js = js_sys::JsString::from(s);
         let this = Box::new(Self {
             s,
+            #[cfg(target_arch = "wasm32")]
             js,
         });
         Box::leak(this)

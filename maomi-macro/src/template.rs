@@ -8,6 +8,8 @@ use syn::*;
 
 use crate::i18n::{LocaleGroup, TransRes};
 
+// TODO support const (once) expression binding
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum SlotType {
     None,

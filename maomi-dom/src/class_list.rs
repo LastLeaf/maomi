@@ -2,7 +2,9 @@
 
 use maomi::prop::{ListPropertyInit, ListPropertyItem, ListPropertyUpdate};
 use std::rc::Rc;
-use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
 use web_sys::DomTokenList;
 
 use crate::{base_element::DomElement, DomState, MaybeJsStr};
@@ -16,19 +18,22 @@ extern "C" {
 
 type DomClassListTy = dom_state_ty!(DomTokenList, (), ());
 
-fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &MaybeJsStr, v: bool, _ctx: &mut DomElement) {
+fn toggle_class_name(class_list: &mut DomClassListTy, _class_name: &MaybeJsStr, _v: bool, _ctx: &mut DomElement) {
     match class_list {
-        DomState::Normal(x) => {
+        DomState::Normal(_x) => {
             // TODO if a class is used multiple times in a single element (may through external), this breaks
-            x.unchecked_ref::<DomClassListType>().toggle_with_force(&class_name.js, v);
+            #[cfg(target_arch = "wasm32")]
+            _x.unchecked_ref::<DomClassListType>().toggle_with_force(&_class_name.js, _v);
+            #[cfg(not(target_arch = "wasm32"))]
+            panic!("not available in non-web environment");
         }
         #[cfg(feature = "prerendering")]
         DomState::Prerendering(_) => {
             if let DomState::Prerendering(x) = &mut _ctx.elem {
-                if v {
-                    x.add_class(class_name.s);
+                if _v {
+                    x.add_class(_class_name.s);
                 } else {
-                    x.remove_class(class_name.s);
+                    x.remove_class(_class_name.s);
                 }
             }
         }
@@ -36,15 +41,16 @@ fn toggle_class_name(class_list: &mut DomClassListTy, class_name: &MaybeJsStr, v
         class_list => match &mut _ctx.elem {
             DomState::Normal(x) => {
                 let cl = x.class_list();
-                cl.unchecked_ref::<DomClassListType>().toggle_with_force(&class_name.js, v);
+                #[cfg(target_arch = "wasm32")]
+                cl.unchecked_ref::<DomClassListType>().toggle_with_force(&_class_name.js, _v);
                 *class_list = DomState::Normal(cl);
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
-                if v {
-                    x.add_class(class_name.s);
+                if _v {
+                    x.add_class(_class_name.s);
                 } else {
-                    x.remove_class(class_name.s);
+                    x.remove_class(_class_name.s);
                 }
             }
             DomState::PrerenderingApply(_) => {}

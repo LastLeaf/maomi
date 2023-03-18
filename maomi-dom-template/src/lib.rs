@@ -19,6 +19,19 @@ stylesheet! {
     }
 }
 
+stylesheet! {
+    class error {}
+}
+
+#[component(Backend = DomBackend)]
+struct MyComponent {
+    template: template! {
+        <a href="/"></a>
+        <div class:error></div>
+    },
+}
+
+
 // declare a component
 #[component(Backend = DomBackend)]
 struct HelloWorld {
