@@ -1,0 +1,76 @@
+[package]
+name = "maomi-dom"
+version = "0.4.0"
+authors = ["LastLeaf <bqfu@163.com>"]
+license = "MIT"
+description = "Strict and Performant Web Application Programming"
+homepage = "https://github.com/LastLeaf/maomi"
+documentation = "https://github.com/LastLeaf/maomi"
+repository = "https://github.com/LastLeaf/maomi"
+edition = "2021"
+
+[features]
+default = []
+prerendering = ["maomi/prerendering", "html-escape"]
+prerendering-apply = ["maomi/prerendering-apply"]
+all = ["prerendering", "prerendering-apply"]
+
+[dependencies]
+maomi = "=0.4.0"
+maomi-dom-macro = "=0.4.0"
+log = "0.4"
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+html-escape = { version = "0.2", optional = true }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "Window",
+  "Document",
+  "HtmlElement",
+  "Node",
+  "NodeList",
+  "DocumentFragment",
+  "Element",
+  "Text",
+  "DomTokenList",
+  "CssStyleDeclaration",
+  "EventListener",
+  "EventTarget",
+  "Event",
+  "EventInit",
+  "MouseEvent",
+  "TouchEvent",
+  "TouchList",
+  "Touch",
+  "KeyboardEvent",
+  "InputEvent",
+  "AnimationEvent",
+  "TransitionEvent",
+  "HtmlAnchorElement",
+  "HtmlDataElement",
+  "HtmlQuoteElement",
+  "HtmlTimeElement",
+  "HtmlTableColElement",
+  "HtmlTableCellElement",
+  "HtmlInputElement",
+  "HtmlFormElement",
+  "HtmlMeterElement",
+  "HtmlOptionElement",
+  "HtmlTextAreaElement",
+  "HtmlImageElement",
+  "HtmlMediaElement",
+  "HtmlVideoElement",
+  "HtmlTrackElement",
+  "HtmlAreaElement",
+  "SubmitEvent",
+]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+console_log = "0.2"
+console_error_panic_hook = "0.1"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+once_cell = "1.13"

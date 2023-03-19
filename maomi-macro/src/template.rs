@@ -1,486 +1,1411 @@
-use proc_macro2::TokenStream as TokenStream2;
+use std::collections::HashMap;
+use proc_macro2::TokenStream;
 use quote::*;
+use syn::parse::*;
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::*;
 
-fn is_expr_dynamic(expr: &Expr) -> bool {
-    if let Expr::Lit(_) = expr {
-        false
-    } else {
-        true
-    }
+use crate::i18n::{LocaleGroup, TransRes};
+
+// TODO support const (once) expression binding
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum SlotType {
+    None,
+    StaticSingle,
+    Dynamic,
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateValue {
-    pub(crate) is_dynamic: bool,
-    pub(crate) expr: Expr,
+pub(super) struct Template {
+    children: Vec<TemplateNode>,
 }
-impl ToTokens for TemplateValue {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let expr = &self.expr;
-        tokens.append_all(quote! {
-            #expr
-        })
+
+impl Template {
+    pub(super) fn slot_type(&self) -> SlotType {
+        fn rec(children: &Vec<TemplateNode>, st: &mut SlotType, in_list: bool) {
+            for n in children {
+                match n {
+                    TemplateNode::StaticText { .. }
+                    | TemplateNode::DynamicText { .. } => {
+                        continue;
+                    }
+                    TemplateNode::Tag { children, .. } => {
+                        rec(children, st, in_list);
+                        if *st == SlotType::Dynamic {
+                            return;
+                        }
+                    }
+                    TemplateNode::Slot { .. } => {
+                        *st = match *st {
+                            SlotType::None => {
+                                if in_list {
+                                    SlotType::Dynamic
+                                } else {
+                                    SlotType::StaticSingle
+                                }
+                            },
+                            SlotType::StaticSingle => SlotType::Dynamic,
+                            SlotType::Dynamic => unreachable!(),
+                        };
+                        continue;
+                    }
+                    TemplateNode::IfElse { branches, .. } => {
+                        for branch in branches {
+                            rec(&branch.children, st, in_list);
+                            if *st == SlotType::Dynamic {
+                                return;
+                            }
+                        }
+                    }
+                    TemplateNode::Match { arms, .. } => {
+                        for arm in arms {
+                            rec(&arm.children, st, in_list);
+                            if *st == SlotType::Dynamic {
+                                return;
+                            }
+                        }
+                    }
+                    TemplateNode::ForLoop { children, .. } => {
+                        rec(children, st, true);
+                        if *st == SlotType::Dynamic {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        let mut ret = SlotType::None;
+        rec(&self.children, &mut ret, false);
+        ret
     }
-}
-impl From<Expr> for TemplateValue {
-    fn from(expr: Expr) -> Self {
-        Self {
-            is_dynamic: is_expr_dynamic(&expr),
-            expr,
+
+    pub(super) fn to_children<'a>(&'a self, backend_param: &'a TokenStream, locale_group: &'a LocaleGroup) -> TemplateChildren<'a> {
+        TemplateChildren {
+            template_children: &self.children,
+            backend_param,
+            locale_group,
+            slot_var_name: None,
+            force_inline: true,
         }
     }
 }
 
-#[derive(Clone)]
-pub(crate) enum Attribute {
-    Mark { value: TemplateValue },
-    ClassProp { value: TemplateValue },
-    Common { name: LitStr, value: TemplateValue },
-    Prop { name: Ident, value: TemplateValue },
-    SystemEv { name: Ident, value: TemplateValue },
-    Ev { name: Ident, value: TemplateValue },
-}
-impl Attribute {
-    fn is_dynamic(&self) -> bool {
-        match self {
-            Attribute::Mark { value, .. } => value.is_dynamic,
-            Attribute::ClassProp { value, .. } => value.is_dynamic,
-            Attribute::Common { value, .. } => value.is_dynamic,
-            Attribute::Prop { value, .. } => value.is_dynamic,
-            Attribute::SystemEv { value, .. } => value.is_dynamic,
-            Attribute::Ev { value, .. } => value.is_dynamic,
+impl Parse for Template {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut children = vec![];
+        while !input.is_empty() {
+            let child = input.parse()?;
+            children.push(child);
         }
+        Ok(Self { children })
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateNativeNode {
-    pub(crate) tag_name: LitStr,
-    pub(crate) attributes: Vec<Attribute>,
-    pub(crate) children: Vec<TemplateNode>,
-}
-
-#[derive(Clone)]
-pub(crate) enum TemplateVirtualNode {
+pub(super) enum TemplateNode {
+    StaticText {
+        content: LitStr,
+    },
+    DynamicText {
+        brace_token: token::Brace,
+        expr: Box<Expr>,
+    },
     Slot {
-        name: Option<LitStr>,
+        tag_lt_token: token::Lt,
+        #[allow(dead_code)]
+        tag_name: Path,
+        data: Option<TemplateAttribute>,
+        #[allow(dead_code)]
+        tag_gt_token: token::Gt,
+        #[allow(dead_code)]
+        close_token: token::Div,
     },
-    InSlot {
-        name: LitStr,
+    Tag {
+        tag_lt_token: token::Lt,
+        tag_name: Path,
+        slot_var_name: Option<Ident>,
+        attrs: Vec<TemplateAttribute>,
+        #[allow(dead_code)]
+        tag_gt_token: token::Gt,
+        children: Vec<TemplateNode>,
+        #[allow(dead_code)]
+        close_token: token::Div,
+    },
+    IfElse {
+        branches: Vec<TemplateIfElse>,
+    },
+    Match {
+        match_token: token::Match,
+        expr: Box<Expr>,
+        #[allow(dead_code)]
+        brace_token: token::Brace,
+        arms: Vec<TemplateMatchArm>,
+    },
+    ForLoop {
+        for_token: token::For,
+        pat: Pat,
+        in_token: token::In,
+        expr: Box<Expr>,
+        key: Option<(token::Use, Option<token::Paren>, Box<Expr>, Path)>,
+        #[allow(dead_code)]
+        brace_token: token::Brace,
         children: Vec<TemplateNode>,
     },
-    If {
-        branches: Vec<(Option<Expr>, Vec<TemplateNode>)>,
-    },
-    For {
-        list: Expr,
-        index: Ident,
-        item: Ident,
-        key: Option<(Ident, Path)>,
-        children: Vec<TemplateNode>,
-    },
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateComponent {
-    pub(crate) tag_name: LitStr,
-    pub(crate) component: Path,
-    pub(crate) property_values: Vec<Attribute>,
-    pub(crate) children: Vec<TemplateNode>,
+pub(super) struct TemplateIfElse {
+    else_token: Option<token::Else>,
+    if_cond: Option<(token::If, Box<Expr>)>,
+    #[allow(dead_code)]
+    brace_token: token::Brace,
+    children: Vec<TemplateNode>,
 }
 
-#[derive(Clone)]
-pub(crate) enum TemplateNode {
-    NativeNode(TemplateNativeNode),
-    VirtualNode(TemplateVirtualNode),
-    Component(TemplateComponent),
-    TextNode(TemplateValue),
+pub(super) struct TemplateMatchArm {
+    pat: Pat,
+    guard: Option<(token::If, Expr)>,
+    fat_arrow_token: token::FatArrow,
+    #[allow(dead_code)]
+    brace_token: token::Brace,
+    children: Vec<TemplateNode>,
+    comma: Option<token::Comma>,
 }
-impl ToTokens for TemplateNode {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let node = match self {
-            TemplateNode::NativeNode(x) => {
-                // native node logic
-                let TemplateNativeNode {
-                    tag_name,
-                    attributes,
-                    children,
-                } = x;
-                let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                let update_attributes: Vec<TokenStream2> = attributes.iter().map(|attribute| {
-                    let content = match attribute {
-                        Attribute::Mark { value } => quote! {
-                            __node.set_mark(#value);
-                        },
-                        Attribute::ClassProp { value } => quote! {
-                            __node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
-                        },
-                        Attribute::Common { name, value } => quote! {
-                            __node.set_attribute(#name, #value);
-                        },
-                        Attribute::SystemEv { name, value } => quote! {
-                            __node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
-                                let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
-                                f(self_ref_mut.as_component_mut::<Self>(), e)
-                            }));
-                        },
-                        _ => {
-                            unreachable!()
-                        },
-                    };
-                    if attribute.is_dynamic() {
-                        quote! { #content }
-                    } else {
-                        quote! { if __is_init { #content } }
-                    }
-                }).collect();
-                quote! {
-                    |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
-                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
-                        let __children = __node.as_ref().map(|node| { node.children_rc() });
-                        let ret_children: Vec<NodeRc<_>> = vec![#(
-                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                        ),*];
-                        let __is_init = __node_rc.is_none();
-                        let __node_rc = match __node_rc {
-                            None => __owner.new_native_node(#tag_name, vec![], ret_children),
-                            Some(node_rc) => node_rc.clone(),
-                        };
-                        {
-                            let mut __node = unsafe { __node_rc.deref_mut_unsafe() };
-                            #(#update_attributes)*
-                        }
-                        __node_rc.into()
-                    }
-                }
+
+impl Parse for TemplateNode {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let la = input.lookahead1();
+        let ret = if la.peek(LitStr) {
+            // parse static text node
+            TemplateNode::StaticText {
+                content: input.parse()?,
             }
-
-            TemplateNode::VirtualNode(x) => {
-                match x {
-                    TemplateVirtualNode::Slot { name } => {
-                        // slot node logic
-                        let slot_name = match name {
-                            None => LitStr::new("", proc_macro2::Span::call_site()),
-                            Some(x) => x.clone(),
-                        };
-                        quote! {
-                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
-                                match __update_to {
-                                    None => {
-                                        __owner.new_virtual_node("slot", VirtualNodeProperty::Slot(#slot_name, vec![]), vec![]).into()
-                                    },
-                                    Some(node_rc) => {
-                                        node_rc.clone()
-                                    },
-                                }
+        } else if la.peek(token::Brace) {
+            // parse dynamic text node
+            let content;
+            let brace_token = braced!(content in input);
+            let expr = content.parse()?;
+            TemplateNode::DynamicText { brace_token, expr }
+        } else if la.peek(token::Lt) {
+            let tag_lt_token = input.parse()?;
+            let tag_name: Path = input.parse()?;
+            if tag_name.is_ident("slot") {
+                // parse slot tag
+                let data = if input.peek(Ident) {
+                    let attr: TemplateAttribute = input.parse()?;
+                    match &attr {
+                        TemplateAttribute::StaticProperty {
+                            name, list_updater, ..
+                        }
+                        | TemplateAttribute::DynamicProperty {
+                            name, list_updater, ..
+                        } => {
+                            if name.to_string().as_str() != "data" {
+                                Err(Error::new(
+                                    name.span(),
+                                    "The slot element cannot contain attributes other than `data`",
+                                ))?;
+                            }
+                            if list_updater.is_some() {
+                                Err(Error::new(name.span(), "Illegal slot `data` attribute"))?;
                             }
                         }
-                    }
-
-                    TemplateVirtualNode::InSlot { name, children } => {
-                        // in-slot node logic
-                        let indexes: Vec<usize> =
-                            (0..children.len()).into_iter().map(|x| x).collect();
-                        quote! {
-                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
-                                match __update_to {
-                                    None => {
-                                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
-                                        let __children = __node.as_ref().map(|node| { node.children_rc() });
-                                        let ret_children: Vec<NodeRc<_>> = vec![#(
-                                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                                        ),*];
-                                        __owner.new_virtual_node("in", VirtualNodeProperty::InSlot(#name, ret_children), vec![]).into()
-                                    },
-                                    Some(node_rc) => {
-                                        node_rc.clone()
-                                    },
-                                }
-                            }
+                        TemplateAttribute::EventHandler { name, .. }
+                        | TemplateAttribute::Slot { name, .. } => {
+                            Err(Error::new(
+                                name.span(),
+                                "Illegal slot element attribute value",
+                            ))?;
                         }
                     }
-
-                    TemplateVirtualNode::If { branches } => {
-                        // if node logic
-                        let children_branches: Vec<_> = branches.iter().enumerate().map(|(key, (cond, children))| {
-                            let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                            let content = quote! {
-                                {
-                                    const KEY: usize = #key;
-                                    let __equal = if let Some(old_key) = __old_key { *old_key == KEY } else { false };
-                                    let children: Vec<NodeRc<_>> = vec![#(
-                                        (#children)(__owner, if let Some(children) = __children {
-                                            if __equal { Some(&children[#indexes]) } else { None }
-                                        } else { None })
-                                    ),*];
-                                    if __equal {
-                                        __node_rc.unwrap().clone().into()
-                                    } else {
-                                        match __node_rc {
-                                            Some(node_rc) => {
-                                                let mut node = unsafe { node_rc.deref_mut_unsafe() };
-                                                node.replace_children_list(children);
-                                                *node.property_mut() = VirtualNodeProperty::Branch(KEY);
-                                                node_rc.clone().into()
-                                            },
-                                            None => {
-                                                __owner.new_virtual_node("if", VirtualNodeProperty::Branch(KEY), children).into()
-                                            }
-                                        }
-                                    }
-                                }
-                            };
-                            match cond {
-                                Some(cond) => quote! {
-                                    if #cond #content
-                                },
-                                None => quote! {
-                                    #content
-                                }
-                            }
-                        }).collect();
-                        quote! {
-
-                            // if node logic
-                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
-                                let __node_rc = __update_to.map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
-                                let __old_key = match &__node {
-                                    Some(x) => {
-                                        let index = if let VirtualNodeProperty::Branch(b) = x.property() { b } else { unreachable!() };
-                                        Some(index)
-                                    },
-                                    None => None,
-                                };
-                                let __children = __node.as_ref().map(|node| { node.children_rc() });
-                                #(#children_branches)else*
-                            }
-                        }
-                    }
-
-                    TemplateVirtualNode::For {
-                        list,
-                        index,
-                        item,
-                        key,
-                        children,
-                    } => {
-                        // for node logic
-                        let indexes: Vec<usize> =
-                            (0..children.len()).into_iter().map(|x| x).collect();
-                        let key_list = match key {
-                            Some((key_name, key_ty)) => quote! {
-                                {
-                                    let keys: Box<VirtualKeyList<#key_ty>> = {
-                                        let v: Vec<Option<#key_ty>> = (#list).into_iter().map(|x| {
-                                            Some(x.#key_name.clone())
-                                        }).collect();
-                                        let v = VirtualKeyList::new(v);
-                                        let keys = Box::new(v);
-                                        keys
-                                    };
-                                    let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
-                                        Some(node_rc) => {
-                                            let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                            let node = unsafe { node_rc.deref_mut_unsafe() };
-                                            let mut node2 = unsafe { node_rc.deref_mut_unsafe() };
-                                            let old_keys: &VirtualKeyList<#key_ty> = if let VirtualNodeProperty::List(list) = node.property() {
-                                                list.downcast_ref::<VirtualKeyList<#key_ty>>().unwrap()
-                                            } else { unreachable!() };
-                                            keys.list_reorder(old_keys, &mut node2)
-                                        },
-                                        None => {
-                                            VirtualKeyChanges::new_empty(keys.len())
-                                        },
-                                    };
-                                    (keys, reordered_list)
-                                }
-                            },
-                            None => quote! {
-                                {
-                                    let keys: Box<VirtualKeyList<()>> = {
-                                        let v: Vec<Option<()>> = (#list).into_iter().map(|_| None).collect();
-                                        let v = VirtualKeyList::new(v);
-                                        let keys = Box::new(v);
-                                        keys
-                                    };
-                                    let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
-                                        Some(node_rc) => {
-                                            let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                            let node = unsafe { node_rc.deref_mut_unsafe() };
-                                            let mut node2 = unsafe { node_rc.deref_mut_unsafe() };
-                                            let old_keys: &VirtualKeyList<()> = if let VirtualNodeProperty::List(list) = node.property() {
-                                                list.downcast_ref::<VirtualKeyList<()>>().unwrap()
-                                            } else { unreachable!() };
-                                            keys.list_reorder(old_keys, &mut node2)
-                                        },
-                                        None => {
-                                            VirtualKeyChanges::new_empty(keys.len())
-                                        },
-                                    };
-                                    (keys, reordered_list)
-                                }
-                            },
-                        };
-                        quote! {
-                            |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
-                                let (__keys, mut __reordered_list) = #key_list;
-
-                                let children: Vec<_> = (#list).into_iter().enumerate().map(|(#index, #item)| -> NodeRc<_> {
-                                    let __node_rc = __reordered_list.nodes_mut()[#index].as_ref().map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                    let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
-                                    let __children = __node.as_ref().map(|node| { node.children_rc() });
-                                    let children: Vec<NodeRc<_>> = vec![#(
-                                        (#children)(__owner, if let Some(children) = __children {
-                                            Some(&children[#indexes])
-                                        } else { None })
-                                    ),*];
-                                    match __node_rc {
-                                        None => __owner.new_virtual_node("for-item", VirtualNodeProperty::None, children).into(),
-                                        Some(node_rc) => node_rc.clone().into(),
-                                    }
-                                }).collect();
-
-                                match __update_to.as_ref() {
-                                    None => __owner.new_virtual_node("for-list", VirtualNodeProperty::List(__keys), children).into(),
-                                    Some(node_rc) => {
-                                        let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                        let mut node = unsafe { node_rc.deref_mut_unsafe() };
-                                        __reordered_list.apply(&mut node, children);
-                                        *node.property_mut() = VirtualNodeProperty::List(__keys);
-                                        node_rc.clone().into()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            TemplateNode::Component(x) => {
-                let TemplateComponent {
-                    tag_name,
-                    component,
-                    property_values,
-                    children,
-                } = x;
-                let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
-                    let content = match attribute {
-                        Attribute::Mark { value } => quote! {
-                            __node.set_mark(#value);
-                        },
-                        Attribute::ClassProp { value } => quote! {
-                            __node.set_attribute("class", __prepend_class_prefix(#value, __template_skin_prefix));
-                        },
-                        Attribute::Common { name, value } => quote! {
-                            __node.set_attribute(#name, #value);
-                        },
-                        Attribute::Prop { name, value } => quote! {
-                            {
-                                let __node = __node.as_component_mut::<#component>();
-                                if Property::update_from(&mut __node.#name, #value) { __changed = true };
-                            }
-                        },
-                        Attribute::SystemEv { name, value } => quote! {
-                            __node.global_events_mut().#name.set_handler(Box::new(|__self, e| {
-                                let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
-                                f(__self.as_component_mut::<Self>(), e)
-                            }));
-                        },
-                        Attribute::Ev { name, value } => quote! {
-                            {
-                                let __node = __node.as_component_mut::<#component>();
-                                __node.#name.set_handler(Box::new(|__self, e| {
-                                    let f: Box<dyn Fn(&mut Self, _)> = Box::new(#value);
-                                    f(__self.as_component_mut::<Self>(), e)
-                                }));
-                            }
-                        },
-                    };
-                    if attribute.is_dynamic() {
-                        quote! { #content }
-                    } else {
-                        quote! { if __is_init { #content } }
-                    }
-                }).collect();
-                quote! {
-                    |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
-                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::ComponentNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
-                        let __children = __node.as_ref().map(|node| { node.children_rc() });
-                        let ret_children: Vec<NodeRc<_>> = vec![#(
-                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                        ),*];
-                        let __is_init = __node_rc.is_none();
-                        let __node_rc = match __node_rc {
-                            None => __owner.new_component_node::<#component>(#tag_name, ret_children),
-                            Some(node_rc) => node_rc.clone(),
-                        };
-                        {
-                            let mut __changed = false;
-                            let mut __node = __node_rc.deref_mut_unsafe();
-                            {
-                                #(#property_apply)*
-                            }
-                            if __changed { __node.force_apply_updates::<#component>() };
-                        }
-                        __node_rc.into()
-                    }
-                }
-            }
-
-            TemplateNode::TextNode(x) => {
-                // text node logic
-                let update = {
-                    if x.is_dynamic {
-                        quote! {
-                            let node_rc = if let NodeRc::TextNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                            unsafe { node_rc.deref_mut_unsafe() }.set_text_content(#x);
-                            node_rc.clone().into()
-                        }
-                    } else {
-                        quote! { node_rc.clone() }
-                    }
+                    Some(attr)
+                } else {
+                    None
                 };
-                quote! {
-                    |__owner: &mut ComponentNode<_>, __update_to: Option<&NodeRc<_>>| {
-                        match __update_to {
-                            None => {
-                                __owner.new_text_node(#x).into()
-                            },
-                            Some(node_rc) => {
-                                #update
-                            },
+                let la = input.lookahead1();
+                if la.peek(token::Div) {
+                    let close_token = input.parse()?;
+                    let tag_gt_token = input.parse()?;
+                    TemplateNode::Slot {
+                        tag_lt_token,
+                        tag_name,
+                        data,
+                        tag_gt_token,
+                        close_token,
+                    }
+                } else if la.peek(token::Gt) {
+                    let tag_gt_token = input.parse()?;
+                    let _: token::Lt = input.parse()?;
+                    let close_token = input.parse()?;
+                    if input.parse::<Token![_]>().is_err() {
+                        let end_tag_name: Path = input.parse()?;
+                        if !end_tag_name.is_ident("slot") {
+                            return Err(Error::new(
+                                end_tag_name.span(),
+                                "End tag name does not match the start tag name (consider use `_` instead?)",
+                            ));
                         }
                     }
+                    let _: token::Gt = input.parse()?;
+                    TemplateNode::Slot {
+                        tag_lt_token,
+                        tag_name,
+                        data,
+                        tag_gt_token,
+                        close_token,
+                    }
+                } else {
+                    return Err(la.error());
+                }
+            } else {
+                // parse element
+                let mut slot_var_name = None;
+                let mut attrs = vec![];
+                let mut la = input.lookahead1();
+                loop {
+                    if la.peek(Ident) {
+                        let attr = input.parse()?;
+                        if let TemplateAttribute::Slot { name, var_name, .. } = attr {
+                            if slot_var_name.is_some() {
+                                return Err(Error::new(name.span(), "Duplicated `slot` attribute"));
+                            }
+                            slot_var_name = Some(var_name);
+                        } else {
+                            attrs.push(attr);
+                        }
+                        la = input.lookahead1();
+                    } else {
+                        break;
+                    }
+                }
+                if la.peek(token::Div) {
+                    let close_token = input.parse()?;
+                    let tag_gt_token = input.parse()?;
+                    TemplateNode::Tag {
+                        tag_lt_token,
+                        tag_name,
+                        slot_var_name,
+                        attrs,
+                        tag_gt_token,
+                        children: Vec::with_capacity(0),
+                        close_token,
+                    }
+                } else if la.peek(token::Gt) {
+                    let tag_gt_token = input.parse()?;
+                    let mut children = vec![];
+                    while !input.peek(token::Lt) || !input.peek2(token::Div) {
+                        let child = input.parse()?;
+                        children.push(child);
+                    }
+                    let _: token::Lt = input.parse()?;
+                    let close_token = input.parse()?;
+                    if input.parse::<Token![_]>().is_err() {
+                        let end_tag_name: Path = input.parse()?;
+                        let short_tag_name = match tag_name.segments.last() {
+                            None => Ident::new("", tag_name.span()),
+                            Some(x) => x.ident.clone(),
+                        };
+                        if !end_tag_name.is_ident(&short_tag_name) {
+                            return Err(Error::new(
+                                end_tag_name.span(),
+                                "End tag name does not match the start tag name (consider use `_` instead?)",
+                            ));
+                        }
+                    }
+                    let _: token::Gt = input.parse()?;
+                    TemplateNode::Tag {
+                        tag_lt_token,
+                        tag_name,
+                        slot_var_name,
+                        attrs,
+                        tag_gt_token,
+                        children,
+                        close_token,
+                    }
+                } else {
+                    return Err(la.error());
                 }
             }
+        } else if la.peek(token::If) {
+            // parse if expr
+            let mut branches = vec![];
+            let mut else_token = None;
+            loop {
+                let if_cond = if input.peek(token::If) {
+                    Some((
+                        input.parse()?,
+                        Box::new(Expr::parse_without_eager_brace(input)?),
+                    ))
+                } else {
+                    None
+                };
+                let has_if = if_cond.is_some();
+                let content;
+                let brace_token = braced!(content in input);
+                let mut children = vec![];
+                while !content.is_empty() {
+                    children.push(content.parse()?);
+                }
+                if branches.len() >= 16 {
+                    Err(Error::new(
+                        brace_token.span,
+                        "`if` and `else` group cannot contain more than 16 branches",
+                    ))?;
+                }
+                branches.push(TemplateIfElse {
+                    else_token,
+                    if_cond,
+                    brace_token,
+                    children,
+                });
+                if input.peek(token::Else) {
+                    else_token = Some(input.parse()?);
+                } else {
+                    // add an else branch if it is not ended with
+                    if has_if {
+                        branches.push(TemplateIfElse {
+                            else_token: Some(Default::default()),
+                            if_cond: None,
+                            brace_token: Default::default(),
+                            children: vec![],
+                        })
+                    }
+                    break;
+                }
+            }
+            TemplateNode::IfElse { branches }
+        } else if la.peek(token::Match) {
+            // parse match expr
+            let match_token = input.parse()?;
+            let expr = Box::new(Expr::parse_without_eager_brace(input)?);
+            let content;
+            let brace_token = braced!(content in input);
+            let mut arms = vec![];
+            {
+                let input = content;
+                while !input.is_empty() {
+                    let pat = input.parse()?;
+                    let guard = if input.peek(token::If) {
+                        Some((input.parse()?, input.parse()?))
+                    } else {
+                        None
+                    };
+                    let fat_arrow_token = input.parse()?;
+                    let content;
+                    let brace_token = braced!(content in input);
+                    let mut children = vec![];
+                    while !content.is_empty() {
+                        children.push(content.parse()?);
+                    }
+                    let comma = input.parse()?;
+                    if arms.len() >= 16 {
+                        Err(Error::new(
+                            brace_token.span,
+                            "`match` cannot contain more than 16 branches",
+                        ))?;
+                    }
+                    arms.push(TemplateMatchArm {
+                        pat,
+                        guard,
+                        fat_arrow_token,
+                        brace_token,
+                        children,
+                        comma,
+                    })
+                }
+            }
+            TemplateNode::Match {
+                match_token,
+                expr,
+                brace_token,
+                arms,
+            }
+        } else if la.peek(token::For) {
+            // parse for expr
+            let for_token = input.parse()?;
+            let pat = input.parse()?;
+            let in_token = input.parse()?;
+            let expr = Box::new(Expr::parse_without_eager_brace(input)?);
+            let key = if input.peek(token::Use) {
+                let use_token: token::Use = input.parse()?;
+                let la = input.lookahead1();
+                let (paren, key_expr) = if la.peek(token::Paren) {
+                    let content;
+                    let paren = parenthesized!(content in input);
+                    (Some(paren), content.parse()?)
+                } else if let Pat::Ident(x) = &pat {
+                    let ident = &x.ident;
+                    let span = use_token.span();
+                    (None, parse_quote_spanned! {span=> #ident })
+                } else {
+                    return Err(la.error());
+                };
+                let path = input.parse()?;
+                Some((use_token, paren, key_expr, path))
+            } else {
+                None
+            };
+            let content;
+            let brace_token = braced!(content in input);
+            let mut children = vec![];
+            while !content.is_empty() {
+                children.push(content.parse()?);
+            }
+            TemplateNode::ForLoop {
+                for_token,
+                pat,
+                in_token,
+                expr,
+                key,
+                brace_token,
+                children,
+            }
+        } else {
+            return Err(la.error());
         };
-        tokens.append_all(node);
+        Ok(ret)
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateShadowRoot {
-    pub(crate) children: Vec<TemplateNode>,
+pub(super) enum TemplateAttribute {
+    StaticProperty {
+        name: Ident,
+        list_updater: Option<(token::Colon, Path)>,
+        #[allow(dead_code)]
+        eq_token: token::Eq,
+        value: Lit,
+    },
+    DynamicProperty {
+        name: Ident,
+        list_updater: Option<(token::Colon, Path)>,
+        #[allow(dead_code)]
+        eq_token: token::Eq,
+        ref_token: Option<token::And>,
+        #[allow(dead_code)]
+        brace_token: token::Brace,
+        expr: Box<Expr>,
+    },
+    EventHandler {
+        name: Ident,
+        #[allow(dead_code)]
+        eq_token: token::Eq,
+        at_token: token::At,
+        fn_name: Ident,
+        #[allow(dead_code)]
+        paren_token: token::Paren,
+        args: Punctuated<Box<Expr>, token::Comma>,
+    },
+    Slot {
+        name: Ident,
+        #[allow(dead_code)]
+        colon_token: token::Colon,
+        var_name: Ident,
+    },
 }
-impl ToTokens for TemplateShadowRoot {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let TemplateShadowRoot { children } = self;
-        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-        tokens.append_all(quote! {
-            |__owner: &mut ComponentNode<_>, __update_to: Option<&VirtualNodeRc<_>>, __template_skin_prefix: &'static str| {
-                // shadow root node logic
-                let __node = __update_to.map(|node_rc| unsafe { node_rc.deref_mut_unsafe() });
-                let __children = __node.as_ref().map(|node| { node.children_rc() });
-                vec![#(
-                    (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                ),*]
+
+impl TemplateAttribute {
+    fn list_ident(&self) -> Option<&Ident> {
+        match self {
+            Self::StaticProperty {
+                name, list_updater, ..
+            } => list_updater.as_ref().map(|_| name),
+            Self::DynamicProperty {
+                name, list_updater, ..
+            } => list_updater.as_ref().map(|_| name),
+            Self::EventHandler { .. } => None,
+            Self::Slot { .. } => None,
+        }
+    }
+}
+
+impl Parse for TemplateAttribute {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let la = input.lookahead1();
+        let ret = if la.peek(Ident) {
+            let name: Ident = input.parse()?;
+            if name.to_string().as_str() == "slot" {
+                TemplateAttribute::Slot {
+                    name,
+                    colon_token: input.parse()?,
+                    var_name: input.parse()?,
+                }
+            } else {
+                let list_updater = if input.peek(token::Colon) {
+                    Some((input.parse()?, input.parse()?))
+                } else {
+                    None
+                };
+                if input.peek(token::Eq) {
+                    let eq_token = input.parse()?;
+                    let la = input.lookahead1();
+                    if la.peek(Lit) {
+                        let value = input.parse()?;
+                        TemplateAttribute::StaticProperty {
+                            name,
+                            list_updater,
+                            eq_token,
+                            value,
+                        }
+                    } else if la.peek(token::And) {
+                        let ref_token = input.parse()?;
+                        let content;
+                        let brace_token = braced!(content in input);
+                        let expr = content.parse()?;
+                        TemplateAttribute::DynamicProperty {
+                            ref_token: Some(ref_token),
+                            name,
+                            list_updater,
+                            eq_token,
+                            brace_token,
+                            expr,
+                        }
+                    } else if la.peek(token::Brace) {
+                        let content;
+                        let brace_token = braced!(content in input);
+                        let expr = content.parse()?;
+                        TemplateAttribute::DynamicProperty {
+                            ref_token: None,
+                            name,
+                            list_updater,
+                            eq_token,
+                            brace_token,
+                            expr,
+                        }
+                    } else if la.peek(token::At) {
+                        let at_token = input.parse()?;
+                        let fn_name = input.parse()?;
+                        let content;
+                        let paren_token = parenthesized!(content in input);
+                        let args = Punctuated::parse_terminated(&content)?;
+                        TemplateAttribute::EventHandler {
+                            name,
+                            eq_token,
+                            at_token,
+                            fn_name,
+                            paren_token,
+                            args,
+                        }
+                    } else {
+                        return Err(la.error());
+                    }
+                } else {
+                    let span = name.span();
+                    TemplateAttribute::StaticProperty {
+                        name,
+                        list_updater,
+                        eq_token: parse_quote_spanned! {span=> = },
+                        value: parse_quote_spanned! {span=> true },
+                    }
+                }
+            }
+        } else {
+            return Err(la.error());
+        };
+        Ok(ret)
+    }
+}
+
+pub(super) struct TemplateChildren<'a> {
+    template_children: &'a [TemplateNode],
+    backend_param: &'a TokenStream,
+    locale_group: &'a LocaleGroup,
+    slot_var_name: Option<&'a Ident>,
+    force_inline: bool,
+}
+
+impl<'a> ToTokens for TemplateChildren<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self {
+            template_children,
+            backend_param,
+            locale_group,
+            slot_var_name,
+            force_inline,
+        } = self;
+        let children = template_children.into_iter().enumerate().map(|(i, template_node)| {
+            TemplateNodeUpdate {
+                child_index: i.into(),
+                template_node,
+                backend_param,
+                locale_group,
             }
         });
+        let result_index = (0..template_children.len()).map(|i| syn::Index::from(i));
+        let slot_var_name_def = match slot_var_name {
+            Some(x) => quote! { #x: &_, },
+            None => quote! {},
+        };
+        let inline = if *force_inline {
+            quote! { #[inline(always)] }
+        } else {
+            quote! { #[inline] }
+        };
+        quote! {
+            (#inline |
+                __m_parent_element: &mut maomi::backend::tree::ForestNodeMut<
+                    <#backend_param as maomi::backend::Backend>::GeneralElement,
+                >,
+                mut __m_children: Option<&mut maomi::node::DynNodeList>,
+                #slot_var_name_def
+            | -> Result<maomi::node::UnionOption<maomi::node::DynNodeList>, maomi::error::Error> {
+                let __m_children_results = ( #({ #children },)* );
+                Ok(if __m_children.is_some() {
+                    maomi::node::UnionOption::none()
+                } else {
+                    unsafe {
+                        maomi::node::UnionOption::some(Box::new([ #(__m_children_results.#result_index.unwrap_unchecked(),)* ]))
+                    }
+                })
+            },).0
+        }.to_tokens(tokens);
+    }
+}
+
+struct TemplateNodeUpdate<'a> {
+    child_index: usize,
+    template_node: &'a TemplateNode,
+    backend_param: &'a TokenStream,
+    locale_group: &'a LocaleGroup,
+}
+
+impl<'a> ToTokens for TemplateNodeUpdate<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self {
+            child_index,
+            template_node,
+            backend_param,
+            locale_group,
+        } = self;
+        match template_node {
+
+            // static text node
+            TemplateNode::StaticText { content } => {
+                let span = content.span();
+                let translated = match locale_group.trans(&content.value()) {
+                    TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
+                    TransRes::LackTransGroup(x) => {
+                        let msg = format!("translation group {:?} not found", x);
+                        quote_spanned! {span=> compile_error!(#msg) }
+                    }
+                    TransRes::Done(x) => {
+                        let s = LitStr::new(x, span);
+                        quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }
+                    }
+                    TransRes::NotNeeded => quote! { maomi::locale_string::LocaleStaticStr::translated(#content) },
+                };
+                let update = quote_spanned! {span=>
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let (__m_child, __m_backend_element) =
+                    maomi::text_node::TextNode::create::<#backend_param>(
+                        __m_parent_element,
+                        #translated,
+                    )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
+                        __m_parent_element,
+                        &__m_backend_element,
+                    );
+                    maomi::node::UnionOption::some(maomi::node::DynNode::new(__m_child))
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
+            }
+
+            // dynamic text node
+            TemplateNode::DynamicText { brace_token, expr } => {
+                let span = brace_token.span;
+                let translated = match locale_group.need_trans() {
+                    true => quote! { #expr },
+                    false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
+                };
+                let update = quote_spanned! {span=>
+                    let __m_child: &mut maomi::text_node::TextNode = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                    __m_child.set_text::<#backend_param>(__m_parent_element, #translated)?;
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let (__m_child, __m_backend_element) =
+                        maomi::text_node::TextNode::create::<#backend_param>(
+                            __m_parent_element,
+                            #translated,
+                        )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
+                        __m_parent_element,
+                        &__m_backend_element,
+                    );
+                    maomi::node::UnionOption::some(maomi::node::DynNode::new(__m_child))
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
+            }
+
+            // slot node
+            TemplateNode::Slot { tag_lt_token, data, .. } => {
+                let span = tag_lt_token.span();
+                let data_expr = match data {
+                    None => quote_spanned! {span=> &() },
+                    Some(attr) => {
+                        match attr {
+                            TemplateAttribute::StaticProperty { eq_token, value, .. } => {
+                                let span = eq_token.span();
+                                match value {
+                                    Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
+                                    _ => quote_spanned! {span=> & #value },
+                                }
+                            }
+                            TemplateAttribute::DynamicProperty { eq_token, expr, ref_token, .. } => {
+                                let span = eq_token.span();
+                                match ref_token {
+                                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                                    None => quote_spanned!(span=> #expr),
+                                }
+                            }
+                            TemplateAttribute::EventHandler { .. } => unreachable!(),
+                            TemplateAttribute::Slot { .. } => unreachable!(),
+                        }
+                    },
+                };
+                let update = quote_spanned! {span=>
+                    let maomi::node::ControlNode::<()> {
+                        forest_token: ref mut __m_backend_element_token,
+                        content: ref mut __m_slot_children,
+                    } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                    let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                        .ok_or(maomi::error::Error::ListChangeWrong)?;
+                    let __m_slot_data = &mut maomi::node::SlotKindUpdateTrait::reuse(__m_slot_scopes, __m_backend_element_token.stable_addr())?.1;
+                    let mut __m_slot_data_changed = false;
+                    maomi::prop::PropertyUpdate::compare_and_set_ref(
+                        __m_slot_data,
+                        #data_expr,
+                        &mut __m_slot_data_changed,
+                    );
+                    if __m_slot_data_changed {
+                        __m_slot_fn(maomi::node::SlotChange::DataChanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
+                    } else {
+                        __m_slot_fn(maomi::node::SlotChange::Unchanged(&mut __m_backend_element, &__m_backend_element_token, __m_slot_data))?;
+                    }
+                    maomi::node::UnionOption::none()
+                };
+                let create = quote_spanned! {span=>
+                    let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                    {
+                        let __m_backend_element_token = __m_backend_element.token();
+                        let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                        let __m_slot_data = maomi::prop::Prop::new(maomi::prop::PropAsRef::property_to_owned(#data_expr));
+                        __m_slot_fn(maomi::node::SlotChange::Added(__m_parent_element, &__m_backend_element_token, &__m_slot_data))?;
+                        {
+                            #[allow(unused_imports)]
+                            use maomi::node::{SlotKindTrait, SlotKindUpdateTrait};
+                            __m_slot_scopes.add(__m_backend_element_token.stable_addr(), (__m_backend_element_token, __m_slot_data))?;
+                        }
+                    }
+                    let __m_backend_element_token = __m_backend_element.token();
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                    maomi::node::UnionOption::some(maomi::node::DynNode::new(maomi::node::ControlNode::new(
+                        __m_backend_element_token,
+                        (),
+                    )))
+                };
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
+            }
+
+            // common node
+            TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
+                let template_children = TemplateChildren {
+                    template_children: children,
+                    backend_param,
+                    locale_group,
+                    slot_var_name: slot_var_name.as_ref(),
+                    force_inline: true,
+                };
+                let has_children = children.len() > 0;
+                let span = tag_lt_token.span();
+                let mut list_prop_count = HashMap::new();
+                let (attrs_create, attrs_update): (Vec<_>, Vec<_>) = attrs.into_iter().map(|attr| {
+                    let list_index = if let Some(x) = attr.list_ident() {
+                        *list_prop_count.entry(x)
+                            .and_modify(|x| *x += 1)
+                            .or_insert(1) - 1
+                    } else {
+                        0
+                    };
+                    (TemplateAttributeCreate { attr, list_index }, TemplateAttributeUpdate { attr, list_index })
+                }).unzip();
+                let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) = list_prop_count.iter().unzip();
+                let slot_var_name_def = match slot_var_name {
+                    Some(x) => quote! { #x },
+                    None => quote_spanned! {span=> __m_slot_data },
+                };
+                let update_children = if has_children {
+                    quote! {
+                        match __m_slot_change {
+                            maomi::node::SlotChange::Added(__m_parent_element, __m_backend_element_token, #slot_var_name_def) => {
+                                if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
+                                    maomi::node::SlotKindTrait::add(
+                                        __m_slot_children,
+                                        __m_backend_element_token.stable_addr(),
+                                        unsafe { __m_children_results(__m_parent_element, None, #slot_var_name)?.unwrap_unchecked() },
+                                    )?;
+                                }
+                            }
+                            maomi::node::SlotChange::DataChanged(__m_parent_element, __m_backend_element_token, #slot_var_name_def)
+                                | maomi::node::SlotChange::Unchanged(__m_parent_element, __m_backend_element_token, #slot_var_name_def)
+                                => {
+                                    let __m_children =
+                                        maomi::node::SlotKindTrait::get_mut(__m_slot_children, __m_backend_element_token.stable_addr())?;
+                                    __m_children_results(__m_parent_element, Some(__m_children), #slot_var_name)?;
+                            }
+                            maomi::node::SlotChange::Removed(__m_backend_element_token) => {
+                                if maomi::node::SlotKindTrait::may_update(__m_slot_children) {
+                                    maomi::node::SlotKindTrait::remove(__m_slot_children, __m_backend_element_token.stable_addr())?;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    quote! {}
+                };
+                let update = quote_spanned! {span=>
+                    let maomi::node::Node::<#tag_name> {
+                        tag: ref mut __m_child,
+                        child_nodes: ref mut __m_slot_children,
+                    } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
+                        __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        Box::new(|__m_child, __m_update_ctx| {
+                            #(#attrs_update)*
+                        }),
+                        &mut |__m_slot_change| {
+                            #update_children
+                            Ok(())
+                        },
+                    )?;
+                    maomi::node::UnionOption::none()
+                };
+                let create_children = if has_children {
+                    quote! {
+                        maomi::node::SlotKindTrait::add(
+                            __m_slot_children,
+                            __m_backend_element_token.stable_addr(),
+                            unsafe { __m_children_results(__m_parent_element, None, #slot_var_name)?.unwrap_unchecked() },
+                        )?;
+                    }
+                } else {
+                    quote! {}
+                };
+                let create = quote_spanned! {span=>
+                    let (__m_child, __m_backend_element) =
+                        <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
+                            __m_backend_context,
+                            __m_parent_element,
+                            __m_self_owner_weak,
+                        )?;
+                    let mut __m_node = maomi::node::Node::<#tag_name>::new(
+                        __m_child,
+                        <<#tag_name as maomi::backend::SupportBackend>::SlotChildren as Default>::default(),
+                    );
+                    let maomi::node::Node {
+                        tag: ref mut __m_child,
+                        child_nodes: ref mut __m_slot_children,
+                    } = __m_node;
+                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
+                        __m_child,
+                        __m_backend_context,
+                        __m_parent_element,
+                        Box::new(|__m_child, __m_update_ctx| {
+                            #(
+                                maomi::prop::ListPropertyInit::init_list(
+                                    &mut __m_child.#list_prop_name,
+                                    #list_prop_count,
+                                    __m_update_ctx,
+                                );
+                            )*
+                            #(#attrs_create)*
+                        }),
+                        &mut |__m_parent_element, __m_backend_element_token, #slot_var_name_def| {
+                            #create_children 
+                            Ok(())
+                        },
+                    )?;
+                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                    maomi::node::UnionOption::some(maomi::node::DynNode::new(__m_node))
+                };
+                if has_children {
+                    quote_spanned! {span=>
+                        let mut __m_children_results = #template_children;
+                    }.to_tokens(tokens);
+                }
+                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                if is_rust_analyzer {
+                    quote_spanned! {span=>
+                        #create
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        if let Some(__m_children) = __m_children.as_mut() {
+                            #update
+                        } else {
+                            #create
+                        }
+                    }.to_tokens(tokens);
+                }
+            }
+
+            // if branches
+            TemplateNode::IfElse { branches } => {
+                for (index, x) in branches.iter().enumerate() {
+                    let TemplateIfElse { else_token, if_cond, children, .. } = x;
+                    let template_children = TemplateChildren {
+                        template_children: children,
+                        backend_param,
+                        locale_group,
+                        slot_var_name: None,
+                        force_inline: false,
+                    };
+                    let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
+                    let if_cond = match if_cond {
+                        Some((if_token, cond)) => quote_spanned! {span=> #if_token #cond },
+                        None => quote! {},
+                    };
+                    quote_spanned! {span=>
+                        #else_token #if_cond {
+                            let mut __m_children_results = #template_children;
+                            if let Some(__m_children) = __m_children.as_mut() {
+                                let maomi::node::ControlNode::<maomi::node::Branch> {
+                                    forest_token: ref mut __m_backend_element_token,
+                                    content: ref mut __m_slot_children,
+                                } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                                let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                                    .ok_or(maomi::error::Error::ListChangeWrong)?;
+                                if __m_slot_children.cur == #index {
+                                    let __m_parent_element = &mut __m_backend_element;
+                                    __m_children_results(__m_parent_element, Some(&mut __m_slot_children.children))?;
+                                } else {
+                                    let __m_backend_element_new = {
+                                        let __m_parent_element = &mut __m_backend_element;
+                                        let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                                        *__m_backend_element_token = __m_backend_element.token();
+                                        *__m_slot_children = {
+                                            let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                                            maomi::node::Branch {
+                                                cur: #index,
+                                                children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                            }
+                                        };
+                                        __m_backend_element
+                                    };
+                                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::replace_with(__m_backend_element, __m_backend_element_new);
+                                }
+                                maomi::node::UnionOption::none()
+                            } else {
+                                let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                                let __m_slot_children = {
+                                    let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                                    maomi::node::Branch {
+                                        cur: #index,
+                                        children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                    }
+                                };
+                                let __m_backend_element_token = __m_backend_element.token();
+                                <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                                maomi::node::UnionOption::some(maomi::node::DynNode::new(maomi::node::ControlNode::new(
+                                    __m_backend_element_token,
+                                    __m_slot_children,
+                                )))
+                            }
+                        }
+                    }.to_tokens(tokens);
+                }
+            }
+
+            // match branches
+            TemplateNode::Match { match_token, expr, arms, .. } => {
+                let span = match_token.span();
+                let mut branches_ts = quote! {};
+                for (index, x) in arms.iter().enumerate() {
+                    let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
+                    let template_children = TemplateChildren {
+                        template_children: children,
+                        backend_param,
+                        locale_group,
+                        slot_var_name: None,
+                        force_inline: false,
+                    };
+                    let guard = match guard {
+                        Some((if_token, cond)) => quote! { #if_token #cond },
+                        None => quote! {},
+                    };
+                    quote_spanned! {span=>
+                        #pat #guard #fat_arrow_token {
+                            let mut __m_children_results = #template_children;
+                            if let Some(__m_children) = __m_children.as_mut() {
+                                let maomi::node::ControlNode::<maomi::node::Branch> {
+                                    forest_token: ref mut __m_backend_element_token,
+                                    content: ref mut __m_slot_children,
+                                } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                                let mut __m_backend_element = __m_parent_element.borrow_mut_token(&__m_backend_element_token)
+                                    .ok_or(maomi::error::Error::ListChangeWrong)?;
+                                if __m_slot_children.cur == #index {
+                                    let __m_parent_element = &mut __m_backend_element;
+                                    __m_children_results(__m_parent_element, Some(&mut __m_slot_children.children))?;
+                                } else {
+                                    let __m_backend_element_new = {
+                                        let __m_parent_element = &mut __m_backend_element;
+                                        let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                                        *__m_backend_element_token = __m_backend_element.token();
+                                        *__m_slot_children = {
+                                            let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                                            maomi::node::Branch {
+                                                cur: #index,
+                                                children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                            }
+                                        };
+                                        __m_backend_element
+                                    };
+                                    <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::replace_with(__m_backend_element, __m_backend_element_new);
+                                }
+                                maomi::node::UnionOption::none()
+                            } else {
+                                let __m_backend_element = <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?;
+                                let __m_slot_children = {
+                                    let __m_parent_element = &mut __m_parent_element.borrow_mut(&__m_backend_element);
+                                    maomi::node::Branch {
+                                        cur: #index,
+                                        children: unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }
+                                    }
+                                };
+                                let __m_backend_element_token = __m_backend_element.token();
+                                <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(__m_parent_element, &__m_backend_element);
+                                maomi::node::UnionOption::some(maomi::node::DynNode::new(maomi::node::ControlNode::new(
+                                    __m_backend_element_token,
+                                    __m_slot_children,
+                                )))
+                            }
+                        } #comma
+                    }.to_tokens(&mut branches_ts);
+                }
+                quote_spanned! {span=>
+                    #match_token #expr {
+                        #branches_ts
+                    }
+                }.to_tokens(tokens);
+            }
+
+            // for loops
+            TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
+                let template_children = TemplateChildren {
+                    template_children: children,
+                    backend_param,
+                    locale_group,
+                    slot_var_name: None,
+                    force_inline: false,
+                };
+                let span = for_token.span();
+                let (algo, next_arg) = if let Some((_, _, key_expr, key_ty)) = key.as_ref() {
+                    (
+                        quote_spanned!(span=> maomi::diff::key::KeyList::<#key_ty, maomi::node::DynNodeList>),
+                        quote_spanned!(span=> #key_expr,),
+                    )
+                } else {
+                    (
+                        quote_spanned!(span=> maomi::diff::keyless::KeylessList::<maomi::node::DynNodeList>),
+                        quote!(),
+                    )
+                };
+                quote_spanned! {span=>
+                    let mut __m_list = std::iter::IntoIterator::into_iter(#expr);
+                    let __m_size_hint = {
+                        let size_hint = std::iter::Iterator::size_hint(&__m_list);
+                        size_hint.1.unwrap_or(size_hint.0)
+                    };
+                    let __m_is_list_update = __m_children.is_some();
+                    let __m_backend_element = if __m_is_list_update {
+                        maomi::node::UnionOption::none()
+                    } else {
+                        maomi::node::UnionOption::some(
+                            <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::create_virtual_element(__m_parent_element)?,
+                        )
+                    };
+                    let __m_list_diff_algo = {
+                        let mut __m_parent_element = if let Some(__m_children) = __m_children.as_mut() {
+                            let maomi::node::ControlNode::<#algo> {
+                                forest_token: ref mut __m_backend_element_token,
+                                ..
+                            } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                            __m_parent_element.borrow_mut_token(__m_backend_element_token)
+                                .ok_or(maomi::error::Error::ListChangeWrong)?
+                        } else {
+                            __m_parent_element.borrow_mut(unsafe { __m_backend_element.as_ref_unchecked() })
+                        };
+                        let mut __m_list_update_iter = if let Some(__m_children) = __m_children.as_mut() {
+                            let maomi::node::ControlNode::<#algo> {
+                                content: ref mut __m_children,
+                                ..
+                            } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
+                            let __m_list_update_iter = __m_children.list_diff_update::<#backend_param>(
+                                &mut __m_parent_element,
+                                __m_size_hint,
+                            );
+                            __m_list_update_iter
+                        } else {
+                            let __m_list_update_iter = #algo::list_diff_new::<#backend_param>(
+                                &mut __m_parent_element,
+                                __m_size_hint,
+                            );
+                            __m_list_update_iter
+                        };
+                        #for_token #pat #in_token __m_list {
+                            let mut __m_children_results = &mut (#template_children);
+                            if __m_is_list_update {
+                                __m_list_update_iter.as_update().next(
+                                    #next_arg
+                                    #[inline] |__m_children, __m_parent_element| {
+                                        if let Some(__m_children) = __m_children {
+                                            __m_children_results(__m_parent_element, Some(__m_children))?;
+                                            Ok(None)
+                                        } else {
+                                            Ok(Some(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() }))
+                                        }
+                                    },
+                                )?;
+                            } else {
+                                __m_list_update_iter.as_new().next(
+                                    #next_arg
+                                    #[inline] |__m_parent_element| {
+                                        Ok(unsafe { __m_children_results(__m_parent_element, None)?.unwrap_unchecked() })
+                                    },
+                                )?;
+                            }
+                        }
+                        if __m_is_list_update {
+                            __m_list_update_iter.into_update().end()?;
+                            maomi::node::UnionOption::none()
+                        } else {
+                            maomi::node::UnionOption::some(__m_list_update_iter.into_new().end())
+                        }
+                    };
+                    if __m_is_list_update {
+                        maomi::node::UnionOption::none()
+                    } else {
+                        let __m_list_diff_algo = unsafe { __m_list_diff_algo.unwrap_unchecked() };
+                        let __m_backend_element = unsafe { __m_backend_element.unwrap_unchecked() };
+                        let __m_backend_element_token = __m_backend_element.token();
+                        <<#backend_param as maomi::backend::Backend>::GeneralElement as maomi::backend::BackendGeneralElement>::append(
+                            __m_parent_element,
+                            &__m_backend_element,
+                        );
+                        maomi::node::UnionOption::some(maomi::node::DynNode::new(maomi::node::ControlNode::new(
+                            __m_backend_element_token,
+                            __m_list_diff_algo,
+                        )))
+                    }
+                }.to_tokens(tokens);
+            }
+        }
+    }
+}
+
+pub(super) struct TemplateAttributeCreate<'a> {
+    attr: &'a TemplateAttribute,
+    list_index: usize,
+}
+
+impl<'a> ToTokens for TemplateAttributeCreate<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { attr, list_index } = self;
+        match attr {
+            TemplateAttribute::StaticProperty { name, list_updater, value, eq_token, .. } => {
+                let span = eq_token.span();
+                let ref_sign = match value {
+                    Lit::Str(_) | Lit::ByteStr(_) => quote! {},
+                    _ => quote_spanned!{span=> & },
+                };
+                if let Some((_, updater)) = list_updater {
+                    let index = Index::from(*list_index);
+                    quote_spanned! {span=>
+                        maomi::prop::ListPropertyUpdate::compare_and_set_item_ref::<#updater>(
+                            &mut __m_child.#name,
+                            #index,
+                            #ref_sign #value,
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.#name,
+                            #ref_sign #value,
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                }
+            }
+            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, eq_token, .. } => {
+                let span = eq_token.span();
+                let expr = match ref_token {
+                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                    None => quote_spanned!(span=> #expr),
+                };
+                if let Some((_, updater)) = list_updater {
+                    let index = Index::from(*list_index);
+                    quote_spanned! {span=>
+                        maomi::prop::ListPropertyUpdate::compare_and_set_item_ref::<#updater>(
+                            &mut __m_child.#name,
+                            #index,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.#name,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                }
+            }
+            TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
+                let span = at_token.span();
+                let (args_ref, args_expr): (Vec<_>, Vec<_>) = args.iter().enumerate().map(|(index, expr)| {
+                    let span = expr.span();
+                    let arg_name = Ident::new(&format!("__m_arg{}", index), span);
+                    let arg_expr = quote_spanned! {span=> let #arg_name = std::borrow::ToOwned::to_owned(#expr); };
+                    let arg_ref = quote_spanned! {span=> std::borrow::Borrow::borrow(&#arg_name) };
+                    (arg_ref, arg_expr)
+                }).unzip();
+                quote_spanned! {span=>
+                    let __m_event_self = __m_event_self_weak.clone();
+                    #(#args_expr)*
+                    maomi::event::EventHandler::set_handler_fn(
+                        &mut __m_child.#name,
+                        Box::new(move |__m_event_detail| {
+                            if let Some(__m_event_self) = __m_event_self.upgrade() {
+                                Self::#fn_name(__m_event_self, __m_event_detail, #(#args_ref),*)
+                            }
+                        }),
+                        __m_update_ctx,
+                    );
+                }.to_tokens(tokens);
+            }
+            TemplateAttribute::Slot { .. } => unreachable!(),
+        }
+    }
+}
+
+pub(super) struct TemplateAttributeUpdate<'a> {
+    attr: &'a TemplateAttribute,
+    list_index: usize,
+}
+
+impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { attr, list_index } = self;
+        match attr {
+            TemplateAttribute::StaticProperty { .. } => {
+                // empty
+            }
+            TemplateAttribute::DynamicProperty {
+                ref_token,
+                name,
+                list_updater,
+                expr,
+                eq_token,
+                ..
+            } => {
+                let span = eq_token.span();
+                let expr = match ref_token {
+                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                    None => quote_spanned!(span=> #expr),
+                };
+                if let Some((_, updater)) = list_updater {
+                    let index = Index::from(*list_index);
+                    quote_spanned! {span=>
+                        maomi::prop::ListPropertyUpdate::compare_and_set_item_ref::<#updater>(
+                            &mut __m_child.#name,
+                            #index,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                } else {
+                    quote_spanned! {span=>
+                        maomi::prop::PropertyUpdate::compare_and_set_ref(
+                            &mut __m_child.#name,
+                            #expr,
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                }
+            }
+            TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
+                if args.len() > 0 {
+                    let span = at_token.span();
+                    let (args_ref, args_expr): (Vec<_>, Vec<_>) = args.iter().enumerate().map(|(index, expr)| {
+                        let span = expr.span();
+                        let arg_name = Ident::new(&format!("__m_arg{}", index), span);
+                        let arg_expr = quote_spanned! {span=> let #arg_name = std::borrow::ToOwned::to_owned(#expr); };
+                        let arg_ref = quote_spanned! {span=> std::borrow::Borrow::borrow(&#arg_name) };
+                        (arg_ref, arg_expr)
+                    }).unzip();
+                    quote_spanned! {span=>
+                        let __m_event_self = __m_event_self_weak.clone();
+                        #(#args_expr)*
+                        maomi::event::EventHandler::set_handler_fn(
+                            &mut __m_child.#name,
+                            Box::new(move |__m_event_detail| {
+                                if let Some(__m_event_self) = __m_event_self.upgrade() {
+                                    Self::#fn_name(__m_event_self, __m_event_detail, #(#args_ref),*)
+                                }
+                            }),
+                            __m_update_ctx,
+                        );
+                    }.to_tokens(tokens);
+                } else {
+                    // empty
+                }
+            }
+            TemplateAttribute::Slot { .. } => unreachable!(),
+        }
     }
 }

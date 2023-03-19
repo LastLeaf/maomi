@@ -1,53 +1,48 @@
-# maomi: A rust wasm framework for building pages with components
+![maomi](icon_160.png)
 
-`maomi` is a MVVM-like framework for web development. Write your code in rust and compile to WebAssembly!
+# maomi
 
-**Still in early development. Do not use it in productional stage.**
+Strict and Performant Web Application Programming
 
-## Features
-
-* Targeting WebAssembly, with powerful rust static checking!
-* Declarative UI updates (MVVM-like)
-* Optional server-side rendering
-
-## Guide & Sample Code
-
-### Declare a Component
+![crates.io](https://img.shields.io/crates/v/maomi?style=flat-square) ![docs.rs](https://img.shields.io/docsrs/maomi?style=flat-square)
 
 ```rust
-template!(xml for HelloWorld {
-    <div>
-        {&self.a}
-    </div>
-});
+#[component]
 struct HelloWorld {
-    a: String,
-}
-impl<B: Backend> Component<B> for HelloWorld {
-    fn new(_ctx: ComponentContext<B, Self>) -> Self {
-        Self {
-            a: "Hello world!".into()
-        }
+    template: template! {
+        "Hello world!"
     }
 }
 ```
 
-### Make a Placeholder in HTML Page
+## Key Features
 
-```html
-<div id="placeholder"> THE COMPONENT WILL BE PLACED HERE </div>
+* Write rust code, compile to WebAssembly, and run in browser.
+* Great overall performance and no common performance pitfalls.
+* Reports mistakes while compilation.
+* With rust-analyzer installed, easier to investigate elements, properties, and even style classes.
+* Based on templates and data bindings.
+* Limited stylesheet syntax, easier to investigate.
+* High performance server side rendering.
+* I18n in the core design.
+
+Checkout the [website](http://lastleaf.cn/maomi/en_US) for details.
+
+去 [中文版站点](http://lastleaf.cn/maomi/zh_CN) 了解详情。
+
+## Examples
+
+See [dom-template](./maomi-dom-template/) for the basic example. Compile with:
+
+```sh
+wasm-pack build maomi-dom-template --target no-modules
 ```
 
-### Bootstrap a context
+## Run Tests
 
-```rust
-let mut context = maomi::Context::new(maomi::backend::Dom::new("placeholder"));
-let root_component = context.new_root_component::<HelloWorld>();
-context.set_root_component(root_component);
+General rust tests and wasm-pack tests are both needed.
+
+```sh
+cargo test
+wasm-pack test --firefox maomi-dom # or --chrome
 ```
-
-### Compile it
-
-Make sure your code is also WebAssembly-ready, and compile it with `wasm-pack build` , then `webpack` .
-
-**More full examples at [examples](./examples)**

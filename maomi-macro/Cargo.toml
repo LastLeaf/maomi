@@ -1,18 +1,27 @@
 [package]
 name = "maomi-macro"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"
-description = "A rust wasm framework for building pages with components (helper macros)"
+description = "Strict and Performant Web Application Programming"
 homepage = "https://github.com/LastLeaf/maomi"
 documentation = "https://github.com/LastLeaf/maomi"
 repository = "https://github.com/LastLeaf/maomi"
-edition = "2018"
+edition = "2021"
 
 [lib]
 proc-macro = true
+doctest = false
 
 [dependencies]
+maomi-tools = "=0.4.0"
+maomi-skin = "=0.4.0"
 proc-macro2 = "1.0"
+syn = { version = "1.0", features = ["parsing"] }
 quote = "1.0"
-syn = { version = "1.0", features = ["full"] }
+toml = "0.7"
+rustc-hash = "1.1"
+once_cell = "1.13"
+
+[dev-dependencies]
+serial_test = "0.9"

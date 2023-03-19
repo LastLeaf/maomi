@@ -1,433 +1,280 @@
-use proc_macro2::TokenStream as TokenStream2;
-use syn::*;
-use quote::*;
+//! Utilities for template management.
+//! 
+//! Most utilities in this module is used by `#[component]` .
 
-fn is_expr_dynamic(expr: &Expr) -> bool {
-    if let Expr::Lit(_) = expr {
-        false
-    } else {
-        true
+use std::cell::{Cell, RefCell, Ref};
+
+use crate::{
+    backend::{tree::*, Backend},
+    component::*,
+    error::Error,
+    node::{OwnerWeak, SlotChange, SlotKindTrait},
+    prop::Prop,
+    BackendContext,
+};
+
+/// An init object for the template.
+///
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub struct TemplateInit<C> {
+    pub(crate) updater: ComponentWeak<C>,
+}
+
+/// Some helper functions for the template type.
+pub trait TemplateHelper<C: ?Sized, S, L>: Default {
+    /// Mark the template that update is needed.
+    ///
+    /// It is auto-managed by the `#[component]` .
+    /// Do not touch unless you know how it works exactly.
+    fn mark_dirty(&self)
+    where
+        C: 'static;
+
+    /// Clear the mark.
+    ///
+    /// It is auto-managed by the `#[component]` .
+    /// Do not touch unless you know how it works exactly.
+    fn clear_dirty(&self) -> bool
+    where
+        C: 'static;
+
+    /// Returns whether the template has been initialized.
+    fn is_initialized(&self) -> bool;
+
+    /// Get the template inner node tree.
+    fn structure(&self) -> Option<Ref<S>>;
+
+    /// Get the template inner node tree.
+    fn slot_scopes(&self) -> Ref<L>;
+
+    /// Get the corresponding `ComponentRc` .
+    fn component_rc(&self) -> Result<ComponentRc<C>, Error>
+    where
+        C: 'static + Sized;
+
+    /// Get the corresponding `ComponentWeak` .
+    fn component_weak(&self) -> Result<ComponentWeak<C>, Error>
+    where
+        C: 'static + Sized;
+
+    #[doc(hidden)]
+    fn extract_pending_slot_changes(
+        &self,
+        new_changes: Vec<SlotChange<(), ForestToken, ()>>,
+    ) -> Vec<SlotChange<(), ForestToken, ()>>;
+
+    /// Get the `OwnerWeak` of the current component.
+    fn self_owner_weak(&self) -> &Box<dyn OwnerWeak>;
+}
+
+/// The template type.
+///
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub struct Template<C, S, L: Default> {
+    #[doc(hidden)]
+    pub __m_self_owner_weak: Option<Box<dyn OwnerWeak>>,
+    updater: Option<ComponentWeak<C>>,
+    dirty: Cell<bool>,
+    #[doc(hidden)]
+    pub __m_structure: Option<RefCell<S>>,
+    #[doc(hidden)]
+    pub __m_slot_scopes: RefCell<L>,
+    #[doc(hidden)]
+    pub __m_pending_slot_changes: Cell<Vec<SlotChange<(), ForestToken, ()>>>,
+}
+
+impl<C, S, L: Default> Default for Template<C, S, L> {
+    fn default() -> Self {
+        Self {
+            __m_self_owner_weak: None,
+            updater: None,
+            dirty: Cell::new(false),
+            __m_structure: None,
+            __m_slot_scopes: RefCell::new(L::default()),
+            __m_pending_slot_changes: Cell::new(Vec::with_capacity(0)),
+        }
     }
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateValue {
-    pub(crate) is_dynamic: bool,
-    pub(crate) expr: Expr,
+impl<C: 'static, S, L: Default> Template<C, S, L> {
+    #[doc(hidden)]
+    #[inline]
+    pub fn init(&mut self, init: TemplateInit<C>) {
+        self.__m_self_owner_weak = Some(init.updater.to_owner_weak());
+        self.updater = Some(init.updater);
+    }
 }
-impl ToTokens for TemplateValue {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let expr = &self.expr;
-        tokens.append_all(quote! {
-            #expr
+
+impl<C, S, L: Default> TemplateHelper<C, S, L> for Template<C, S, L> {
+    #[inline]
+    fn mark_dirty(&self)
+    where
+        C: 'static,
+    {
+        if self.__m_structure.is_some() {
+            self.dirty.set(true);
+        }
+    }
+
+    #[inline]
+    fn clear_dirty(&self) -> bool
+    where
+        C: 'static,
+    {
+        self.dirty.replace(false)
+    }
+
+    #[inline]
+    fn is_initialized(&self) -> bool {
+        self.__m_structure.is_some()
+    }
+
+    #[inline]
+    fn structure(&self) -> Option<Ref<S>> {
+        self.__m_structure.as_ref().and_then(|x| {
+            x.try_borrow().ok()
         })
     }
-}
-impl From<Expr> for TemplateValue {
-    fn from(expr: Expr) -> Self {
-        Self {
-            is_dynamic: is_expr_dynamic(&expr),
-            expr,
-        }
+
+    #[inline]
+    fn slot_scopes(&self) -> Ref<L> {
+        self.__m_slot_scopes.borrow()
+    }
+
+    #[inline]
+    fn component_rc(&self) -> Result<ComponentRc<C>, Error>
+    where
+        C: 'static,
+    {
+        self.updater
+            .as_ref()
+            .and_then(|x| x.upgrade())
+            .ok_or(Error::TreeNotCreated)
+    }
+
+    #[inline]
+    fn component_weak(&self) -> Result<ComponentWeak<C>, Error>
+    where
+        C: 'static,
+    {
+        self.updater
+            .as_ref()
+            .map(|x| x.clone())
+            .ok_or(Error::TreeNotCreated)
+    }
+
+    #[inline]
+    fn extract_pending_slot_changes(
+        &self,
+        new_changes: Vec<SlotChange<(), ForestToken, ()>>,
+    ) -> Vec<SlotChange<(), ForestToken, ()>> {
+        self.__m_pending_slot_changes.replace(new_changes)
+    }
+
+    #[inline]
+    fn self_owner_weak(&self) -> &Box<dyn OwnerWeak> {
+        self.__m_self_owner_weak.as_ref().unwrap()
     }
 }
 
-#[derive(Clone)]
-pub(crate) enum Attribute {
-    Common { name: LitStr, value: TemplateValue },
-    Prop { name: Ident, value: TemplateValue },
-    SystemEv { name: Ident, value: TemplateValue },
-    Ev { name: Ident, value: TemplateValue },
-}
-impl Attribute {
-    fn is_dynamic(&self) -> bool {
-        match self {
-            Attribute::Common { value, .. } => value.is_dynamic,
-            Attribute::Prop { value, .. } => value.is_dynamic,
-            Attribute::SystemEv { value, .. } => value.is_dynamic,
-            Attribute::Ev { value, .. } => value.is_dynamic,
-        }
-    }
+/// The slot types which is associated with the template.
+///
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub trait ComponentSlotKind {
+    /// The slot list type.
+    type SlotChildren<SlotContent>: SlotKindTrait<ForestTokenAddr, SlotContent>;
+
+    /// The type of the slot data, specified through `#[component(SlotData = ...)]`.
+    type SlotData: 'static;
 }
 
-#[derive(Clone)]
-pub(crate) struct TemplateNativeNode {
-    pub(crate) tag_name: LitStr,
-    pub(crate) attributes: Vec<Attribute>,
-    pub(crate) children: Vec<TemplateNode>
-}
+/// A component template
+///
+/// It is auto-managed by the `#[component]` .
+/// Do not touch unless you know how it works exactly.
+pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
+    /// The type of the template field.
+    type TemplateField: TemplateHelper<
+        Self,
+        Self::TemplateStructure,
+        Self::SlotChildren<(ForestToken, Prop<Self::SlotData>)>,
+    >;
 
-#[derive(Clone)]
-pub(crate) enum TemplateVirtualNode {
-    Slot { name: Option<LitStr> },
-    InSlot { name: LitStr, children: Vec<TemplateNode> },
-    If { branches: Vec<(Option<Expr>, Vec<TemplateNode>)> },
-    For { list: Expr, index: Ident, item: Ident, key: Option<(Ident, Path)>, children: Vec<TemplateNode> },
-}
+    /// The type of the template inner structure.
+    type TemplateStructure;
 
-#[derive(Clone)]
-pub(crate) struct TemplateComponent {
-    pub(crate) tag_name: LitStr,
-    pub(crate) component: Ident,
-    pub(crate) property_values: Vec<Attribute>,
-    pub(crate) children: Vec<TemplateNode>
-}
+    /// Get a reference of the template field of the component.
+    fn template(&self) -> &Self::TemplateField;
 
-#[derive(Clone)]
-pub(crate) enum TemplateNode {
-    NativeNode(TemplateNativeNode),
-    VirtualNode(TemplateVirtualNode),
-    Component(TemplateComponent),
-    TextNode(TemplateValue),
-}
-impl ToTokens for TemplateNode {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let node = match self {
+    /// Initialize a template.
+    fn template_init(&mut self, init: TemplateInit<Self>)
+    where
+        Self: Sized;
 
-            TemplateNode::NativeNode(x) => {
-                // native node logic
-                let TemplateNativeNode { tag_name, attributes, children } = x;
-                let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                let update_attributes: Vec<TokenStream2> = attributes.iter().map(|attribute| {
-                    let content = match attribute {
-                        Attribute::Common { name, value } => quote! {
-                            node.set_attribute(#name, #value)
-                        },
-                        Attribute::SystemEv { name, value } => quote! {
-                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
-                                (#value)(self_ref_mut.with_type::<Self>(), e)
-                            }));
-                        },
-                        _ => {
-                            unreachable!()
-                        },
-                    };
-                    if attribute.is_dynamic() {
-                        quote! { #content }
-                    } else {
-                        quote! { if is_init { #content } }
-                    }
-                }).collect();
-                quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
-                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                        let __children = __node.as_ref().map(|node| { node.children() });
-                        let ret_children: Vec<NodeRc<_>> = vec![#(
-                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                        ),*];
-                        let is_init = __node_rc.is_none();
-                        let node_rc = match __node_rc {
-                            None => __owner.new_native_node(#tag_name, vec![], ret_children),
-                            Some(node_rc) => node_rc.clone(),
-                        };
-                        {
-                            let mut node = node_rc.borrow_mut_with(__owner);
-                            #(#update_attributes)*
-                        }
-                        node_rc.into()
-                    }
+    /// Create a component within the specified shadow root.
+    fn template_create_or_update<'b>(
+        &'b mut self,
+        backend_context: &'b BackendContext<B>,
+        backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
+        slot_fn: &mut dyn FnMut(
+            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
+        ) -> Result<(), Error>,
+    ) -> Result<(), Error>
+    where
+        Self: Sized;
+
+    /// Update a component and store the slot changes.
+    #[inline(never)]
+    fn template_update_store_slot_changes<'b>(
+        &'b mut self,
+        backend_context: &'b BackendContext<B>,
+        backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
+    ) -> Result<bool, Error>
+    where
+        Self: Sized,
+    {
+        let mut slot_changes: Vec<SlotChange<(), ForestToken, ()>> = Vec::with_capacity(0);
+        self.template_create_or_update(backend_context, backend_element, &mut |slot_change| {
+            match slot_change {
+                SlotChange::Unchanged(..) => {}
+                SlotChange::DataChanged(_, n, _) => {
+                    slot_changes.push(SlotChange::DataChanged((), n.clone(), ()))
                 }
-            },
-
-            TemplateNode::VirtualNode(x) => {
-                match x {
-
-                    TemplateVirtualNode::Slot { name } => {
-                        // slot node logic
-                        let slot_name = match name {
-                            None => LitStr::new("", proc_macro2::Span::call_site()),
-                            Some(x) => x.clone(),
-                        };
-                        quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
-                                match __update_to {
-                                    None => {
-                                        __owner.new_virtual_node("slot", VirtualNodeProperty::Slot(#slot_name, vec![]), vec![]).into()
-                                    },
-                                    Some(node_rc) => {
-                                        node_rc.clone()
-                                    },
-                                }
-                            }
-                        }
-                    },
-
-                    TemplateVirtualNode::InSlot { name, children } => {
-                        // in-slot node logic
-                        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                        quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
-                                match __update_to {
-                                    None => {
-                                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::NativeNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                                        let __children = __node.as_ref().map(|node| { node.children() });
-                                        let ret_children: Vec<NodeRc<_>> = vec![#(
-                                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                                        ),*];
-                                        __owner.new_virtual_node("in", VirtualNodeProperty::InSlot(#name, ret_children), vec![]).into()
-                                    },
-                                    Some(node_rc) => {
-                                        node_rc.clone()
-                                    },
-                                }
-                            }
-                        }
-                    },
-
-                    TemplateVirtualNode::If { branches } => {
-                        // if node logic
-                        let children_branches: Vec<_> = branches.iter().enumerate().map(|(key, (cond, children))| {
-                            let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                            let content = quote! {
-                                {
-                                    const KEY: usize = #key;
-                                    let __equal = if let Some(old_key) = __old_key { *old_key == KEY } else { false };
-                                    let children: Vec<NodeRc<_>> = vec![#(
-                                        (#children)(__owner, if let Some(children) = __children {
-                                            if __equal { Some(&children[#indexes]) } else { None }
-                                        } else { None })
-                                    ),*];
-                                    if __equal {
-                                        __node_rc.unwrap().clone().into()
-                                    } else {
-                                        match __node_rc {
-                                            Some(node_rc) => {
-                                                let mut node = node_rc.borrow_mut_with(__owner);
-                                                node.replace_children_list(children);
-                                                *node.property_mut() = VirtualNodeProperty::Branch(KEY);
-                                                node_rc.clone().into()
-                                            },
-                                            None => {
-                                                __owner.new_virtual_node("if", VirtualNodeProperty::Branch(KEY), children).into()
-                                            }
-                                        }
-                                    }
-                                }
-                            };
-                            match cond {
-                                Some(cond) => quote! {
-                                    if #cond #content
-                                },
-                                None => quote! {
-                                    #content
-                                }
-                            }
-                        }).collect();
-                        quote! {
-
-                            // if node logic
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
-                                let __node_rc = __update_to.map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                                let __old_key = match &__node {
-                                    Some(x) => {
-                                        let index = if let VirtualNodeProperty::Branch(b) = x.property() { b } else { unreachable!() };
-                                        Some(index)
-                                    },
-                                    None => None,
-                                };
-                                let __children = __node.as_ref().map(|node| { node.children() });
-                                #(#children_branches)else*
-                            }
-                        }
-                    },
-
-                    TemplateVirtualNode::For { list, index, item, key, children } => {
-                        // for node logic
-                        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                        let key_list = match key {
-                            Some((key_name, key_ty)) => quote! {
-                                {
-                                    let keys: Box<VirtualKeyList<#key_ty>> = {
-                                        let v: Vec<Option<#key_ty>> = (#list).into_iter().map(|x| {
-                                            Some(x.#key_name.clone())
-                                        }).collect();
-                                        let v = VirtualKeyList::new(v);
-                                        let keys = Box::new(v);
-                                        keys
-                                    };
-                                    let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
-                                        Some(node_rc) => {
-                                            let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                            let node = unsafe { node_rc.borrow_mut_unsafe_with(__owner) };
-                                            let mut node2 = node_rc.borrow_mut_with(__owner);
-                                            let old_keys: &VirtualKeyList<#key_ty> = if let VirtualNodeProperty::List(list) = node.property() {
-                                                list.downcast_ref::<VirtualKeyList<#key_ty>>().unwrap()
-                                            } else { unreachable!() };
-                                            keys.list_reorder(old_keys, &mut node2)
-                                        },
-                                        None => {
-                                            VirtualKeyChanges::new_empty(keys.len())
-                                        },
-                                    };
-                                    (keys, reordered_list)
-                                }
-                            },
-                            None => quote! {
-                                {
-                                    let keys: Box<VirtualKeyList<()>> = {
-                                        let v: Vec<Option<()>> = (#list).into_iter().map(|_| None).collect();
-                                        let v = VirtualKeyList::new(v);
-                                        let keys = Box::new(v);
-                                        keys
-                                    };
-                                    let reordered_list: VirtualKeyChanges<_> = match __update_to.as_ref() {
-                                        Some(node_rc) => {
-                                            let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                            let node = unsafe { node_rc.borrow_mut_unsafe_with(__owner) };
-                                            let mut node2 = node_rc.borrow_mut_with(__owner);
-                                            let old_keys: &VirtualKeyList<()> = if let VirtualNodeProperty::List(list) = node.property() {
-                                                list.downcast_ref::<VirtualKeyList<()>>().unwrap()
-                                            } else { unreachable!() };
-                                            keys.list_reorder(old_keys, &mut node2)
-                                        },
-                                        None => {
-                                            VirtualKeyChanges::new_empty(keys.len())
-                                        },
-                                    };
-                                    (keys, reordered_list)
-                                }
-                            },
-                        };
-                        quote! {
-                            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| -> NodeRc<_> {
-                                let (__keys, mut __reordered_list) = #key_list;
-
-                                let children: Vec<_> = (#list).into_iter().enumerate().map(|(#index, #item)| -> NodeRc<_> {
-                                    let __node_rc = __reordered_list.nodes_mut()[#index].as_ref().map(|node_rc| if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                                    let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                                    let __children = __node.as_ref().map(|node| { node.children() });
-                                    let children: Vec<NodeRc<_>> = vec![#(
-                                        (#children)(__owner, if let Some(children) = __children {
-                                            Some(&children[#indexes])
-                                        } else { None })
-                                    ),*];
-                                    match __node_rc {
-                                        None => __owner.new_virtual_node("for-item", VirtualNodeProperty::None, children).into(),
-                                        Some(node_rc) => node_rc.clone().into(),
-                                    }
-                                }).collect();
-
-                                match __update_to.as_ref() {
-                                    None => __owner.new_virtual_node("for-list", VirtualNodeProperty::List(__keys), children).into(),
-                                    Some(node_rc) => {
-                                        let node_rc = if let NodeRc::VirtualNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                                        let mut node = node_rc.borrow_mut_with(__owner);
-                                        __reordered_list.apply(&mut node);
-                                        *node.property_mut() = VirtualNodeProperty::List(__keys);
-                                        node_rc.clone().into()
-                                    }
-                                }
-                            }
-                        }
-                    },
+                SlotChange::Added(_, n, _) => {
+                    slot_changes.push(SlotChange::Added((), n.clone(), ()))
                 }
-            },
-
-            TemplateNode::Component(x) => {
-                let TemplateComponent { tag_name, component, property_values, children } = x;
-                let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-                let property_apply: Vec<TokenStream2> = property_values.iter().map(|attribute| {
-                    let content = match attribute {
-                        Attribute::Common { name, value } => quote! {
-                            node.as_node().set_attribute(#name, #value);
-                        },
-                        Attribute::Prop { name, value } => quote! {
-                            if Property::update_from(&mut node.#name, #value) { changed = true };
-                        },
-                        Attribute::SystemEv { name, value } => quote! {
-                            node.global_events_mut().#name.set_handler(Box::new(|self_ref_mut, e| {
-                                (#value)(self_ref_mut.with_type::<Self>(), e)
-                            }));
-                        },
-                        Attribute::Ev { name, value } => quote! {
-                            node.#name.set_handler(Box::new(|self_ref_mut, e| {
-                                (#value)(self_ref_mut.with_type::<Self>(), e)
-                            }));
-                        },
-                    };
-                    if attribute.is_dynamic() {
-                        quote! { #content }
-                    } else {
-                        quote! { if is_init { #content } }
-                    }
-                }).collect();
-                quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
-                        let __node_rc = __update_to.map(|node_rc| if let NodeRc::ComponentNode(node_rc) = node_rc { node_rc } else { unreachable!() });
-                        let __node = __node_rc.as_ref().map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                        let __children = __node.as_ref().map(|node| { node.children() });
-                        let ret_children: Vec<NodeRc<_>> = vec![#(
-                            (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                        ),*];
-                        let is_init = __node_rc.is_none();
-                        let node_rc = match __node_rc {
-                            None => __owner.new_component_node::<#component>(#tag_name, ret_children),
-                            Some(node_rc) => node_rc.clone(),
-                        };
-                        {
-                            let mut changed = false;
-                            let mut node = node_rc.borrow_mut_with(__owner).with_type::<#component>();
-                            {
-                                #(#property_apply)*
-                            }
-                            if changed { node.force_apply_updates() };
-                        }
-                        node_rc.into()
-                    }
-                }
-            },
-
-            TemplateNode::TextNode(x) => {
-                // text node logic
-                let update = {
-                    if x.is_dynamic {
-                        quote! {
-                            let node_rc = if let NodeRc::TextNode(node_rc) = node_rc { node_rc } else { unreachable!() };
-                            node_rc.borrow_mut_with(__owner).set_text_content(#x);
-                            node_rc.clone().into()
-                        }
-                    } else {
-                        quote! { node_rc.clone() }
-                    }
-                };
-                quote! {
-                    |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&NodeRc<_>>| {
-                        match __update_to {
-                            None => {
-                                __owner.new_text_node(#x).into()
-                            },
-                            Some(node_rc) => {
-                                #update
-                            },
-                        }
-                    }
-                }
-            },
-        };
-        tokens.append_all(node);
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct TemplateShadowRoot {
-    pub(crate) children: Vec<TemplateNode>
-}
-impl ToTokens for TemplateShadowRoot {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let TemplateShadowRoot { children } = self;
-        let indexes: Vec<usize> = (0..children.len()).into_iter().map(|x| x).collect();
-        tokens.append_all(quote! {
-            |__owner: &mut ComponentNodeRefMut<_>, __update_to: Option<&VirtualNodeRc<_>>| {
-                // shadow root node logic
-                let __node = __update_to.map(|node_rc| unsafe { node_rc.borrow_mut_unsafe_with(__owner) });
-                let __children = __node.as_ref().map(|node| { node.children() });
-                vec![#(
-                    (#children)(__owner, if let Some(children) = __children { Some(&children[#indexes]) } else { None })
-                ),*]
+                SlotChange::Removed(n) => slot_changes.push(SlotChange::Removed(n.clone())),
             }
-        });
+            Ok(())
+        })?;
+        if slot_changes.len() > 0 {
+            if self.template().extract_pending_slot_changes(slot_changes).len() > 0 {
+                Err(Error::ListChangeWrong)?;
+            }
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Iterate over slots.
+    #[inline(never)]
+    fn for_each_slot_scope<'b>(
+        &'b mut self,
+        backend_element: &'b mut ForestNodeMut<B::GeneralElement>,
+        slot_fn: &mut dyn FnMut(
+            SlotChange<&mut ForestNodeMut<B::GeneralElement>, &ForestToken, &Self::SlotData>,
+        ) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        for (t, d) in self.template().slot_scopes().iter() {
+            let n = &mut backend_element
+                .borrow_mut_token(t)
+                .ok_or(Error::TreeNodeReleased)?;
+            slot_fn(SlotChange::Unchanged(n, t, d))?;
+        }
+        Ok(())
     }
 }
