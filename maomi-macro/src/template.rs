@@ -907,7 +907,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
-                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
+                    <<#tag_name as maomi::backend::AsElementTag>::Target as maomi::backend::BackendComponent<#backend_param>>::apply_updates(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,
@@ -934,20 +934,20 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 };
                 let create = quote_spanned! {span=>
                     let (__m_child, __m_backend_element) =
-                        <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
+                        <<#tag_name as maomi::backend::AsElementTag>::Target as maomi::backend::BackendComponent<#backend_param>>::init(
                             __m_backend_context,
                             __m_parent_element,
                             __m_self_owner_weak,
                         )?;
                     let mut __m_node = maomi::node::Node::<#tag_name>::new(
                         __m_child,
-                        <<#tag_name as maomi::backend::SupportBackend>::SlotChildren as Default>::default(),
+                        <<#tag_name as maomi::backend::AsElementTag>::SlotChildren as Default>::default(),
                     );
                     let maomi::node::Node {
                         tag: ref mut __m_child,
                         child_nodes: ref mut __m_slot_children,
                     } = __m_node;
-                    <<#tag_name as maomi::backend::SupportBackend>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
+                    <<#tag_name as maomi::backend::AsElementTag>::Target as maomi::backend::BackendComponent<#backend_param>>::create(
                         __m_child,
                         __m_backend_context,
                         __m_parent_element,

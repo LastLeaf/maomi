@@ -3,7 +3,7 @@
 use std::{collections::HashMap, hash::Hash, marker::PhantomData, any::Any};
 
 use crate::{
-    backend::{tree, SupportBackend},
+    backend::{tree, AsElementTag},
     error::Error,
 };
 use tree::ForestTokenAddr;
@@ -87,14 +87,14 @@ pub type DynNodeList = Box<[DynNode]>;
 
 /// A helper type for a node with child nodes.
 #[derive(Debug)]
-pub struct Node<N: SupportBackend> {
+pub struct Node<N: AsElementTag> {
     /// The node itself.
     pub tag: N::Target,
     /// The child nodes of the node.
     pub child_nodes: N::SlotChildren,
 }
 
-impl<N: SupportBackend> Node<N> {
+impl<N: AsElementTag> Node<N> {
     /// Create a node with specified children.
     #[inline(always)]
     pub fn new(tag: N::Target, child_nodes: N::SlotChildren) -> Self {

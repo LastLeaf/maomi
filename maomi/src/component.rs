@@ -26,7 +26,7 @@ use std::{
 use crate::{
     backend::{
         context::AsyncCallback, tree::*, Backend, BackendComponent, BackendGeneralElement,
-        SupportBackend,
+        AsElementTag,
     },
     error::Error,
     node::{OwnerWeak, SlotChange, SlotKindTrait, DynNodeList},
@@ -339,13 +339,12 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
         <Self as ComponentExt<B, Self>>::rc(self).update(f).await
     }
 
-    // TODO should improve interface (currently this requires B to be specific)
     #[inline]
     fn rc(&self) -> ComponentRc<Self>
     where
         T: 'static,
     {
-        <Self as ComponentTemplate<B>>::template(self)
+        self.template()
             .component_rc()
             .expect("Cannot get `ComponentRc` before initialization")
     }
@@ -355,7 +354,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     where
         T: 'static,
     {
-        <Self as ComponentTemplate<B>>::template(self)
+        self.template()
             .component_weak()
             .expect("Cannot get `ComponentWeak` before initialization")
     }
@@ -370,6 +369,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
 pub trait PrerenderableComponent: Component {
     /// The type of the query data.
     type QueryData;
+
     /// The type of the prerendering generated data.
     type PrerenderingData;
 
@@ -403,12 +403,6 @@ pub(crate) trait UpdateScheduler: 'static {
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     );
     fn sync_update(&self) -> Result<(), Error>;
-}
-
-pub(crate) trait UpdateSchedulerWeak: 'static {
-    type EnterType;
-    fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
-    fn to_owner_weak(&self) -> Box<dyn OwnerWeak>;
 }
 
 /// A node that wraps a component instance.
@@ -558,7 +552,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
     }
 }
 
-impl<C: Component + ComponentSlotKind> SupportBackend for C {
+impl<C: Component + ComponentSlotKind> AsElementTag for C {
     type Target = ComponentNode<C>;
     type SlotChildren = <C as ComponentSlotKind>::SlotChildren<DynNodeList>;
 }

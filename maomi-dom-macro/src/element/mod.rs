@@ -399,7 +399,7 @@ impl ToTokens for DomElementDefinition {
                 }
             }
 
-            impl SupportBackend for #tag_name {
+            impl AsElementTag for #tag_name {
                 type Target = Self;
                 type SlotChildren = StaticSingleSlot<ForestTokenAddr, maomi::node::DynNodeList>;
             }

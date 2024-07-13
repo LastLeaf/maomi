@@ -221,9 +221,10 @@ pub trait BackendComponent<B: Backend> {
 
 /// A trait that indicates a component that can be converted into a `BackendComponent` .
 /// 
-/// This is used by the backend implementor.
+/// It usually refers to a `#[component]` or a backend supported component.
+/// For manually usages, this should be used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
-pub trait SupportBackend {
+pub trait AsElementTag {
     /// The converted `BackendComponent` type.
     type Target: 'static;
     /// The slot list type.
