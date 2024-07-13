@@ -1,5 +1,5 @@
 //! The event definition.
-//! 
+//!
 //! Besides DOM events, this module also provides `tap` events,
 //! which are generated from mouse or touch events.
 //! * `tap` event refers to a finger tap (or mouse click);
@@ -28,7 +28,7 @@ pub use animation::AnimationEvent;
 pub(crate) mod transition;
 pub use transition::TransitionEvent;
 pub(crate) mod form;
-pub use form::{SubmitEvent, ChangeEvent, InputEvent};
+pub use form::{ChangeEvent, InputEvent, SubmitEvent};
 
 pub(crate) struct DomListeners {
     #[allow(dead_code)]
@@ -59,10 +59,7 @@ pub(crate) struct HotEventList {
 pub(crate) type ColdEventList = Vec<ColdEventItem>;
 
 pub(crate) enum ColdEventItem {
-    BindingEventListener(
-        &'static str,
-        Closure<dyn Fn(web_sys::Event)>,
-    ),
+    BindingEventListener(&'static str, Closure<dyn Fn(web_sys::Event)>),
     MouseDown(
         Box<dyn 'static + Fn(&mut MouseEvent)>,
         Closure<dyn Fn(web_sys::MouseEvent)>,
@@ -180,7 +177,7 @@ pub trait DomEventRegister {
     type Detail;
 
     /// Bind the event.
-    /// 
+    ///
     /// It is auto-managed by the `#[component]` .
     /// Do not touch unless you know how it works exactly.
     fn bind(target: &mut DomElement, f: Box<dyn 'static + Fn(&mut Self::Detail)>);

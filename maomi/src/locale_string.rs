@@ -22,7 +22,7 @@ pub struct LocaleStaticStr(&'static str);
 
 impl LocaleStaticStr {
     /// Wraps a translated str.
-    /// 
+    ///
     /// Make sure the string is translated!
     pub const fn translated(s: &'static str) -> Self {
         Self(s)
@@ -47,7 +47,7 @@ pub struct LocaleString(String);
 
 impl LocaleString {
     /// Wraps a translated string.
-    /// 
+    ///
     /// Make sure the string is translated!
     pub fn translated(s: impl ToString) -> Self {
         Self(s.to_string())

@@ -1,13 +1,16 @@
-use std::{num::NonZeroU32, collections::VecDeque};
 use proc_macro2::Span;
 use quote::TokenStreamExt;
+use std::{collections::VecDeque, num::NonZeroU32};
 use syn::ext::IdentExt;
 
-use crate::{ScopeVarValue, VarDynValue, MaybeDyn, Number, style_sheet::ParseStyleSheetValue, write_css::CssWritePlaceholder};
+use crate::{
+    style_sheet::ParseStyleSheetValue, write_css::CssWritePlaceholder, MaybeDyn, Number,
+    ScopeVarValue, VarDynValue,
+};
 
 use super::{
     write_css::{CssWriter, WriteCss, WriteCssSepCond},
-    ParseWithVars, ScopeVars, ParseError
+    ParseError, ParseWithVars, ScopeVars,
 };
 
 #[derive(Debug, Clone)]
@@ -95,7 +98,10 @@ pub struct CssString {
 
 impl CssString {
     pub fn value(&self, values: &[VarDynValue]) -> String {
-        self.s.value(values).expect("argument value not enough").to_string()
+        self.s
+            .value(values)
+            .expect("argument value not enough")
+            .to_string()
     }
 }
 
@@ -381,7 +387,9 @@ impl<T: WriteCss> WriteCss for CssFunction<T> {
         cssw: &mut CssWriter<W>,
         values: &[VarDynValue],
     ) -> std::result::Result<(), std::fmt::Error> {
-        cssw.write_function_block(true, &self.css_name(), |cssw| self.block.write_css_with_args(cssw, values))
+        cssw.write_function_block(true, &self.css_name(), |cssw| {
+            self.block.write_css_with_args(cssw, values)
+        })
     }
 }
 
@@ -530,7 +538,9 @@ impl VarName {
     }
 
     pub fn into_ref(self) -> VarRef {
-        VarRef { ident: self.ident.clone() }
+        VarRef {
+            ident: self.ident.clone(),
+        }
     }
 
     pub fn span(&self) -> Span {
@@ -773,7 +783,7 @@ impl ParseWithVars for CssToken {
         input: syn::parse::ParseStream,
         scope: &mut ScopeVars,
     ) -> Result<Self, syn::Error> {
-        use syn::{*, spanned::Spanned};
+        use syn::{spanned::Spanned, *};
 
         fn parse_css_delim(input: syn::parse::ParseStream) -> Result<CssDelim> {
             let la = input.lookahead1();
@@ -859,7 +869,7 @@ impl ParseWithVars for CssToken {
                     let v = num.base10_parse()?;
                     value = MaybeDyn::Static(Number::F32(v));
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
             if input.peek(Token![%]) {
                 let _: Token![%] = input.parse()?;
@@ -898,7 +908,9 @@ impl ParseWithVars for CssToken {
                 let mut i = 0;
                 let first_char = loop {
                     let c = *css_ident.formal_name.as_bytes().get(i).unwrap_or(&0);
-                    if c != '_' as u8 { break c };
+                    if c != '_' as u8 {
+                        break c;
+                    };
                     i += 1;
                 };
                 'A' as u8 <= first_char && first_char <= 'Z' as u8
@@ -940,17 +952,20 @@ impl ParseWithVars for CssToken {
                 if let Some(v) = scope.vars.get(&var_name.to_string()) {
                     scope.var_refs.push(var_name.into_ref());
                     match v {
-                        ScopeVarValue::Token(x) => {
-                            x.clone()
-                        }
-                        ScopeVarValue::DynStr(x) => {
-                            CssToken::String(CssString { span: x.span, s: MaybeDyn::Dyn(x.clone()) })
-                        }
-                        ScopeVarValue::DynNum(x) => {
-                            CssToken::Number(CssNumber { span: x.span, value: MaybeDyn::Dyn(x.clone()) })
-                        }
+                        ScopeVarValue::Token(x) => x.clone(),
+                        ScopeVarValue::DynStr(x) => CssToken::String(CssString {
+                            span: x.span,
+                            s: MaybeDyn::Dyn(x.clone()),
+                        }),
+                        ScopeVarValue::DynNum(x) => CssToken::Number(CssNumber {
+                            span: x.span,
+                            value: MaybeDyn::Dyn(x.clone()),
+                        }),
                         x => {
-                            return Err(syn::Error::new(css_ident.span, format!("expected value, found {}", x.type_name())));
+                            return Err(syn::Error::new(
+                                css_ident.span,
+                                format!("expected value, found {}", x.type_name()),
+                            ));
                         }
                     }
                 } else if is_uppercase {
@@ -982,10 +997,7 @@ impl CssTokenStream {
 
     #[inline]
     pub fn new(last_span: Span, tokens: VecDeque<CssToken>) -> Self {
-        Self {
-            last_span,
-            tokens,
-        }
+        Self { last_span, tokens }
     }
 
     #[inline]
@@ -1048,7 +1060,10 @@ impl CssTokenStream {
                 unreachable!()
             }
         } else {
-            Err(ParseError::new(self.span(), format!("expected `{}`", keyword)))
+            Err(ParseError::new(
+                self.span(),
+                format!("expected `{}`", keyword),
+            ))
         }
     }
 
@@ -1115,7 +1130,10 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.tokens.push_front(next);
-            Err(ParseError::new(self.span(), "expected percentage (number with `%`)"))
+            Err(ParseError::new(
+                self.span(),
+                "expected percentage (number with `%`)",
+            ))
         }
     }
 
@@ -1126,7 +1144,10 @@ impl CssTokenStream {
             Ok(x)
         } else {
             self.tokens.push_front(next);
-            Err(ParseError::new(self.span(), "expected dimension (number with unit)"))
+            Err(ParseError::new(
+                self.span(),
+                "expected dimension (number with unit)",
+            ))
         }
     }
 
@@ -1139,7 +1160,11 @@ impl CssTokenStream {
         if let CssToken::Function(mut x) = next {
             let block = f(&x.formal_name, &mut x.block)?;
             x.block.expect_ended()?;
-            Ok(CssFunction { span: x.span, formal_name: x.formal_name, block })
+            Ok(CssFunction {
+                span: x.span,
+                formal_name: x.formal_name,
+                block,
+            })
         } else {
             self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected CSS function"))
@@ -1155,7 +1180,10 @@ impl CssTokenStream {
         if let CssToken::Paren(mut x) = next {
             let block = f(&mut x.block)?;
             x.block.expect_ended()?;
-            Ok(CssParen { span: x.span, block })
+            Ok(CssParen {
+                span: x.span,
+                block,
+            })
         } else {
             self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `(...)`"))
@@ -1171,7 +1199,10 @@ impl CssTokenStream {
         if let CssToken::Bracket(mut x) = next {
             let block = f(&mut x.block)?;
             x.block.expect_ended()?;
-            Ok(CssBracket { span: x.span, block })
+            Ok(CssBracket {
+                span: x.span,
+                block,
+            })
         } else {
             self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `[...]`"))
@@ -1187,7 +1218,10 @@ impl CssTokenStream {
         if let CssToken::Brace(mut x) = next {
             let block = f(&mut x.block)?;
             x.block.expect_ended()?;
-            Ok(CssBrace { span: x.span, block })
+            Ok(CssBrace {
+                span: x.span,
+                block,
+            })
         } else {
             self.tokens.push_front(next);
             Err(ParseError::new(self.span(), "expected `{...}`"))
@@ -1224,7 +1258,8 @@ impl ParseWithVars for CssTokenStream {
 impl ParseStyleSheetValue for CssTokenStream {
     fn parse_value(_name: &CssIdent, tokens: &mut CssTokenStream) -> Result<Self, ParseError>
     where
-        Self: Sized {
+        Self: Sized,
+    {
         Ok(Self {
             last_span: tokens.last_span,
             tokens: tokens.tokens.drain(..).collect(),

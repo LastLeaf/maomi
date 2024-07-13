@@ -1,7 +1,11 @@
 // import WASM support
 use wasm_bindgen::prelude::*;
 // import maomi core module
-use maomi::{prelude::*, BackendContext, locale_string::{LocaleString, ToLocaleStr}};
+use maomi::{
+    locale_string::{LocaleString, ToLocaleStr},
+    prelude::*,
+    BackendContext,
+};
 // using DOM backend
 use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 
@@ -30,7 +34,6 @@ struct MyComponent {
         <div class:error></div>
     },
 }
-
 
 // declare a component
 #[component(Backend = DomBackend)]
@@ -92,9 +95,7 @@ pub fn wasm_main() {
 
     // create a mount point
     let mount_point = backend_context
-        .enter_sync(move |ctx| {
-            ctx.attach(|_: &mut HelloWorld| {})
-        })
+        .enter_sync(move |ctx| ctx.attach(|_: &mut HelloWorld| {}))
         .map_err(|_| "Cannot init mount point")
         .unwrap();
 

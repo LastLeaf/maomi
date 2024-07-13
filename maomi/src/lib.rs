@@ -1,8 +1,8 @@
 //! maomi: a rust framework for building pages with components
-//! 
+//!
 //! `maomi` is a framework for building (web) application user interface.
 //! It has strict compile-time check and generates fast code.
-//! 
+//!
 //! This is the *core* module of the framework.
 //! In browsers, the `maomi-dom` crate is also needed.
 //! See the [`maomi_dom`](../maomi-dom) crate document for a quick start.
@@ -14,17 +14,17 @@ pub mod component;
 pub mod diff;
 pub mod error;
 pub mod event;
+pub mod locale_string;
 pub mod mount_point;
 pub mod node;
 pub mod prop;
 pub mod template;
 pub mod text_node;
-pub mod locale_string;
 pub use backend::context::PrerenderingData;
 pub use backend::context::{AsyncCallback, BackendContext};
 
 /// The types that should usually be imported.
-/// 
+///
 /// Usually, `use maomi::prelude::*;` should be added in component files for convinience.
 pub mod prelude {
     pub use super::component::PrerenderableComponent;

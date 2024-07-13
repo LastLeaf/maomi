@@ -84,10 +84,7 @@ async fn skin_style() {
                     .dyn_ref::<web_sys::HtmlElement>()
                     .unwrap()
                     .style();
-                assert_eq!(
-                    style.get_property_value("opacity"),
-                    Ok("0".into()),
-                );
+                assert_eq!(style.get_property_value("opacity"), Ok("0".into()),);
                 assert_eq!(
                     style.get_property_value("color"),
                     Ok("rgb(170, 187, 204)".into()),

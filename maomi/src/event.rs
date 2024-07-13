@@ -1,13 +1,13 @@
 //! The event handling utilities.
-//! 
+//!
 //! The event fields in components can be binded by component users,
 //! and triggered by the component itself.
-//! 
+//!
 //! The following example shows the basic usage of events.
-//! 
+//!
 //! ```rust
 //! use maomi::prelude::*;
-//! 
+//!
 //! #[component]
 //! struct MyComponent {
 //!     template: template! {
@@ -16,7 +16,7 @@
 //!     // define an event with the detailed type
 //!     my_event: Event<usize>,
 //! }
-//! 
+//!
 //! impl Component for MyComponent {
 //!     fn new() -> Self {
 //!         Self {
@@ -24,13 +24,13 @@
 //!             my_event: Event::new(),
 //!         }
 //!     }
-//! 
+//!
 //!     fn created(&self) {
 //!         // trigger the event
 //!         self.my_event.trigger(&mut 123);
 //!     }
 //! }
-//! 
+//!
 //! #[component]
 //! struct MyComponentUser {
 //!     template: template! {
@@ -41,13 +41,13 @@
 //!         <MyComponent my_event=@my_ev_with_data("abc") />
 //!     },
 //! }
-//! 
+//!
 //! impl MyComponentUser {
 //!     // the event listener has two preset arguments: `this` and the event detailed type
 //!     fn my_ev(this: ComponentRc<Self>, detail: &mut usize) {
 //!         assert_eq!(*detail, 123);
 //!     }
-//! 
+//!
 //!     // with extra arguments
 //!     fn my_ev_with_data(this: ComponentRc<Self>, detail: &mut usize, data: &str) {
 //!         assert_eq!(*detail, 123);
@@ -57,7 +57,7 @@
 //! ```
 
 /// The event handler setter.
-/// 
+///
 /// This trait is implemented by `Event` .
 /// Custom event types that implements this trait can also be used in templates with `=@` syntax.
 pub trait EventHandler<D: ?Sized> {

@@ -1,5 +1,5 @@
 //! The key list-update algorithm module.
-//! 
+//!
 //! This is one of the list compare algorithm.
 //! See [diff](../) module documentation for details.
 
@@ -13,7 +13,7 @@ use crate::backend::BackendGeneralElement;
 /// The key will be used in the list-update algorithm.
 pub trait AsListKey {
     /// The list key type.
-    /// 
+    ///
     /// This type must implement `Eq` and `Hash` for comparison between keys.
     /// Usually, `usize` or `str` is a good option.
     type ListKey: Eq + Hash + ToOwned + ?Sized;
@@ -31,7 +31,7 @@ impl<T: AsListKey> AsListKey for &'_ T {
 }
 
 /// The repeated list storing the list and key state.
-/// 
+///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
 pub struct KeyList<K: Eq + Hash, C> {
@@ -45,14 +45,12 @@ impl<K: Eq + Hash, C> KeyList<K, C> {
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
     ) -> ListAlgo<ListKeyAlgoNew<'a, 'b, B, K, C>, ListKeyAlgoUpdate<'a, 'b, B, K, C>> {
-        ListAlgo::New(
-            ListKeyAlgoNew {
-                cur_len: 0,
-                map: HashMap::with_capacity(size_hint),
-                backend_element,
-                _phantom: PhantomData,
-            }
-        )
+        ListAlgo::New(ListKeyAlgoNew {
+            cur_len: 0,
+            map: HashMap::with_capacity(size_hint),
+            backend_element,
+            _phantom: PhantomData,
+        })
     }
 
     #[doc(hidden)]
@@ -62,15 +60,13 @@ impl<K: Eq + Hash, C> KeyList<K, C> {
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
     ) -> ListAlgo<ListKeyAlgoNew<'a, 'b, B, K, C>, ListKeyAlgoUpdate<'a, 'b, B, K, C>> {
-        ListAlgo::Update(
-            ListKeyAlgoUpdate {
-                map: &mut self.map,
-                new_map: HashMap::with_capacity(size_hint),
-                stable_pos: Vec::with_capacity(size_hint),
-                backend_element,
-                _phantom: PhantomData,
-            }
-        )
+        ListAlgo::Update(ListKeyAlgoUpdate {
+            map: &mut self.map,
+            new_map: HashMap::with_capacity(size_hint),
+            stable_pos: Vec::with_capacity(size_hint),
+            backend_element,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -122,9 +118,7 @@ impl<'a, 'b, B: Backend, K: Eq + Hash, C> ListKeyAlgoNew<'a, 'b, B, K, C> {
     #[doc(hidden)]
     #[inline]
     pub fn end(self) -> KeyList<K, C> {
-        KeyList {
-            map: self.map,
-        }
+        KeyList { map: self.map }
     }
 }
 

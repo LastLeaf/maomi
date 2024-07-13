@@ -1,5 +1,5 @@
 //! The backend-related interface.
-//! 
+//!
 //! This module contains some basic types that a backend implementor will use.
 
 pub use maomi_tree as tree;
@@ -7,13 +7,13 @@ use tree::*;
 
 use crate::{
     error::Error,
-    node::{OwnerWeak, SlotChange, SlotKindTrait, DynNodeList},
+    node::{DynNodeList, OwnerWeak, SlotChange, SlotKindTrait},
 };
 pub mod context;
 use context::BackendContext;
 
 /// The backend stage.
-/// 
+///
 /// This is meaningful only when prerendering is used.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BackendStage {
@@ -28,7 +28,7 @@ pub enum BackendStage {
 }
 
 /// The interface that a backend should implement.
-/// 
+///
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
 pub trait Backend: 'static {
@@ -42,7 +42,9 @@ pub trait Backend: 'static {
     type TextNode: BackendTextNode<BaseBackend = Self>;
 
     /// Generate an async task.
-    fn async_task(fut: impl 'static + std::future::Future<Output = ()>) where Self: Sized;
+    fn async_task(fut: impl 'static + std::future::Future<Output = ()>)
+    where
+        Self: Sized;
 
     /// Whether the backend is in prerendering stage.
     fn backend_stage(&self) -> BackendStage;
@@ -55,7 +57,7 @@ pub trait Backend: 'static {
 }
 
 /// The general type of the elements.
-/// 
+///
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
 ///
@@ -151,7 +153,7 @@ pub trait BackendGeneralElement: 'static {
 }
 
 /// The virtual element in the backend.
-/// 
+///
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
 pub trait BackendVirtualElement {
@@ -160,7 +162,7 @@ pub trait BackendVirtualElement {
 }
 
 /// The text node in the backend.
-/// 
+///
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
 pub trait BackendTextNode {
@@ -172,7 +174,7 @@ pub trait BackendTextNode {
 }
 
 /// A trait that indicates a component or a backend-implemented element for the backend.
-/// 
+///
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
 pub trait BackendComponent<B: Backend> {
@@ -181,7 +183,7 @@ pub trait BackendComponent<B: Backend> {
     /// The type of the updated comopnent or element.
     type UpdateTarget;
     /// The update-related data of the component or element.
-    /// 
+    ///
     /// Should be `bool` for components.
     type UpdateContext;
 
@@ -220,7 +222,7 @@ pub trait BackendComponent<B: Backend> {
 }
 
 /// A trait that indicates a component that can be converted into a `BackendComponent` .
-/// 
+///
 /// It usually refers to a `#[component]` or a backend supported component.
 /// For manually usages, this should be used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*

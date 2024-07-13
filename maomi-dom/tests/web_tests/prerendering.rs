@@ -77,8 +77,7 @@ async fn generate_prerendering_html() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div title="789&quot;"></div>456&lt;<!---->123"#,
                     );
                     this.def_class = false;
@@ -155,8 +154,7 @@ async fn cold_event_in_prerendered() {
         fn created(&self) {
             let this = self.rc();
             this.task_with(|this, _| {
-                let dom_elem = first_dom!(this, div)
-                    .clone();
+                let dom_elem = first_dom!(this, div).clone();
                 simulate_event(&dom_elem, "scroll", false, []);
             });
         }
@@ -220,8 +218,7 @@ async fn hot_event_in_prerendered() {
             let this = self.rc();
             async_task(async move {
                 this.get(|this| {
-                    let dom_elem = first_dom!(this, div)
-                        .clone();
+                    let dom_elem = first_dom!(this, div).clone();
                     simulate_event(
                         &dom_elem,
                         "touchstart",

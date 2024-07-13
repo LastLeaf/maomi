@@ -1,8 +1,8 @@
 //! Utilities for template management.
-//! 
+//!
 //! Most utilities in this module is used by `#[component]` .
 
-use std::cell::{Cell, RefCell, Ref};
+use std::cell::{Cell, Ref, RefCell};
 
 use crate::{
     backend::{tree::*, Backend},
@@ -133,9 +133,9 @@ impl<C, S, L: Default> TemplateHelper<C, S, L> for Template<C, S, L> {
 
     #[inline]
     fn structure(&self) -> Option<Ref<S>> {
-        self.__m_structure.as_ref().and_then(|x| {
-            x.try_borrow().ok()
-        })
+        self.__m_structure
+            .as_ref()
+            .and_then(|x| x.try_borrow().ok())
     }
 
     #[inline]
@@ -251,7 +251,12 @@ pub trait ComponentTemplate<B: Backend>: ComponentSlotKind {
             Ok(())
         })?;
         if slot_changes.len() > 0 {
-            if self.template().extract_pending_slot_changes(slot_changes).len() > 0 {
+            if self
+                .template()
+                .extract_pending_slot_changes(slot_changes)
+                .len()
+                > 0
+            {
                 Err(Error::ListChangeWrong)?;
             }
             Ok(true)

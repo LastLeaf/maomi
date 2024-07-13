@@ -29,7 +29,11 @@ impl DomTextNode {
         let mut e = e;
         if self.content.len() == 0 {
             let text_node = crate::DOCUMENT.with(|document| document.create_text_node(""));
-            e = e.parent_node().unwrap().replace_child(&text_node, &e).unwrap();
+            e = e
+                .parent_node()
+                .unwrap()
+                .replace_child(&text_node, &e)
+                .unwrap();
         }
         self.dom_elem = DomState::Normal(e.unchecked_into());
     }

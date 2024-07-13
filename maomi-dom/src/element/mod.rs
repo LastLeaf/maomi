@@ -2,26 +2,19 @@
 //!
 //! The element list is found in [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element) .
 
+use crate::MaybeJsStr;
 use maomi::{
-    backend::{BackendComponent, AsElementTag},
+    backend::{AsElementTag, BackendComponent},
     error::Error,
     node::{OwnerWeak, SlotChange, StaticSingleSlot},
     BackendContext,
 };
 use maomi_dom_macro::dom_element_definition;
 use wasm_bindgen::JsCast;
-use crate::MaybeJsStr;
 
 use crate::{
-    base_element::*,
-    class_list::DomClassList,
-    dynamic_style::DomStyleList,
-    event,
-    event::DomEvent,
-    tree::*,
-    DomBackend,
-    DomGeneralElement,
-    DomState,
+    base_element::*, class_list::DomClassList, dynamic_style::DomStyleList, event, event::DomEvent,
+    tree::*, DomBackend, DomGeneralElement, DomState,
 };
 
 // TODO add embedded content, svg, MathML support

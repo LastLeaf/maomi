@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use quote::*;
+use std::collections::HashMap;
 use syn::parse::*;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -26,8 +26,7 @@ impl Template {
         fn rec(children: &Vec<TemplateNode>, st: &mut SlotType, in_list: bool) {
             for n in children {
                 match n {
-                    TemplateNode::StaticText { .. }
-                    | TemplateNode::DynamicText { .. } => {
+                    TemplateNode::StaticText { .. } | TemplateNode::DynamicText { .. } => {
                         continue;
                     }
                     TemplateNode::Tag { children, .. } => {
@@ -44,7 +43,7 @@ impl Template {
                                 } else {
                                     SlotType::StaticSingle
                                 }
-                            },
+                            }
                             SlotType::StaticSingle => SlotType::Dynamic,
                             SlotType::Dynamic => unreachable!(),
                         };
@@ -80,7 +79,11 @@ impl Template {
         ret
     }
 
-    pub(super) fn to_children<'a>(&'a self, backend_param: &'a TokenStream, locale_group: &'a LocaleGroup) -> TemplateChildren<'a> {
+    pub(super) fn to_children<'a>(
+        &'a self,
+        backend_param: &'a TokenStream,
+        locale_group: &'a LocaleGroup,
+    ) -> TemplateChildren<'a> {
         TemplateChildren {
             template_children: &self.children,
             backend_param,
@@ -621,14 +624,15 @@ impl<'a> ToTokens for TemplateChildren<'a> {
             slot_var_name,
             force_inline,
         } = self;
-        let children = template_children.into_iter().enumerate().map(|(i, template_node)| {
-            TemplateNodeUpdate {
+        let children = template_children
+            .into_iter()
+            .enumerate()
+            .map(|(i, template_node)| TemplateNodeUpdate {
                 child_index: i.into(),
                 template_node,
                 backend_param,
                 locale_group,
-            }
-        });
+            });
         let result_index = (0..template_children.len()).map(|i| syn::Index::from(i));
         let slot_var_name_def = match slot_var_name {
             Some(x) => quote! { #x: &_, },
@@ -676,12 +680,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             locale_group,
         } = self;
         match template_node {
-
             // static text node
             TemplateNode::StaticText { content } => {
                 let span = content.span();
                 let translated = match locale_group.trans(&content.value()) {
-                    TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
+                    TransRes::LackTrans => {
+                        quote_spanned! {span=> compile_error!("lacks translation") }
+                    }
                     TransRes::LackTransGroup(x) => {
                         let msg = format!("translation group {:?} not found", x);
                         quote_spanned! {span=> compile_error!(#msg) }
@@ -690,7 +695,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         let s = LitStr::new(x, span);
                         quote! { maomi::locale_string::LocaleStaticStr::translated(#s) }
                     }
-                    TransRes::NotNeeded => quote! { maomi::locale_string::LocaleStaticStr::translated(#content) },
+                    TransRes::NotNeeded => {
+                        quote! { maomi::locale_string::LocaleStaticStr::translated(#content) }
+                    }
                 };
                 let update = quote_spanned! {span=>
                     maomi::node::UnionOption::none()
@@ -707,11 +714,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     );
                     maomi::node::UnionOption::some(maomi::node::DynNode::new(__m_child))
                 };
-                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                let is_rust_analyzer =
+                    maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
                     quote_spanned! {span=>
                         #create
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         if let Some(__m_children) = __m_children.as_mut() {
@@ -719,7 +728,8 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         } else {
                             #create
                         }
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
 
@@ -728,7 +738,9 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let span = brace_token.span;
                 let translated = match locale_group.need_trans() {
                     true => quote! { #expr },
-                    false => quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) },
+                    false => {
+                        quote_spanned! {span=> maomi::locale_string::LocaleString::translated(#expr) }
+                    }
                 };
                 let update = quote_spanned! {span=>
                     let __m_child: &mut maomi::text_node::TextNode = unsafe { __m_children.get_unchecked_mut(#child_index).node_unchecked() };
@@ -747,11 +759,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     );
                     maomi::node::UnionOption::some(maomi::node::DynNode::new(__m_child))
                 };
-                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                let is_rust_analyzer =
+                    maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
                     quote_spanned! {span=>
                         #create
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         if let Some(__m_children) = __m_children.as_mut() {
@@ -759,34 +773,42 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         } else {
                             #create
                         }
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
 
             // slot node
-            TemplateNode::Slot { tag_lt_token, data, .. } => {
+            TemplateNode::Slot {
+                tag_lt_token, data, ..
+            } => {
                 let span = tag_lt_token.span();
                 let data_expr = match data {
                     None => quote_spanned! {span=> &() },
-                    Some(attr) => {
-                        match attr {
-                            TemplateAttribute::StaticProperty { eq_token, value, .. } => {
-                                let span = eq_token.span();
-                                match value {
-                                    Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
-                                    _ => quote_spanned! {span=> & #value },
-                                }
+                    Some(attr) => match attr {
+                        TemplateAttribute::StaticProperty {
+                            eq_token, value, ..
+                        } => {
+                            let span = eq_token.span();
+                            match value {
+                                Lit::Str(_) | Lit::ByteStr(_) => quote! {span=> #value },
+                                _ => quote_spanned! {span=> & #value },
                             }
-                            TemplateAttribute::DynamicProperty { eq_token, expr, ref_token, .. } => {
-                                let span = eq_token.span();
-                                match ref_token {
-                                    Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
-                                    None => quote_spanned!(span=> #expr),
-                                }
-                            }
-                            TemplateAttribute::EventHandler { .. } => unreachable!(),
-                            TemplateAttribute::Slot { .. } => unreachable!(),
                         }
+                        TemplateAttribute::DynamicProperty {
+                            eq_token,
+                            expr,
+                            ref_token,
+                            ..
+                        } => {
+                            let span = eq_token.span();
+                            match ref_token {
+                                Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
+                                None => quote_spanned!(span=> #expr),
+                            }
+                        }
+                        TemplateAttribute::EventHandler { .. } => unreachable!(),
+                        TemplateAttribute::Slot { .. } => unreachable!(),
                     },
                 };
                 let update = quote_spanned! {span=>
@@ -830,11 +852,13 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         (),
                     )))
                 };
-                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                let is_rust_analyzer =
+                    maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
                     quote_spanned! {span=>
                         #create
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         if let Some(__m_children) = __m_children.as_mut() {
@@ -842,12 +866,20 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         } else {
                             #create
                         }
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
 
             // common node
-            TemplateNode::Tag { tag_lt_token, tag_name, slot_var_name, attrs, children, .. } => {
+            TemplateNode::Tag {
+                tag_lt_token,
+                tag_name,
+                slot_var_name,
+                attrs,
+                children,
+                ..
+            } => {
                 let template_children = TemplateChildren {
                     template_children: children,
                     backend_param,
@@ -858,17 +890,26 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 let has_children = children.len() > 0;
                 let span = tag_lt_token.span();
                 let mut list_prop_count = HashMap::new();
-                let (attrs_create, attrs_update): (Vec<_>, Vec<_>) = attrs.into_iter().map(|attr| {
-                    let list_index = if let Some(x) = attr.list_ident() {
-                        *list_prop_count.entry(x)
-                            .and_modify(|x| *x += 1)
-                            .or_insert(1) - 1
-                    } else {
-                        0
-                    };
-                    (TemplateAttributeCreate { attr, list_index }, TemplateAttributeUpdate { attr, list_index })
-                }).unzip();
-                let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) = list_prop_count.iter().unzip();
+                let (attrs_create, attrs_update): (Vec<_>, Vec<_>) = attrs
+                    .into_iter()
+                    .map(|attr| {
+                        let list_index = if let Some(x) = attr.list_ident() {
+                            *list_prop_count
+                                .entry(x)
+                                .and_modify(|x| *x += 1)
+                                .or_insert(1)
+                                - 1
+                        } else {
+                            0
+                        };
+                        (
+                            TemplateAttributeCreate { attr, list_index },
+                            TemplateAttributeUpdate { attr, list_index },
+                        )
+                    })
+                    .unzip();
+                let (list_prop_name, list_prop_count): (Vec<&Ident>, Vec<usize>) =
+                    list_prop_count.iter().unzip();
                 let slot_var_name_def = match slot_var_name {
                     Some(x) => quote! { #x },
                     None => quote_spanned! {span=> __m_slot_data },
@@ -962,7 +1003,7 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                             #(#attrs_create)*
                         }),
                         &mut |__m_parent_element, __m_backend_element_token, #slot_var_name_def| {
-                            #create_children 
+                            #create_children
                             Ok(())
                         },
                     )?;
@@ -972,13 +1013,16 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                 if has_children {
                     quote_spanned! {span=>
                         let mut __m_children_results = #template_children;
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
-                let is_rust_analyzer = maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
+                let is_rust_analyzer =
+                    maomi_tools::config::crate_config(|config| config.rust_analyzer_env);
                 if is_rust_analyzer {
                     quote_spanned! {span=>
                         #create
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         if let Some(__m_children) = __m_children.as_mut() {
@@ -986,14 +1030,20 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         } else {
                             #create
                         }
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
 
             // if branches
             TemplateNode::IfElse { branches } => {
                 for (index, x) in branches.iter().enumerate() {
-                    let TemplateIfElse { else_token, if_cond, children, .. } = x;
+                    let TemplateIfElse {
+                        else_token,
+                        if_cond,
+                        children,
+                        ..
+                    } = x;
                     let template_children = TemplateChildren {
                         template_children: children,
                         backend_param,
@@ -1001,7 +1051,11 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                         slot_var_name: None,
                         force_inline: false,
                     };
-                    let span = else_token.as_ref().map(|x| x.span()).or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span())).unwrap();
+                    let span = else_token
+                        .as_ref()
+                        .map(|x| x.span())
+                        .or_else(|| if_cond.as_ref().map(|(if_token, _)| if_token.span()))
+                        .unwrap();
                     let if_cond = match if_cond {
                         Some((if_token, cond)) => quote_spanned! {span=> #if_token #cond },
                         None => quote! {},
@@ -1058,11 +1112,23 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
             }
 
             // match branches
-            TemplateNode::Match { match_token, expr, arms, .. } => {
+            TemplateNode::Match {
+                match_token,
+                expr,
+                arms,
+                ..
+            } => {
                 let span = match_token.span();
                 let mut branches_ts = quote! {};
                 for (index, x) in arms.iter().enumerate() {
-                    let TemplateMatchArm { pat, guard, fat_arrow_token, children, comma, .. } = x;
+                    let TemplateMatchArm {
+                        pat,
+                        guard,
+                        fat_arrow_token,
+                        children,
+                        comma,
+                        ..
+                    } = x;
                     let template_children = TemplateChildren {
                         template_children: children,
                         backend_param,
@@ -1127,11 +1193,20 @@ impl<'a> ToTokens for TemplateNodeUpdate<'a> {
                     #match_token #expr {
                         #branches_ts
                     }
-                }.to_tokens(tokens);
+                }
+                .to_tokens(tokens);
             }
 
             // for loops
-            TemplateNode::ForLoop { for_token, pat, in_token, expr, key, children, .. } => {
+            TemplateNode::ForLoop {
+                for_token,
+                pat,
+                in_token,
+                expr,
+                key,
+                children,
+                ..
+            } => {
                 let template_children = TemplateChildren {
                     template_children: children,
                     backend_param,
@@ -1253,11 +1328,17 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self { attr, list_index } = self;
         match attr {
-            TemplateAttribute::StaticProperty { name, list_updater, value, eq_token, .. } => {
+            TemplateAttribute::StaticProperty {
+                name,
+                list_updater,
+                value,
+                eq_token,
+                ..
+            } => {
                 let span = eq_token.span();
                 let ref_sign = match value {
                     Lit::Str(_) | Lit::ByteStr(_) => quote! {},
-                    _ => quote_spanned!{span=> & },
+                    _ => quote_spanned! {span=> & },
                 };
                 if let Some((_, updater)) = list_updater {
                     let index = Index::from(*list_index);
@@ -1268,7 +1349,8 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #ref_sign #value,
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         maomi::prop::PropertyUpdate::compare_and_set_ref(
@@ -1276,10 +1358,18 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #ref_sign #value,
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
-            TemplateAttribute::DynamicProperty { ref_token, name, list_updater, expr, eq_token, .. } => {
+            TemplateAttribute::DynamicProperty {
+                ref_token,
+                name,
+                list_updater,
+                expr,
+                eq_token,
+                ..
+            } => {
                 let span = eq_token.span();
                 let expr = match ref_token {
                     Some(ref_sign) => quote_spanned!(span=> #ref_sign(#expr)),
@@ -1294,7 +1384,8 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         maomi::prop::PropertyUpdate::compare_and_set_ref(
@@ -1302,10 +1393,17 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
-            TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
+            TemplateAttribute::EventHandler {
+                name,
+                at_token,
+                fn_name,
+                args,
+                ..
+            } => {
                 let span = at_token.span();
                 let (args_ref, args_expr): (Vec<_>, Vec<_>) = args.iter().enumerate().map(|(index, expr)| {
                     let span = expr.span();
@@ -1326,7 +1424,8 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                         }),
                         __m_update_ctx,
                     );
-                }.to_tokens(tokens);
+                }
+                .to_tokens(tokens);
             }
             TemplateAttribute::Slot { .. } => unreachable!(),
         }
@@ -1367,7 +1466,8 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     quote_spanned! {span=>
                         maomi::prop::PropertyUpdate::compare_and_set_ref(
@@ -1375,10 +1475,17 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             #expr,
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 }
             }
-            TemplateAttribute::EventHandler { name, at_token, fn_name, args, .. } => {
+            TemplateAttribute::EventHandler {
+                name,
+                at_token,
+                fn_name,
+                args,
+                ..
+            } => {
                 if args.len() > 0 {
                     let span = at_token.span();
                     let (args_ref, args_expr): (Vec<_>, Vec<_>) = args.iter().enumerate().map(|(index, expr)| {
@@ -1400,7 +1507,8 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             }),
                             __m_update_ctx,
                         );
-                    }.to_tokens(tokens);
+                    }
+                    .to_tokens(tokens);
                 } else {
                     // empty
                 }

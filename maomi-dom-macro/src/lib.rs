@@ -1,7 +1,7 @@
 #![recursion_limit = "128"]
 
-use proc_macro::TokenStream;
 use maomi_skin::style_sheet::StyleSheet;
+use proc_macro::TokenStream;
 
 mod css;
 use css::DomStyleSheet;

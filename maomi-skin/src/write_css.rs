@@ -404,7 +404,11 @@ impl<'a, W: CssWriteTarget> CssWriter<'a, W> {
 /// Display as CSS text
 pub trait WriteCss {
     /// Write CSS text (with specified argument values)
-    fn write_css_with_args<W: CssWriteTarget>(&self, cssw: &mut CssWriter<W>, var_values: &[VarDynValue]) -> Result;
+    fn write_css_with_args<W: CssWriteTarget>(
+        &self,
+        cssw: &mut CssWriter<W>,
+        var_values: &[VarDynValue],
+    ) -> Result;
 
     /// Write CSS text
     fn write_css<W: CssWriteTarget>(&self, cssw: &mut CssWriter<W>) -> Result {

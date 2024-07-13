@@ -35,11 +35,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
     ) -> Result<Self, Error> {
         let owner_weak: Box<dyn OwnerWeak> = Box::new(DanglingOwner());
         let (mut component_node, backend_element) =
-            <ComponentNode<C> as BackendComponent<B>>::init(
-                backend_context,
-                parent,
-                &owner_weak,
-            )?;
+            <ComponentNode<C> as BackendComponent<B>>::init(backend_context, parent, &owner_weak)?;
         <ComponentNode<C> as BackendComponent<B>>::create(
             &mut component_node,
             backend_context,
@@ -77,7 +73,7 @@ impl<B: Backend, C: Component + ComponentTemplate<B>> MountPoint<B, C> {
 }
 
 /// The `dyn` form of the mount point.
-/// 
+///
 /// This form does not contain the root component type.
 pub struct DynMountPoint<B: Backend> {
     _component_node: Box<dyn std::any::Any>,

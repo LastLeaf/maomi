@@ -18,12 +18,18 @@ extern "C" {
 
 type DomClassListTy = dom_state_ty!(DomTokenList, (), ());
 
-fn toggle_class_name(class_list: &mut DomClassListTy, _class_name: &MaybeJsStr, _v: bool, _ctx: &mut DomElement) {
+fn toggle_class_name(
+    class_list: &mut DomClassListTy,
+    _class_name: &MaybeJsStr,
+    _v: bool,
+    _ctx: &mut DomElement,
+) {
     match class_list {
         DomState::Normal(_x) => {
             // TODO if a class is used multiple times in a single element (may through external), this breaks
             #[cfg(target_arch = "wasm32")]
-            _x.unchecked_ref::<DomClassListType>().toggle_with_force(&_class_name.js, _v);
+            _x.unchecked_ref::<DomClassListType>()
+                .toggle_with_force(&_class_name.js, _v);
             #[cfg(not(target_arch = "wasm32"))]
             panic!("not available in non-web environment");
         }
@@ -42,7 +48,8 @@ fn toggle_class_name(class_list: &mut DomClassListTy, _class_name: &MaybeJsStr, 
             DomState::Normal(x) => {
                 let cl = x.class_list();
                 #[cfg(target_arch = "wasm32")]
-                cl.unchecked_ref::<DomClassListType>().toggle_with_force(&_class_name.js, _v);
+                cl.unchecked_ref::<DomClassListType>()
+                    .toggle_with_force(&_class_name.js, _v);
                 *class_list = DomState::Normal(cl);
             }
             #[cfg(feature = "prerendering")]
@@ -138,7 +145,8 @@ impl ListPropertyUpdate<DomExternalClasses> for DomClassList {
                 toggle_class_name(class_list, &c, enabled, ctx)
             });
         } else {
-            let x = src.init_list(&mut |c, enabled| toggle_class_name(class_list, &c, enabled, ctx));
+            let x =
+                src.init_list(&mut |c, enabled| toggle_class_name(class_list, &c, enabled, ctx));
             *old_v = DomClassItem::External(x);
         }
     }
@@ -257,7 +265,9 @@ impl ListPropertyInit for DomExternalClasses {
         thread_local! {
             static EMPTY_JS_STRING: &'static MaybeJsStr = MaybeJsStr::new_leaked("");
         }
-        v.resize_with(count, || DomExternalClassItem::Enabled(false, EMPTY_JS_STRING.with(|x| (*x).clone())));
+        v.resize_with(count, || {
+            DomExternalClassItem::Enabled(false, EMPTY_JS_STRING.with(|x| (*x).clone()))
+        });
         dest.items = v.into_boxed_slice();
     }
 }

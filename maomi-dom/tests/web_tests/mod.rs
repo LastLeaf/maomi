@@ -7,13 +7,10 @@ use maomi_dom::{async_task, prelude::*};
 
 macro_rules! first_dom {
     ($this:expr, $elem:ty) => {
-        (
-            $this.template_structure()
-                .unwrap()[0]
-                .as_ref::<maomi::node::Node<$elem>>()
-                .tag
-                .dom_element()
-        )
+        ($this.template_structure().unwrap()[0]
+            .as_ref::<maomi::node::Node<$elem>>()
+            .tag
+            .dom_element())
     };
 }
 
@@ -83,7 +80,8 @@ where
     init();
     let dom_backend = DomBackend::prerendering();
     let backend_context = maomi::BackendContext::new(dom_backend);
-    let prerendering_data = maomi::BackendContext::<DomBackend>::prerendering_data::<T>(query_data).await;
+    let prerendering_data =
+        maomi::BackendContext::<DomBackend>::prerendering_data::<T>(query_data).await;
     let prerendering_data_cloned = prerendering_data.get().clone();
     let (_mount_point, ret) = backend_context
         .enter_sync(move |ctx| {
@@ -161,9 +159,24 @@ fn generate_fake_touch(
     client_y: i32,
 ) -> JsValue {
     let v = js_sys::Object::new();
-    Reflect::set(&v, &JsValue::from_str("identifier"), &JsValue::from_f64(identifier as f64)).unwrap();
-    Reflect::set(&v, &JsValue::from_str("clientX"), &JsValue::from_f64(client_x as f64)).unwrap();
-    Reflect::set(&v, &JsValue::from_str("clientY"), &JsValue::from_f64(client_y as f64)).unwrap();
+    Reflect::set(
+        &v,
+        &JsValue::from_str("identifier"),
+        &JsValue::from_f64(identifier as f64),
+    )
+    .unwrap();
+    Reflect::set(
+        &v,
+        &JsValue::from_str("clientX"),
+        &JsValue::from_f64(client_x as f64),
+    )
+    .unwrap();
+    Reflect::set(
+        &v,
+        &JsValue::from_str("clientY"),
+        &JsValue::from_f64(client_y as f64),
+    )
+    .unwrap();
     Reflect::set(&v, &JsValue::from_str("target"), target).unwrap();
     let arr = js_sys::Array::new();
     arr.push(&v);

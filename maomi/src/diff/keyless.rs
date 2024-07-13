@@ -1,8 +1,8 @@
 //! The keyless list algorithm module.
-//! 
+//!
 //! This is one of the list compare algorithm.
 //! See [diff](../) module documentation for details.
-//! 
+//!
 
 use std::marker::PhantomData;
 
@@ -10,7 +10,7 @@ use super::*;
 use crate::backend::BackendGeneralElement;
 
 /// The repeated list storing the list state.
-/// 
+///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
 pub struct KeylessList<C> {
@@ -24,13 +24,11 @@ impl<C> KeylessList<C> {
         backend_element: &'a mut ForestNodeMut<'b, B::GeneralElement>,
         size_hint: usize,
     ) -> ListAlgo<ListKeylessAlgoNew<'a, 'b, B, C>, ListKeylessAlgoUpdate<'a, 'b, B, C>> {
-        ListAlgo::New(
-            ListKeylessAlgoNew {
-                list: Vec::with_capacity(size_hint),
-                backend_element,
-                _phantom: PhantomData,
-            }
-        )
+        ListAlgo::New(ListKeylessAlgoNew {
+            list: Vec::with_capacity(size_hint),
+            backend_element,
+            _phantom: PhantomData,
+        })
     }
 
     #[doc(hidden)]
@@ -43,14 +41,12 @@ impl<C> KeylessList<C> {
         if size_hint > self.list.len() {
             self.list.reserve_exact(size_hint - self.list.len());
         }
-        ListAlgo::Update(
-            ListKeylessAlgoUpdate {
-                cur_index: 0,
-                list: &mut self.list,
-                backend_element,
-                _phantom: PhantomData,
-            }
-        )
+        ListAlgo::Update(ListKeylessAlgoUpdate {
+            cur_index: 0,
+            list: &mut self.list,
+            backend_element,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -82,9 +78,7 @@ impl<'a, 'b, B: Backend, C> ListKeylessAlgoNew<'a, 'b, B, C> {
     #[doc(hidden)]
     #[inline]
     pub fn end(self) -> KeylessList<C> {
-        KeylessList {
-            list: self.list,
-        }
+        KeylessList { list: self.list }
     }
 }
 

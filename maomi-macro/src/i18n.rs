@@ -1,6 +1,6 @@
-use std::{sync::Mutex, path::PathBuf, io::Write};
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
+use std::{io::Write, path::PathBuf, sync::Mutex};
 
 use maomi_tools::i18n::*;
 
@@ -36,9 +36,7 @@ static FORMAT_METADATA_OUTPUT: Lazy<Option<Mutex<std::fs::File>>> = Lazy::new(||
                     std::fs::create_dir_all(&tmp_dir).ok()?;
                     let gitignore = tmp_dir.join(".gitignore");
                     if !std::path::Path::exists(&gitignore) {
-                        let _ = std::fs::File::create(&gitignore).map(|mut file| {
-                            write!(file, "*")
-                        });
+                        let _ = std::fs::File::create(&gitignore).map(|mut file| write!(file, "*"));
                     }
                     let p = tmp_dir.join(&(locale_name.clone() + ".toml"));
                     let mut file = std::fs::File::create(p).ok()?;
@@ -86,9 +84,7 @@ impl LocaleGroup {
     }
 
     pub(crate) fn get(group: &str) -> LocaleGroup {
-        let locale = CUR_LOCALE.as_ref().ok().and_then(|locale| {
-            locale.as_ref()
-        });
+        let locale = CUR_LOCALE.as_ref().ok().and_then(|locale| locale.as_ref());
         if let Some(locale) = locale {
             let inner = match locale.get(group) {
                 Some(x) => LocaleGroupStatus::Normal(x),
@@ -152,9 +148,7 @@ impl LocaleGroup {
                 }
                 TransRes::LackTransGroup(x.as_str())
             }
-            LocaleGroupStatus::NotNeeded => {
-                TransRes::NotNeeded
-            }
+            LocaleGroupStatus::NotNeeded => TransRes::NotNeeded,
         }
     }
 }
@@ -169,8 +163,8 @@ pub(crate) enum TransRes<'a> {
 
 pub(crate) mod mac {
     use quote::*;
-    use syn::*;
     use syn::parse::*;
+    use syn::*;
 
     pub(crate) struct I18nGroupArgs {
         group: Ident,
@@ -210,7 +204,10 @@ pub(crate) mod mac {
                 let name = input.parse()?;
                 input.parse::<Token![=]>()?;
                 let expr = input.parse()?;
-                Ok(Self { name: Some(name), expr })
+                Ok(Self {
+                    name: Some(name),
+                    expr,
+                })
             } else {
                 let expr = input.parse()?;
                 Ok(Self { name: None, expr })
@@ -238,7 +235,7 @@ pub(crate) mod mac {
         s: LitStr,
         vars: Vec<I18nVar>,
     }
-    
+
     impl Parse for I18nArgs {
         fn parse(input: ParseStream) -> Result<Self> {
             let s = input.parse()?;
@@ -277,7 +274,11 @@ pub(crate) mod mac {
         }
     }
 
-    fn trans_to_tokens(args: &I18nArgs, group: Option<&Ident>, tokens: &mut proc_macro2::TokenStream) {
+    fn trans_to_tokens(
+        args: &I18nArgs,
+        group: Option<&Ident>,
+        tokens: &mut proc_macro2::TokenStream,
+    ) {
         let locale_group = match group {
             None => super::LocaleGroup::get_default(),
             Some(group) => super::LocaleGroup::get(&group.to_string()),
@@ -286,11 +287,13 @@ pub(crate) mod mac {
         let vars = &args.vars;
         let span = s.span();
         let r = match locale_group.trans(&s.value()) {
-            super::TransRes::LackTrans => quote_spanned! {span=> compile_error!("lacks translation") },
+            super::TransRes::LackTrans => {
+                quote_spanned! {span=> compile_error!("lacks translation") }
+            }
             super::TransRes::LackTransGroup(x) => {
                 let msg = format!("translation group {:?} not found", x);
                 quote_spanned! {span=> compile_error!(#msg) }
-            },
+            }
             super::TransRes::Done(x) => {
                 let s = LitStr::new(x, span);
                 if args.vars.len() == 0 {
@@ -313,8 +316,8 @@ pub(crate) mod mac {
 
 #[cfg(test)]
 mod test {
-    use std::path::{Path, PathBuf};
     use serial_test::serial;
+    use std::path::{Path, PathBuf};
 
     use super::*;
 
@@ -339,9 +342,7 @@ mod test {
     pub(crate) fn setup_env<R>(locale_name: &str, f: impl FnOnce(Env) -> R) -> R {
         let locale_dir = &*TEST_DIRS;
         std::env::set_var("MAOMI_I18N_LOCALE", locale_name);
-        let r = f(Env {
-            locale_dir,
-        });
+        let r = f(Env { locale_dir });
         std::env::remove_var("MAOMI_I18N_LOCALE");
         r
     }
@@ -354,13 +355,19 @@ mod test {
             quote::quote!(#ss).to_string()
         }
         let a = setup_env("test", |env| {
-            env.write_locale_file("test.toml", r#"
-                [translation]
-                "abc" = "def"
-            "#);
+            env.write_locale_file(
+                "test.toml",
+                r#"
+[translation]
+"abc" = "def"
+                "#,
+            );
             parse_str(r#""abc""#)
         });
-        assert_eq!(a, r#"maomi :: locale_string :: LocaleStaticStr :: translated ("def")"#);
+        assert_eq!(
+            a,
+            r#"maomi :: locale_string :: LocaleStaticStr :: translated ("def")"#
+        );
     }
 
     #[test]
@@ -371,14 +378,21 @@ mod test {
             quote::quote!(#ss).to_string()
         }
         let a = setup_env("test", |env| {
-            env.write_locale_file("test.toml", r#"
-                [translation]
-                "abc" = "def"
-                [tt]
-                "abc" = "ghi"
-            "#);
+            env.write_locale_file(
+                "test.toml",
+                r#"
+[translation]
+"abc" = "def"
+
+[tt]
+"abc" = "ghi"
+                "#,
+            );
             parse_str(r#"tt, "abc""#)
         });
-        assert_eq!(a, r#"maomi :: locale_string :: LocaleStaticStr :: translated ("ghi")"#);
+        assert_eq!(
+            a,
+            r#"maomi :: locale_string :: LocaleStaticStr :: translated ("ghi")"#
+        );
     }
 }

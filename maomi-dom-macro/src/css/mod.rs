@@ -1,15 +1,15 @@
 use once_cell::sync::Lazy;
-use quote::{quote, TokenStreamExt, quote_spanned};
+use quote::{quote, quote_spanned, TokenStreamExt};
+use std::cell::Cell;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::Write;
 use std::path::PathBuf;
-use std::cell::Cell;
 
-use maomi_skin::write_css::{CssWriter, WriteCss, CssWritePlaceholder};
-use maomi_skin::{css_token::*, VarDynValue, MaybeDyn, ArgType};
 use maomi_skin::style_sheet::*;
-use maomi_skin::{ParseError, pseudo};
+use maomi_skin::write_css::{CssWritePlaceholder, CssWriter, WriteCss};
+use maomi_skin::{css_token::*, ArgType, MaybeDyn, VarDynValue};
+use maomi_skin::{pseudo, ParseError};
 use maomi_tools::config::CssOutMode;
 
 mod media_cond;
@@ -18,10 +18,10 @@ mod property;
 use property::*;
 
 const CLASS_CHARS: [char; 63] = [
-    '_', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
-    'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
-    'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    '_', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
+    'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A',
+    'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+    'U', 'V', 'W', 'X', 'Y', 'Z',
 ];
 const CLASS_START_CHARS: [char; 52] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -60,7 +60,8 @@ static CSS_OUT_FILE: Lazy<Option<std::sync::Mutex<File>>> = Lazy::new(|| {
                     .unwrap();
             }
             if let Some(ss) = maomi_skin::module::root_module::<DomStyleSheet>() {
-                ss.style_sheet_constructor().generate_module_output(&ss, &mut file);
+                ss.style_sheet_constructor()
+                    .generate_module_output(&ss, &mut file);
             }
             std::sync::Mutex::new(file)
         })
@@ -70,7 +71,14 @@ static CSS_OUT_FILE: Lazy<Option<std::sync::Mutex<File>>> = Lazy::new(|| {
 fn generate_span_hash(span: proc_macro2::Span) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     maomi_tools::config::crate_config(|crate_config| {
-        hasher.write(crate_config.crate_name.as_ref().map(|x| x.as_str()).unwrap_or("").as_bytes());
+        hasher.write(
+            crate_config
+                .crate_name
+                .as_ref()
+                .map(|x| x.as_str())
+                .unwrap_or("")
+                .as_bytes(),
+        );
     });
     hasher.write(format!("{:?}", span).as_bytes());
     let mut h = hasher.finish();
@@ -136,12 +144,18 @@ impl DomStyleSheet {
                             panic!("not a fn");
                         }
                     };
-                    let args: Vec<_> = args.iter().map(|arg| {
-                        match arg {
-                            MaybeDyn::Dyn(x) => var_values.get(x.index).expect("argument value not enough"),
-                            MaybeDyn::Static(v) => v,
-                        }.clone()
-                    }).collect();
+                    let args: Vec<_> = args
+                        .iter()
+                        .map(|arg| {
+                            match arg {
+                                MaybeDyn::Dyn(x) => {
+                                    var_values.get(x.index).expect("argument value not enough")
+                                }
+                                MaybeDyn::Static(v) => v,
+                            }
+                            .clone()
+                        })
+                        .collect();
                     Self::write_prop_list(
                         tokens.as_deref_mut(),
                         debug_mode,
@@ -191,12 +205,15 @@ impl DomStyleSheet {
 
     fn generate_module_output(&self, ss: &StyleSheet<Self>, css_out_file: &mut File)
     where
-        Self: Sized {
+        Self: Sized,
+    {
         for item in ss.items.iter() {
             match &**item {
                 // generate submodule output
                 StyleSheetItem::Submodule(_, submodule) => {
-                    submodule.style_sheet_constructor().generate_module_output(&submodule, css_out_file);
+                    submodule
+                        .style_sheet_constructor()
+                        .generate_module_output(&submodule, css_out_file);
                 }
                 _ => {}
             }
@@ -205,7 +222,8 @@ impl DomStyleSheet {
         // generate @keyframes output
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
         for (generated_ident, content) in self.key_frames_def.iter() {
-            let s = Self::keyframes_str(generated_ident, content, None, debug_mode, &ss.var_context);
+            let s =
+                Self::keyframes_str(generated_ident, content, None, debug_mode, &ss.var_context);
             css_out_file.write(s.as_bytes()).unwrap();
         }
     }
@@ -233,12 +251,11 @@ impl StyleSheetConstructor for DomStyleSheet {
         let debug_mode = CSS_OUT_MODE.with(|x| x.get() == CssOutMode::Debug);
         let generated_ident = CssIdent::new(
             name.span(),
-            css_name.as_ref().unwrap_or(&generate_css_name(&name, debug_mode)),
+            css_name
+                .as_ref()
+                .unwrap_or(&generate_css_name(&name, debug_mode)),
         );
-        self.key_frames_def.push((
-            generated_ident.clone(),
-            content,
-        ));
+        self.key_frames_def.push((generated_ident.clone(), content));
         Ok(CssToken::Ident(generated_ident).into())
     }
 
@@ -252,7 +269,13 @@ impl StyleSheetConstructor for DomStyleSheet {
         // generate @keyframes output
         if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
             for (generated_ident, content) in self.key_frames_def.iter() {
-                let s = Self::keyframes_str(generated_ident, content, Some(tokens), debug_mode, &ss.var_context);
+                let s = Self::keyframes_str(
+                    generated_ident,
+                    content,
+                    Some(tokens),
+                    debug_mode,
+                    &ss.var_context,
+                );
                 css_out_file.lock().unwrap().write(s.as_bytes()).unwrap();
             }
         }
@@ -307,7 +330,12 @@ impl StyleSheetConstructor for DomStyleSheet {
                         const #name: &'static str = "(keyframes)";
                     });
                 }
-                StyleSheetItem::StyleFn(StyleFnDefinition { name, args, sub_var_refs, .. }) => {
+                StyleSheetItem::StyleFn(StyleFnDefinition {
+                    name,
+                    args,
+                    sub_var_refs,
+                    ..
+                }) => {
                     let args_var_name = args.iter().map(|x| &x.0);
                     let args_ty = args.iter().map(|x| x.1.type_tokens());
                     tokens.append_all(quote! {
@@ -402,7 +430,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                                 }
                                 StyleContentItem::StyleRef(name, args) => {
                                     let style_fn = var_context.get(&name);
-                                    let style_fn = style_fn.as_ref()
+                                    let style_fn = style_fn
+                                        .as_ref()
                                         .and_then(|x| {
                                             if let StyleSheetItem::StyleFn(x) = &**x {
                                                 Some(x)
@@ -411,13 +440,25 @@ impl StyleSheetConstructor for DomStyleSheet {
                                             }
                                         })
                                         .expect("style section not found");
-                                    let args: Vec<_> = args.iter().map(|arg| {
-                                        match arg {
-                                            MaybeDyn::Dyn(x) => var_values.get(x.index).expect("argument value not enough"),
-                                            MaybeDyn::Static(v) => v,
-                                        }.clone()
-                                    }).collect();
-                                    write_prop_list(tokens, &style_fn.content, &args, &style_fn.var_context, is_last_item)?;
+                                    let args: Vec<_> = args
+                                        .iter()
+                                        .map(|arg| {
+                                            match arg {
+                                                MaybeDyn::Dyn(x) => var_values
+                                                    .get(x.index)
+                                                    .expect("argument value not enough"),
+                                                MaybeDyn::Static(v) => v,
+                                            }
+                                            .clone()
+                                        })
+                                        .collect();
+                                    write_prop_list(
+                                        tokens,
+                                        &style_fn.content,
+                                        &args,
+                                        &style_fn.var_context,
+                                        is_last_item,
+                                    )?;
                                 }
                             }
                         }
@@ -430,7 +471,8 @@ impl StyleSheetConstructor for DomStyleSheet {
                         &[VarDynValue::placeholder(arg_name.span())],
                         &ss.var_context,
                         true,
-                    ).unwrap();
+                    )
+                    .unwrap();
                     match *arg_ty {
                         ArgType::Str(_) => {
                             tokens.append_all(quote! {
@@ -495,7 +537,9 @@ impl StyleSheetConstructor for DomStyleSheet {
                     ..
                 }) => {
                     let var_context = &ss.var_context;
-                    let class_name = css_name.clone().unwrap_or_else(|| generate_css_name(name, debug_mode));
+                    let class_name = css_name
+                        .clone()
+                        .unwrap_or_else(|| generate_css_name(name, debug_mode));
 
                     // generate proc macro output
                     tokens.append_all(quote! {
@@ -556,34 +600,31 @@ impl StyleSheetConstructor for DomStyleSheet {
 
                         // a helper for write at-blocks
                         let mut write_main_rule_and_at_blocks =
-                            |
-                                cssw: &mut CssWriter<String>,
-                                pseudo: Option<&pseudo::Pseudo>,
-                                items: &[StyleContentItem<DomCssProperty>],
-                                at_blocks: &[AtBlock<DomStyleSheet>],
-                            | {
+                            |cssw: &mut CssWriter<String>,
+                             pseudo: Option<&pseudo::Pseudo>,
+                             items: &[StyleContentItem<DomCssProperty>],
+                             at_blocks: &[AtBlock<DomStyleSheet>]| {
                                 if items.len() > 0 {
                                     write_selector(cssw)?;
                                     if let Some(pseudo) = pseudo {
                                         cssw.write_delim(":", false)?;
                                         pseudo.write_css(cssw)?;
                                     }
-                                    cssw.write_brace_block(|cssw| DomStyleSheet::write_prop_list(
-                                        Some(tokens),
-                                        debug_mode,
-                                        cssw,
-                                        &items,
-                                        var_context,
-                                        &[],
-                                        true,
-                                    ))?;
+                                    cssw.write_brace_block(|cssw| {
+                                        DomStyleSheet::write_prop_list(
+                                            Some(tokens),
+                                            debug_mode,
+                                            cssw,
+                                            &items,
+                                            var_context,
+                                            &[],
+                                            true,
+                                        )
+                                    })?;
                                 }
                                 for block in at_blocks {
                                     let content = match block {
-                                        AtBlock::Media {
-                                            expr,
-                                            content,
-                                        } => {
+                                        AtBlock::Media { expr, content } => {
                                             if content.items.len() > 0 {
                                                 cssw.write_at_keyword("media")?;
                                                 for (index, q) in expr.iter().enumerate() {
@@ -597,10 +638,7 @@ impl StyleSheetConstructor for DomStyleSheet {
                                                 None
                                             }
                                         }
-                                        AtBlock::Supports {
-                                            expr,
-                                            content,
-                                        } => {
+                                        AtBlock::Supports { expr, content } => {
                                             if content.items.len() > 0 {
                                                 cssw.write_at_keyword("supports")?;
                                                 expr.write_css(cssw)?;
@@ -711,9 +749,9 @@ impl StyleSheetConstructor for DomStyleSheet {
 
 #[cfg(test)]
 mod test {
+    use serial_test::serial;
     use std::io::Seek;
     use std::path::Path;
-    use serial_test::serial;
 
     use super::*;
 
@@ -741,7 +779,10 @@ mod test {
         std::env::set_var("MAOMI_CSS_OUT_DIR", out_dir.to_str().unwrap());
         let import_dir = tmp_path.join("maomi-dom-macro").join("test-import");
         std::fs::create_dir_all(&import_dir).unwrap();
-        std::env::set_var("MAOMI_STYLESHEET_MOD_ROOT", import_dir.join("lib.mcss").to_str().unwrap());
+        std::env::set_var(
+            "MAOMI_STYLESHEET_MOD_ROOT",
+            import_dir.join("lib.mcss").to_str().unwrap(),
+        );
         (out_dir, import_dir)
     });
 
@@ -784,13 +825,11 @@ mod test {
             if let Some(css_out_file) = CSS_OUT_FILE.as_ref() {
                 let mut file = css_out_file.lock().unwrap();
                 if let Some(ss) = maomi_skin::module::root_module::<DomStyleSheet>() {
-                    ss.style_sheet_constructor().generate_module_output(&ss, &mut file);
+                    ss.style_sheet_constructor()
+                        .generate_module_output(&ss, &mut file);
                 }
             }
-            assert_eq!(
-                env.read_output(),
-                r#"@keyframes kf{}"#,
-            );
+            assert_eq!(env.read_output(), r#"@keyframes kf{}"#,);
         });
     }
 
@@ -872,10 +911,7 @@ mod test {
                     }
                 "#,
             );
-            assert_eq!(
-                env.read_output(),
-                r#".self{padding:1px 2px 3px}"#,
-            );
+            assert_eq!(env.read_output(), r#".self{padding:1px 2px 3px}"#,);
         });
     }
 
@@ -925,7 +961,10 @@ mod test {
                     }
                 "#,
             );
-            assert_eq!(env.read_output(), r#".c{padding:1em;color:#123456;padding:2em}"#,);
+            assert_eq!(
+                env.read_output(),
+                r#".c{padding:1em;color:#123456;padding:2em}"#,
+            );
         });
     }
 

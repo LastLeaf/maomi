@@ -1,6 +1,6 @@
 //! Helper types for node trees.
 
-use std::{collections::HashMap, hash::Hash, marker::PhantomData, any::Any};
+use std::{any::Any, collections::HashMap, hash::Hash, marker::PhantomData};
 
 use crate::{
     backend::{tree, AsElementTag},
@@ -24,7 +24,9 @@ impl<T> UnionOption<T> {
     /// Create a none value.
     #[inline(always)]
     pub fn some(inner: T) -> Self {
-        Self { some: std::mem::ManuallyDrop::new(inner) }
+        Self {
+            some: std::mem::ManuallyDrop::new(inner),
+        }
     }
 
     /// Assume it is not none and get the contained value.
@@ -41,7 +43,7 @@ impl<T> UnionOption<T> {
 }
 
 /// A weak ref to the owner.
-/// 
+///
 /// This is used by the backend implementor.
 /// *In most cases, it should not be used in component implementors.*
 pub trait OwnerWeak {
@@ -103,7 +105,9 @@ impl<N: AsElementTag> Node<N> {
 
     /// Iterator over slots of the node.
     #[inline]
-    pub fn iter_slots(&self) -> <N::SlotChildren as SlotKindTrait<ForestTokenAddr, DynNodeList>>::Iter<'_> {
+    pub fn iter_slots(
+        &self,
+    ) -> <N::SlotChildren as SlotKindTrait<ForestTokenAddr, DynNodeList>>::Iter<'_> {
         self.child_nodes.iter()
     }
 
@@ -118,7 +122,7 @@ impl<N: AsElementTag> Node<N> {
 #[derive(Debug)]
 pub struct ControlNode<C> {
     /// The backend node token
-    /// 
+    ///
     /// It is auto-managed by the `#[component]` .
     /// Do not touch unless you know how it works exactly.
     pub forest_token: tree::ForestToken,
@@ -146,7 +150,7 @@ pub struct Branch {
 }
 
 /// A helper trait for managing slot list and slot content.
-/// 
+///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
 pub trait SlotKindTrait<K, C>: Default {
@@ -181,7 +185,7 @@ pub trait SlotKindTrait<K, C>: Default {
     /// Get a mutable reference of the slot content.
     #[doc(hidden)]
     fn get_mut(&mut self, k: K) -> Result<&mut C, Error>;
-    
+
     /// Start an update for all slots.
     #[doc(hidden)]
     fn update<'a>(&'a mut self) -> Self::Update<'a>;
@@ -217,7 +221,9 @@ pub struct NoneSlot<K, C> {
 impl<K, C> Default for NoneSlot<K, C> {
     #[inline]
     fn default() -> Self {
-        Self { phantom: PhantomData }
+        Self {
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -291,7 +297,7 @@ impl<'a, K: 'a, C: 'a> SlotKindUpdateTrait<'a, K, C> for NoneSlotUpdate<'a, K, C
 }
 
 /// A slot list that always contains a single slot.
-/// 
+///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
 #[derive(Debug)]
@@ -302,8 +308,14 @@ pub struct StaticSingleSlot<K, C> {
 
 impl<K, C> Default for StaticSingleSlot<K, C> {
     #[inline]
-    fn default() -> Self where Self: Sized {
-        Self { kc: None, phantom: PhantomData }
+    fn default() -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            kc: None,
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -348,7 +360,10 @@ impl<K, C> SlotKindTrait<K, C> for StaticSingleSlot<K, C> {
 
     #[inline]
     fn update<'a>(&'a mut self) -> Self::Update<'a> {
-        StaticSingleSlotUpdate { s: self, visited: false }
+        StaticSingleSlotUpdate {
+            s: self,
+            visited: false,
+        }
     }
 
     #[inline]
@@ -399,7 +414,7 @@ impl<'a, K, C> SlotKindUpdateTrait<'a, K, C> for StaticSingleSlotUpdate<'a, K, C
 }
 
 /// A slot list that can contain any number of slots.
-/// 
+///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
 #[derive(Debug)]
@@ -409,8 +424,13 @@ pub struct DynamicSlot<K, C> {
 
 impl<K, C> Default for DynamicSlot<K, C> {
     #[inline]
-    fn default() -> Self where Self: Sized {
-        Self { slots: HashMap::new() }
+    fn default() -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            slots: HashMap::new(),
+        }
     }
 }
 
@@ -497,7 +517,7 @@ impl<'a, K: Hash + Eq, C> SlotKindUpdateTrait<'a, K, C> for DynamicSlotUpdate<'a
 }
 
 /// A helper type for slot changes
-/// 
+///
 /// It is auto-managed by the `#[component]` .
 /// Do not touch unless you know how it works exactly.
 #[derive(Debug, Clone, PartialEq)]

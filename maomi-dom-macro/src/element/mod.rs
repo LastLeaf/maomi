@@ -1,12 +1,10 @@
 use quote::*;
 use syn::parse::*;
-use syn::*;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+use syn::*;
 
-fn add_global_attrs(
-    fields: &mut Punctuated<Field, token::Comma>,
-) {
+fn add_global_attrs(fields: &mut Punctuated<Field, token::Comma>) {
     let vis: Visibility = parse_quote! { pub };
     let span = vis.span();
     let mut add_attr = |field_name, ty| {
@@ -20,30 +18,81 @@ fn add_global_attrs(
         });
     };
     add_attr("id", parse_quote! { attribute!(&str in web_sys::Element) });
-    add_attr("title", parse_quote! { attribute!(&str in web_sys::HtmlElement) }); // FIXME use LocaleStr
-    add_attr("hidden", parse_quote! { attribute!(bool in web_sys::HtmlElement) });
-    add_attr("touch_start", parse_quote! { event!(event::touch::TouchStart) });
-    add_attr("touch_move", parse_quote! { event!(event::touch::TouchMove) });
+    add_attr(
+        "title",
+        parse_quote! { attribute!(&str in web_sys::HtmlElement) },
+    ); // FIXME use LocaleStr
+    add_attr(
+        "hidden",
+        parse_quote! { attribute!(bool in web_sys::HtmlElement) },
+    );
+    add_attr(
+        "touch_start",
+        parse_quote! { event!(event::touch::TouchStart) },
+    );
+    add_attr(
+        "touch_move",
+        parse_quote! { event!(event::touch::TouchMove) },
+    );
     add_attr("touch_end", parse_quote! { event!(event::touch::TouchEnd) });
-    add_attr("touch_cancel", parse_quote! { event!(event::touch::TouchCancel) });
-    add_attr("mouse_down", parse_quote! { event!(event::mouse::MouseDown) });
+    add_attr(
+        "touch_cancel",
+        parse_quote! { event!(event::touch::TouchCancel) },
+    );
+    add_attr(
+        "mouse_down",
+        parse_quote! { event!(event::mouse::MouseDown) },
+    );
     add_attr("mouse_up", parse_quote! { event!(event::mouse::MouseUp) });
-    add_attr("mouse_move", parse_quote! { event!(event::mouse::MouseMove) });
-    add_attr("mouse_enter", parse_quote! { event!(event::mouse::MouseEnter) });
-    add_attr("mouse_leave", parse_quote! { event!(event::mouse::MouseLeave) });
+    add_attr(
+        "mouse_move",
+        parse_quote! { event!(event::mouse::MouseMove) },
+    );
+    add_attr(
+        "mouse_enter",
+        parse_quote! { event!(event::mouse::MouseEnter) },
+    );
+    add_attr(
+        "mouse_leave",
+        parse_quote! { event!(event::mouse::MouseLeave) },
+    );
     add_attr("click", parse_quote! { event!(event::mouse::Click) });
     add_attr("tap", parse_quote! { event!(event::tap::Tap) });
     add_attr("long_tap", parse_quote! { event!(event::tap::LongTap) });
     add_attr("cancel_tap", parse_quote! { event!(event::tap::CancelTap) });
     add_attr("scroll", parse_quote! { event!(event::scroll::Scroll) });
-    add_attr("animation_start", parse_quote! { event!(event::animation::AnimationStart) });
-    add_attr("animation_iteration", parse_quote! { event!(event::animation::AnimationIteration) });
-    add_attr("animation_end", parse_quote! { event!(event::animation::AnimationEnd) });
-    add_attr("animation_cancel", parse_quote! { event!(event::animation::AnimationCancel) });
-    add_attr("transition_run", parse_quote! { event!(event::transition::TransitionRun) });
-    add_attr("transition_start", parse_quote! { event!(event::transition::TransitionStart) });
-    add_attr("transition_end", parse_quote! { event!(event::transition::TransitionEnd) });
-    add_attr("transition_cancel", parse_quote! { event!(event::transition::TransitionCancel) });
+    add_attr(
+        "animation_start",
+        parse_quote! { event!(event::animation::AnimationStart) },
+    );
+    add_attr(
+        "animation_iteration",
+        parse_quote! { event!(event::animation::AnimationIteration) },
+    );
+    add_attr(
+        "animation_end",
+        parse_quote! { event!(event::animation::AnimationEnd) },
+    );
+    add_attr(
+        "animation_cancel",
+        parse_quote! { event!(event::animation::AnimationCancel) },
+    );
+    add_attr(
+        "transition_run",
+        parse_quote! { event!(event::transition::TransitionRun) },
+    );
+    add_attr(
+        "transition_start",
+        parse_quote! { event!(event::transition::TransitionStart) },
+    );
+    add_attr(
+        "transition_end",
+        parse_quote! { event!(event::transition::TransitionEnd) },
+    );
+    add_attr(
+        "transition_cancel",
+        parse_quote! { event!(event::transition::TransitionCancel) },
+    );
     // FIXME add aria properties
     add_attr("aria_hidden", parse_quote! { attribute!(&str) });
 }
@@ -75,9 +124,7 @@ impl Parse for Attr {
         if input.is_empty() {
             let ty = match s.as_str() {
                 "& str" => parse_quote_spanned! {span=> DomStrAttr },
-                _ => {
-                    return Err(Error::new(span, "unknown raw attribute type"))
-                }
+                _ => return Err(Error::new(span, "unknown raw attribute type")),
             };
             return Ok(Self::Raw { ty_name, ty });
         }
@@ -89,9 +136,7 @@ impl Parse for Attr {
             "u32" => parse_quote_spanned! {span=> DomU32Attr },
             "i32" => parse_quote_spanned! {span=> DomI32Attr },
             "f64" => parse_quote_spanned! {span=> DomF64Attr },
-            _ => {
-                return Err(Error::new(span, "unknown attribute type"))
-            }
+            _ => return Err(Error::new(span, "unknown attribute type")),
         };
         if input.is_empty() {
             return Ok(Self::Normal {
@@ -108,9 +153,7 @@ impl Parse for Attr {
             "& str" => parse_quote_spanned! {span=> DomBindingStrAttr },
             "bool" => parse_quote_spanned! {span=> DomBindingBoolAttr },
             "f64" => parse_quote_spanned! {span=> DomBindingF64Attr },
-            _ => {
-                return Err(Error::new(span, "unknown binding attribute type"))
-            }
+            _ => return Err(Error::new(span, "unknown binding attribute type")),
         };
         Ok(Self::Binding {
             ty_name,
@@ -138,10 +181,29 @@ impl Attr {
         tokens: &mut proc_macro2::TokenStream,
     ) -> Ident {
         match self {
-            Self::Normal { ty_name, dom_element_name, .. } | Self::Binding { ty_name, dom_element_name, .. } => {
+            Self::Normal {
+                ty_name,
+                dom_element_name,
+                ..
+            }
+            | Self::Binding {
+                ty_name,
+                dom_element_name,
+                ..
+            } => {
                 let span = field_name.span();
-                let dom_setter_name = Ident::new(&format!("dom_setter_{}_{}", tag_name.to_string(), field_name.to_string().trim_start_matches("r#")), span);
-                let dom_element_fn_name = Ident::new(&format!("set_{}", field_name.to_string().trim_start_matches("r#")), span);
+                let dom_setter_name = Ident::new(
+                    &format!(
+                        "dom_setter_{}_{}",
+                        tag_name.to_string(),
+                        field_name.to_string().trim_start_matches("r#")
+                    ),
+                    span,
+                );
+                let dom_element_fn_name = Ident::new(
+                    &format!("set_{}", field_name.to_string().trim_start_matches("r#")),
+                    span,
+                );
                 tokens.append_all(quote_spanned! {span=>
                     #[inline]
                     #[allow(non_snake_case)]
@@ -154,7 +216,14 @@ impl Attr {
             Self::Raw { ty_name, .. } => {
                 let span = field_name.span();
                 let field_name_str = field_name.to_string();
-                let dom_setter_name = Ident::new(&format!("dom_setter_{}_{}", tag_name.to_string(), field_name.to_string().trim_start_matches("r#")), span);
+                let dom_setter_name = Ident::new(
+                    &format!(
+                        "dom_setter_{}_{}",
+                        tag_name.to_string(),
+                        field_name.to_string().trim_start_matches("r#")
+                    ),
+                    span,
+                );
                 tokens.append_all(quote_spanned! {span=>
                     #[inline]
                     #[allow(non_snake_case)]
@@ -203,10 +272,14 @@ impl Parse for DomElementDefinition {
                         });
                         let tokens = m.mac.tokens.clone();
                         let attr = Attr::parse.parse2(tokens)?;
-                        field.ty = Type::Path(TypePath { qself: None, path: attr.ty() });
+                        field.ty = Type::Path(TypePath {
+                            qself: None,
+                            path: attr.ty(),
+                        });
                         attrs.push((field_name, attr_name, attr));
                     } else if m.mac.path.is_ident("event") {
-                        let field_doc_comment = format!(r#"The `{}` event."#, attr_name.replace('_', ""));
+                        let field_doc_comment =
+                            format!(r#"The `{}` event."#, attr_name.replace('_', ""));
                         field.attrs.push(parse_quote! {
                             #[doc = #field_doc_comment]
                         });
@@ -219,7 +292,7 @@ impl Parse for DomElementDefinition {
                         field.ty = Type::Path(ty);
                         events.push((field_name, attr_name));
                     } else {
-                        return Err(Error::new(m.mac.span(), "unknown macro"))
+                        return Err(Error::new(m.mac.span(), "unknown macro"));
                     }
                 }
             }
@@ -259,11 +332,7 @@ impl Parse for DomElementDefinition {
         } else {
             return Err(Error::new(s.span(), "expected named struct"));
         }
-        Ok(Self {
-            s,
-            attrs,
-            events,
-        })
+        Ok(Self { s, attrs, events })
     }
 }
 
@@ -273,18 +342,22 @@ impl ToTokens for DomElementDefinition {
         let tag_name = &s.ident;
         let tag_name_str = tag_name.to_string();
         let struct_doc_comment = format!("The HTML `<{}>` element.", tag_name);
-        let attrs_init = self.attrs.iter().map(|(field_name, attr_name, attr)| {
-            let dom_setter_name = attr.generate_dom_setter(tag_name, field_name, tokens);
-            let ty = attr.ty();
-            quote! {
-                #field_name: #ty {
-                    inner: Default::default(),
-                    f: #dom_setter_name,
-                    #[cfg(feature = "prerendering")]
-                    attr_name: #attr_name,
-                },
-            }
-        }).collect::<Box<_>>();
+        let attrs_init = self
+            .attrs
+            .iter()
+            .map(|(field_name, attr_name, attr)| {
+                let dom_setter_name = attr.generate_dom_setter(tag_name, field_name, tokens);
+                let ty = attr.ty();
+                quote! {
+                    #field_name: #ty {
+                        inner: Default::default(),
+                        f: #dom_setter_name,
+                        #[cfg(feature = "prerendering")]
+                        attr_name: #attr_name,
+                    },
+                }
+            })
+            .collect::<Box<_>>();
         let events_init = self.events.iter().map(|(ev, _)| {
             quote! {
                 #ev: Default::default(),
@@ -330,7 +403,7 @@ impl ToTokens for DomElementDefinition {
                 type SlotData = ();
                 type UpdateTarget = Self;
                 type UpdateContext = DomElement;
-            
+
                 #[inline]
                 fn init<'b>(
                     _backend_context: &'b BackendContext<DomBackend>,
@@ -361,7 +434,7 @@ impl ToTokens for DomElementDefinition {
                     };
                     Ok((this, backend_element))
                 }
-            
+
                 #[inline]
                 fn create<'b>(
                     &'b mut self,
@@ -381,7 +454,7 @@ impl ToTokens for DomElementDefinition {
                     slot_fn(&mut node, &self.backend_element_token, &())?;
                     Ok(())
                 }
-            
+
                 #[inline]
                 fn apply_updates<'b>(
                     &'b mut self,
