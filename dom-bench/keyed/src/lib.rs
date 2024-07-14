@@ -1,6 +1,6 @@
 use maomi::{prelude::*, BackendContext};
 use maomi_dom::element::table as table_elem;
-use maomi_dom::{async_task, element::*, event::*, prelude::*, DomBackend};
+use maomi_dom::{element::*, event::*, prelude::*, DomBackend};
 use wasm_bindgen::prelude::*;
 
 mod data;
@@ -185,97 +185,65 @@ impl Component for HelloWorld {
 }
 
 impl HelloWorld {
-    fn add(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
-        async_task(async move {
-            this.update(|this| {
-                this.rows.append(&mut data::build(1000));
-            })
-            .await
-            .unwrap();
+    fn add(this: ComponentEvent<Self, MouseEvent>) {
+        this.task(|this| {
+            this.rows.append(&mut data::build(1000));
         });
     }
 
-    fn remove(this: ComponentRc<Self>, _detail: &mut TapEvent, id: &usize) {
+    fn remove(this: ComponentEvent<Self, TapEvent>, id: &usize) {
         let id = *id;
-        async_task(async move {
-            this.update(move |this| {
-                let index = this.rows.iter().position(|x| x.id == id).unwrap();
-                this.rows.remove(index);
-            })
-            .await
-            .unwrap();
+        this.task(move |this| {
+            let index = this.rows.iter().position(|x| x.id == id).unwrap();
+            this.rows.remove(index);
         });
     }
 
-    fn select(this: ComponentRc<Self>, _detail: &mut TapEvent, id: &usize) {
+    fn select(this: ComponentEvent<Self, TapEvent>, id: &usize) {
         let id = *id;
-        async_task(async move {
-            this.update(move |this| {
-                this.selected = id;
-            })
-            .await
-            .unwrap();
+        this.task(move |this| {
+            this.selected = id;
         });
     }
 
-    fn run(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
-        async_task(async move {
-            this.update(|this| {
-                this.rows = data::build(1000);
-                this.selected = usize::MAX;
-            })
-            .await
-            .unwrap();
+    fn run(this: ComponentEvent<Self, MouseEvent>) {
+        this.task(|this| {
+            this.rows = data::build(1000);
+            this.selected = usize::MAX;
         });
     }
 
-    fn update(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
-        async_task(async move {
-            this.update(|this| {
-                let mut i = 0;
-                while i < this.rows.len() {
-                    this.rows[i].label += " !!!";
-                    i += 10;
-                }
-            })
-            .await
-            .unwrap();
+    fn update(this: ComponentEvent<Self, MouseEvent>) {
+        this.task(|this| {
+            let mut i = 0;
+            while i < this.rows.len() {
+                this.rows[i].label += " !!!";
+                i += 10;
+            }
         });
     }
 
-    fn run_lots(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
-        async_task(async move {
-            this.update(|this| {
-                this.rows = data::build(10000);
-                this.selected = usize::MAX;
-            })
-            .await
-            .unwrap();
+    fn run_lots(this: ComponentEvent<Self, MouseEvent>) {
+        this.task(|this| {
+            this.rows = data::build(10000);
+            this.selected = usize::MAX;
         });
     }
 
-    fn clear(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
-        async_task(async move {
-            this.update(|this| {
-                this.rows = Vec::with_capacity(0);
-                this.selected = usize::MAX;
-            })
-            .await
-            .unwrap();
+    fn clear(this: ComponentEvent<Self, MouseEvent>) {
+        this.task(|this| {
+            this.rows = Vec::with_capacity(0);
+            this.selected = usize::MAX;
         });
     }
 
-    fn swap_rows(this: ComponentRc<Self>, _detail: &mut MouseEvent) {
-        async_task(async move {
-            this.update(|this| {
-                let rows = &mut this.rows;
-                if rows.len() > 998 {
-                    let r998 = rows[998].clone();
-                    rows[998] = std::mem::replace(&mut rows[1], r998);
-                }
-            })
-            .await
-            .unwrap();
+    fn swap_rows(this: ComponentEvent<Self, MouseEvent>) {
+        this.task(|this| {
+            let rows = &mut this.rows;
+            if rows.len() > 998 {
+                let r998 = rows[998].clone();
+                rows[998] = std::mem::replace(&mut rows[1], r998);
+            }
         });
     }
 }

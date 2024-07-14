@@ -47,8 +47,9 @@ impl Component for Span {
 }
 
 impl Span {
-    fn click(this: ComponentRc<Self>, detail: &mut TapEvent) {
-        let mut detail = detail.clone();
+    fn click(this: ComponentEvent<Self, TapEvent>) {
+        let mut detail = this.clone_detail();
+        let this = this.rc();
         async_task(async move {
             this.get(move |this| {
                 this.click.trigger(&mut detail);
@@ -106,8 +107,9 @@ impl Component for Button {
 }
 
 impl Button {
-    fn tap(this: ComponentRc<Self>, detail: &mut MouseEvent) {
-        let mut detail = detail.clone();
+    fn tap(this: ComponentEvent<Self, MouseEvent>) {
+        let mut detail = this.clone_detail();
+        let this = this.rc();
         async_task(async move {
             this.get(move |this| {
                 this.tap.trigger(&mut detail);
@@ -140,8 +142,9 @@ impl Component for A {
 }
 
 impl A {
-    fn tap(this: ComponentRc<Self>, detail: &mut MouseEvent) {
-        let mut detail = detail.clone();
+    fn tap(this: ComponentEvent<Self, MouseEvent>) {
+        let mut detail = this.clone_detail();
+        let this = this.rc();
         async_task(async move {
             this.get(move |this| {
                 this.tap.trigger(&mut detail);

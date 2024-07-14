@@ -161,7 +161,8 @@ async fn cold_event_in_prerendered() {
     }
 
     impl MyComp {
-        fn scroll_fn(this: ComponentRc<Self>, _ev: &mut ScrollEvent) {
+        fn scroll_fn(this: ComponentEvent<Self, ScrollEvent>) {
+            let this = this.rc();
             async_task(async move {
                 this.update_with(|this, _| {
                     (this.callback.take().unwrap())();
@@ -232,7 +233,8 @@ async fn hot_event_in_prerendered() {
     }
 
     impl MyComp {
-        fn handler(this: ComponentRc<Self>, ev: &mut TouchEvent) {
+        fn handler(this: ComponentEvent<Self, TouchEvent>) {
+            let ev = this.detail();
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
             this.task_with(|this, _| {

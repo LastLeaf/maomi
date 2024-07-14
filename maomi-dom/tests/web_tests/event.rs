@@ -42,9 +42,11 @@ async fn animation_event() {
     }
 
     impl MyComp {
-        fn ani_fn(this: ComponentRc<Self>, ev: &mut AnimationEvent, kind: &u32) {
+        fn ani_fn(this: ComponentEvent<Self, AnimationEvent>, kind: &u32) {
+            let ev = this.detail();
             assert_eq!(ev.elapsed_time(), 123.);
             let kind = *kind;
+            let this = this.rc();
             async_task(async move {
                 this.update(move |this| this.state = kind).await.unwrap();
                 Self::next_step(this.clone(), kind).await;
@@ -174,10 +176,12 @@ async fn transition_event() {
     }
 
     impl MyComp {
-        fn ani_fn(this: ComponentRc<Self>, ev: &mut TransitionEvent, kind: &u32) {
+        fn ani_fn(this: ComponentEvent<Self, TransitionEvent>, kind: &u32) {
+            let ev = this.detail();
             assert_eq!(ev.property_name(), "ani");
             assert_eq!(ev.elapsed_time(), 123.);
             let kind = *kind;
+            let this = this.rc();
             async_task(async move {
                 this.update(move |this| this.state = kind).await.unwrap();
                 Self::next_step(this.clone(), kind).await;
@@ -302,13 +306,9 @@ async fn scroll_event() {
     }
 
     impl MyComp {
-        fn scroll_fn(this: ComponentRc<Self>, _ev: &mut ScrollEvent) {
-            async_task(async move {
-                this.update_with(|this, _| {
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap();
+        fn scroll_fn(this: ComponentEvent<Self, ScrollEvent>) {
+            this.task_with(|this, _| {
+                (this.callback.take().unwrap())();
             });
         }
     }
@@ -360,15 +360,12 @@ macro_rules! test_touch_events {
             }
 
             impl MyComp {
-                fn handler(this: ComponentRc<Self>, ev: &mut TouchEvent) {
+                fn handler(this: ComponentEvent<Self, TouchEvent>) {
+                    let ev = this.detail();
                     assert_eq!(ev.client_x(), 12);
                     assert_eq!(ev.client_y(), 34);
-                    async_task(async move {
-                        this.update_with(|this, _| {
-                            (this.callback.take().unwrap())();
-                        })
-                        .await
-                        .unwrap();
+                    this.task_with(|this, _| {
+                        (this.callback.take().unwrap())();
                     });
                 }
             }
@@ -431,16 +428,13 @@ macro_rules! test_mouse_events {
             }
 
             impl MyComp {
-                fn handler(this: ComponentRc<Self>, ev: &mut MouseEvent) {
+                fn handler(this: ComponentEvent<Self, MouseEvent>) {
+                    let ev = this.detail();
                     assert_eq!(ev.button(), MouseButton::Secondary);
                     assert_eq!(ev.client_x(), 56);
                     assert_eq!(ev.client_y(), 78);
-                    async_task(async move {
-                        this.update_with(|this, _| {
-                            (this.callback.take().unwrap())();
-                        })
-                        .await
-                        .unwrap();
+                    this.task_with(|this, _| {
+                        (this.callback.take().unwrap())();
                     });
                 }
             }
@@ -512,15 +506,12 @@ async fn tap() {
     }
 
     impl MyComp {
-        fn handler(this: ComponentRc<Self>, ev: &mut TapEvent) {
+        fn handler(this: ComponentEvent<Self, TapEvent>) {
+            let ev = this.detail();
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
-            async_task(async move {
-                this.update_with(|this, _| {
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap();
+            this.task_with(|this, _| {
+                (this.callback.take().unwrap())();
             });
         }
     }
@@ -584,15 +575,12 @@ async fn cancel_tap() {
     }
 
     impl MyComp {
-        fn handler(this: ComponentRc<Self>, ev: &mut TapEvent) {
+        fn handler(this: ComponentEvent<Self, TapEvent>) {
+            let ev = this.detail();
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
-            async_task(async move {
-                this.update_with(|this, _| {
-                    (this.callback.take().unwrap())();
-                })
-                .await
-                .unwrap();
+            this.task_with(|this, _| {
+                (this.callback.take().unwrap())();
             });
         }
     }
@@ -646,10 +634,12 @@ async fn long_tap() {
     }
 
     impl MyComp {
-        fn handler(this: ComponentRc<Self>, ev: &mut TapEvent) {
+        fn handler(mut this: ComponentEvent<Self, TapEvent>) {
+            let ev = this.detail_mut();
             assert_eq!(ev.client_x(), 12);
             assert_eq!(ev.client_y(), 34);
             ev.prevent_default();
+            let this = this.rc();
             async_task(async move {
                 simulate_event(
                     &web_sys::window().unwrap().document().unwrap(),
@@ -661,17 +651,13 @@ async fn long_tap() {
                         ("clientY", JsValue::from_f64(34.)),
                     ],
                 );
-                async_task(async move {
-                    this.update_with(|this, _| {
-                        (this.callback.take().unwrap())();
-                    })
-                    .await
-                    .unwrap();
+                this.task_with(|this, _| {
+                    (this.callback.take().unwrap())();
                 });
             });
         }
 
-        fn should_panic(_this: ComponentRc<Self>, _ev: &mut TapEvent) {
+        fn should_panic(_this: ComponentEvent<Self, TapEvent>) {
             panic!();
         }
     }

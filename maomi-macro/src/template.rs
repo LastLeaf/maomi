@@ -1419,7 +1419,7 @@ impl<'a> ToTokens for TemplateAttributeCreate<'a> {
                         &mut __m_child.#name,
                         Box::new(move |__m_event_detail| {
                             if let Some(__m_event_self) = __m_event_self.upgrade() {
-                                Self::#fn_name(__m_event_self, __m_event_detail, #(#args_ref),*)
+                                Self::#fn_name(ComponentEvent::new(__m_event_self, __m_event_detail), #(#args_ref),*);
                             }
                         }),
                         __m_update_ctx,
@@ -1502,7 +1502,7 @@ impl<'a> ToTokens for TemplateAttributeUpdate<'a> {
                             &mut __m_child.#name,
                             Box::new(move |__m_event_detail| {
                                 if let Some(__m_event_self) = __m_event_self.upgrade() {
-                                    Self::#fn_name(__m_event_self, __m_event_detail, #(#args_ref),*)
+                                    Self::#fn_name(ComponentEvent::new(__m_event_self, __m_event_detail), #(#args_ref),*);
                                 }
                             }),
                             __m_update_ctx,

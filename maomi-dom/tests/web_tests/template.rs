@@ -611,9 +611,10 @@ async fn event_handler() {
     }
 
     impl Parent {
-        fn my_event_handler(this: ComponentRc<Self>, e: &mut MyEventDetail, item: &str) {
-            let num = e.num.unwrap_or(0);
+        fn my_event_handler(this: ComponentEvent<Self, MyEventDetail>, item: &str) {
+            let num = this.detail().num.unwrap_or(0);
             assert_eq!(num.to_string().as_str(), item);
+            let this = this.rc();
             async_task(async move {
                 this.update(move |this| {
                     if num <= 300 {
@@ -696,7 +697,7 @@ async fn binding_prop() {
             self.has_input_value.set(self.input_value.get().len() > 0);
         }
 
-        fn input_change(this: ComponentRc<Self>, _: &mut ChangeEvent) {
+        fn input_change(this: ComponentEvent<Self, ChangeEvent>) {
             this.task(|this| {
                 this.change.trigger(&mut ());
             });
@@ -725,7 +726,7 @@ async fn binding_prop() {
     }
 
     impl Parent {
-        fn child_change(this: ComponentRc<Self>, _: &mut ()) {
+        fn child_change(this: ComponentEvent<Self, ()>) {
             this.task_with(|this, _| {
                 assert_eq!(this.has_input_value.get(), true);
                 (this.callback.take().unwrap())();

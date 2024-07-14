@@ -75,7 +75,7 @@ impl Component for HelloWorld {
 
 impl HelloWorld {
     // an event handler
-    fn handle_tap(this: ComponentRc<Self>, _detail: &mut TapEvent) {
+    fn handle_tap(this: ComponentEvent<Self, TapEvent>) {
         log::info!("Clicked!");
         this.task(|this| {
             this.clicked = true;
