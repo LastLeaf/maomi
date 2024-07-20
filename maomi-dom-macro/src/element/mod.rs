@@ -20,8 +20,8 @@ fn add_global_attrs(fields: &mut Punctuated<Field, token::Comma>) {
     add_attr("id", parse_quote! { attribute!(&str in web_sys::Element) });
     add_attr(
         "title",
-        parse_quote! { attribute!(&str in web_sys::HtmlElement) },
-    ); // FIXME use LocaleStr
+        parse_quote! { attribute!(&LocaleString in web_sys::HtmlElement) },
+    );
     add_attr(
         "hidden",
         parse_quote! { attribute!(bool in web_sys::HtmlElement) },
@@ -94,6 +94,7 @@ fn add_global_attrs(fields: &mut Punctuated<Field, token::Comma>) {
         parse_quote! { event!(event::transition::TransitionCancel) },
     );
     // FIXME add aria properties
+    add_attr("role", parse_quote! { attribute!(&str) });
     add_attr("aria_hidden", parse_quote! { attribute!(&str) });
 }
 
@@ -132,6 +133,15 @@ impl Parse for Attr {
         let dom_element_name = input.parse()?;
         let ty = match s.as_str() {
             "& str" => parse_quote_spanned! {span=> DomStrAttr },
+            "& LocaleString" => {
+                maomi_tools::config::crate_config(|crate_config| {
+                    if crate_config.i18n_locale.is_some() {
+                        parse_quote_spanned! {span=> DomLocaleStringAttr }
+                    } else {
+                        parse_quote_spanned! {span=> DomStrAttr }
+                    }
+                })
+            },
             "bool" => parse_quote_spanned! {span=> DomBoolAttr },
             "u32" => parse_quote_spanned! {span=> DomU32Attr },
             "i32" => parse_quote_spanned! {span=> DomI32Attr },
@@ -140,7 +150,15 @@ impl Parse for Attr {
         };
         if input.is_empty() {
             return Ok(Self::Normal {
-                ty_name,
+                ty_name: {
+                    maomi_tools::config::crate_config(|crate_config| {
+                        if crate_config.i18n_locale.is_none() && s.as_str() == "& LocaleString" {
+                            parse_quote_spanned! {span=> &str }
+                        } else {
+                            ty_name
+                        }
+                    })
+                },
                 dom_element_name,
                 ty,
             });
@@ -414,9 +432,9 @@ impl ToTokens for DomElementDefinition {
                     Self: Sized,
                 {
                     thread_local! {
-                        static tag_name: &'static MaybeJsStr = MaybeJsStr::new_leaked(#tag_name_str);
+                        static TAG_NAME: &'static MaybeJsStr = MaybeJsStr::new_leaked(#tag_name_str);
                     }
-                    let elem = tag_name.with(|m| owner.create_dom_element_by_tag_name(m));
+                    let elem = TAG_NAME.with(|m| owner.create_dom_element_by_tag_name(m));
                     let backend_element = crate::DomGeneralElement::wrap_dom_element(owner, &elem);
                     let this = Self {
                         backend_element_token: backend_element.token(),

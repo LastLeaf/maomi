@@ -1,8 +1,7 @@
 //! Basic types for DOM elements.
 
 use maomi::{
-    backend::tree::*,
-    prop::{BindingValue, PropertyUpdate},
+    backend::tree::*, locale_string::LocaleString, prop::{BindingValue, PropertyUpdate}
 };
 use std::{
     borrow::Borrow,
@@ -468,6 +467,49 @@ where
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(x) => {
                 x.set_attribute(dest.attr_name, dest.inner.clone());
+            }
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => {}
+        }
+    }
+}
+
+/// The attributes that accepts a locale string.
+pub struct DomLocaleStringAttr {
+    pub(crate) inner: LocaleString,
+    pub(crate) f: fn(&web_sys::HtmlElement, &LocaleString),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl Deref for DomLocaleStringAttr {
+    type Target = LocaleString;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = LocaleString>> PropertyUpdate<S> for DomLocaleStringAttr
+where
+    LocaleString: Borrow<S>,
+{
+    type UpdateContext = DomElement;
+
+    #[inline]
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
+        if dest.inner.borrow() == src {
+            return;
+        }
+        dest.inner = src.to_owned();
+        match &mut ctx.elem {
+            DomState::Normal(x) => {
+                (dest.f)(x.unchecked_ref(), &dest.inner);
+            }
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(x) => {
+                x.set_attribute(dest.attr_name, dest.inner.to_string());
             }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => {}

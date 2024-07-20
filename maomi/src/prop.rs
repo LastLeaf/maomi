@@ -414,8 +414,9 @@ pub trait ListPropertyItem<L: ListPropertyUpdate<S>, S: ?Sized> {
 
 /// A list property that can be used in templates.
 ///
-/// List properties can be updated in `:xxx=` syntax.
+/// List properties can be updated in `:xxx=` syntax,
 /// while the `item_name` is a type that implements `ListPropertyItem` .
+// TODO add better examples and documentation for it
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ListProp<T: Default> {
     inner: Box<[T]>,

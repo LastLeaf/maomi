@@ -9,6 +9,8 @@ use maomi::{
     node::{OwnerWeak, SlotChange, StaticSingleSlot},
     BackendContext,
 };
+#[allow(unused_imports)]
+use maomi::locale_string::LocaleString;
 use maomi_dom_macro::dom_element_definition;
 use wasm_bindgen::JsCast;
 

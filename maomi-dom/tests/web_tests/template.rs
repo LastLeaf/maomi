@@ -805,3 +805,46 @@ async fn list_prop() {
 
     test_component::<Parent>().await;
 }
+
+#[wasm_bindgen_test]
+async fn dom_custom_attribute() {
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div role="label" />
+        },
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update_with(|this, _| {
+                    assert_eq!(
+                        first_dom!(this, div).outer_html(),
+                        r#"<div role="label"></div>"#,
+                    );
+                    (this.callback.take().unwrap())();
+                })
+                .await
+                .unwrap();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}

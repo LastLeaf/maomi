@@ -17,7 +17,7 @@ pub trait ToLocaleStr {
 }
 
 /// A translated static str.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct LocaleStaticStr(&'static str);
 
 impl LocaleStaticStr {
@@ -41,8 +41,28 @@ impl Display for LocaleStaticStr {
     }
 }
 
+impl Deref for LocaleStaticStr {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl AsRef<str> for LocaleStaticStr {
+    fn as_ref(&self) -> &str {
+        self.0
+    }
+}
+
+impl<'a> Into<&'a str> for &'a LocaleStaticStr {
+    fn into(self) -> &'a str {
+        self.0
+    }
+}
+
 /// A translated string.
-#[derive(Debug, Clone, Default, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct LocaleString(String);
 
 impl LocaleString {
@@ -76,6 +96,18 @@ impl Deref for LocaleString {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
+        self.0.as_str()
+    }
+}
+
+impl AsRef<str> for LocaleString {
+    fn as_ref(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl<'a> Into<&'a str> for &'a LocaleString {
+    fn into(self) -> &'a str {
         self.0.as_str()
     }
 }
