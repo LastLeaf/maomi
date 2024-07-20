@@ -5,6 +5,8 @@ use wasm_bindgen::prelude::*;
 
 mod data;
 
+maomi_dom::dom_define_attribute!(aria_hidden);
+
 stylesheet! {
     #[css_name("jumbotron")]
     class jumbotron {}
@@ -142,7 +144,7 @@ struct HelloWorld {
                 </td>
                 <td class:col_md_1>
                 <a>
-                    <span class:glyphicon class:glyphicon_remove aria_hidden="true" tap=@remove(&item.id)></span>
+                    <span class:glyphicon class:glyphicon_remove attr:aria_hidden="true" tap=@remove(&item.id)></span>
                 </a>
                 </td>
                 <td class:col_md_6></td>
@@ -152,7 +154,7 @@ struct HelloWorld {
       </table_elem>
       <span
         class:preloadicon class:glyphicon class:glyphicon_remove
-        aria_hidden="true"
+        attr:aria_hidden="true"
       ></span>
     },
     rows: Vec<TableRow>,

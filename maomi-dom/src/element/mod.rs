@@ -16,7 +16,7 @@ use wasm_bindgen::JsCast;
 
 use crate::{
     base_element::*, class_list::DomClassList, dynamic_style::DomStyleList, event, event::DomEvent,
-    tree::*, DomBackend, DomGeneralElement, DomState,
+    tree::*, DomBackend, DomGeneralElement, DomState, custom_attr::DomCustomAttrs,
 };
 
 // TODO add embedded content, svg, MathML support

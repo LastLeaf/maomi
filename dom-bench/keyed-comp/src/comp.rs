@@ -1,6 +1,8 @@
 use maomi::prelude::*;
 use maomi_dom::class_list::DomExternalClasses;
-use maomi_dom::{async_task, element::*, event::*, DomBackend};
+use maomi_dom::{async_task, dom_define_attribute, element::*, event::*, DomBackend};
+
+dom_define_attribute!(aria_hidden);
 
 #[component(Backend = DomBackend)]
 pub(crate) struct Div {
@@ -26,7 +28,7 @@ pub(crate) struct Span {
     template: template! {
         <span
             class:DomExternalClasses={&self.class}
-            aria_hidden={&*self.aria_hidden}
+            attr:aria_hidden={self.aria_hidden.as_str()}
             tap=@click()
         ><slot /></span>
     },

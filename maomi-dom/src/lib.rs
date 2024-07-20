@@ -108,6 +108,9 @@ mod composing;
 pub mod dynamic_style;
 pub mod event;
 use event::DomListeners;
+pub mod custom_attr;
+
+pub use maomi_dom_macro::dom_define_attribute;
 
 /// The types that should usually be imported.
 ///

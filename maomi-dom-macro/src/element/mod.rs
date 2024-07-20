@@ -93,9 +93,6 @@ fn add_global_attrs(fields: &mut Punctuated<Field, token::Comma>) {
         "transition_cancel",
         parse_quote! { event!(event::transition::TransitionCancel) },
     );
-    // FIXME add aria properties
-    add_attr("role", parse_quote! { attribute!(&str) });
-    add_attr("aria_hidden", parse_quote! { attribute!(&str) });
 }
 
 enum Attr {
@@ -341,6 +338,15 @@ impl Parse for DomElementDefinition {
                 ty: parse_quote! { DomStyleList },
             });
             fields.named.push(Field {
+                attrs: vec![parse_quote! {
+                    #[doc = "The custom attributes of the element."]
+                }],
+                vis: parse_quote! { pub },
+                ident: Some(Ident::new("attr", span)),
+                colon_token: Default::default(),
+                ty: parse_quote! { DomCustomAttrs },
+            });
+            fields.named.push(Field {
                 attrs: Vec::with_capacity(0),
                 vis: Visibility::Inherited,
                 ident: Some(Ident::new("dom_elem_lazy", span)),
@@ -446,6 +452,7 @@ impl ToTokens for DomElementDefinition {
                             DomState::PrerenderingApply(_) => DomState::PrerenderingApply(()),
                         }),
                         style: DomStyleList::new(),
+                        attr: DomCustomAttrs::new(),
                         #(#attrs_init)*
                         #(#events_init)*
                         dom_elem_lazy: std::cell::UnsafeCell::new(DomGeneralElement::to_lazy(elem)),
@@ -495,5 +502,50 @@ impl ToTokens for DomElementDefinition {
                 type SlotChildren = StaticSingleSlot<ForestTokenAddr, maomi::node::DynNodeList>;
             }
         });
+    }
+}
+
+pub(crate) struct DomDefineAttribute {
+    ident: Ident,
+}
+
+impl Parse for DomDefineAttribute {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let ident = input.parse()?;
+        Ok(Self {
+            ident,
+        })
+    }
+}
+
+impl ToTokens for DomDefineAttribute {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let Self { ident } = self;
+        let attr_name = ident.to_string().replace('_', "-");
+        let attr_name = attr_name.strip_prefix("r#").unwrap_or(&attr_name);
+
+        let ret = quote! {
+            #[allow(non_camel_case_types)]
+            struct #ident {}
+
+            impl<T: ?Sized> maomi::prop::ListPropertyItem<maomi_dom::custom_attr::DomCustomAttrs, T> for #ident
+            where
+                maomi_dom::custom_attr::DomCustomAttrs: maomi::prop::ListPropertyUpdate<T>,
+            {
+                type Value = &'static str;
+
+                #[inline(always)]
+                fn item_value<'a>(
+                    _dest: &mut maomi_dom::custom_attr::DomCustomAttrs,
+                    _index: usize,
+                    _s: &'a T,
+                    _ctx: &mut <maomi_dom::custom_attr::DomCustomAttrs as maomi::prop::ListPropertyInit>::UpdateContext,
+                ) -> &'a Self::Value {
+                    &stringify!(#attr_name)
+                }
+            }
+        };
+
+        tokens.append_all(ret);
     }
 }

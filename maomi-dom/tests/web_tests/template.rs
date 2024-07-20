@@ -808,11 +808,15 @@ async fn list_prop() {
 
 #[wasm_bindgen_test]
 async fn dom_custom_attribute() {
+    use maomi_dom::dom_define_attribute;
+
+    dom_define_attribute!(role);
+
     #[component(Backend = DomBackend)]
     struct Parent {
         callback: Option<ComponentTestCb>,
         template: template! {
-            <div role="label" />
+            <div attr:role="label" />
         },
     }
 
