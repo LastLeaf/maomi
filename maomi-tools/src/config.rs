@@ -49,16 +49,24 @@ struct MaomiManifest {
 static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
     let crate_name = env::var("CARGO_PKG_NAME").ok();
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").ok();
-    let rel_path = PathBuf::from(manifest_dir.as_ref().map(|x| x.as_str()).unwrap_or_default());
+    let rel_path = PathBuf::from(
+        manifest_dir
+            .as_ref()
+            .map(|x| x.as_str())
+            .unwrap_or_default(),
+    );
 
     // read manifest
-    let manifest = manifest_dir.as_ref().and_then(|x| {
-        let mut p = PathBuf::from(x);
-        p.push("Cargo.toml");
-        let content = std::fs::read_to_string(&p).ok()?;
-        let config: MaomiManifestCargo = toml::from_str(&content).ok()?;
-        Some(config.package.metadata.maomi)
-    }).unwrap_or_default();
+    let manifest = manifest_dir
+        .as_ref()
+        .and_then(|x| {
+            let mut p = PathBuf::from(x);
+            p.push("Cargo.toml");
+            let content = std::fs::read_to_string(&p).ok()?;
+            let config: MaomiManifestCargo = toml::from_str(&content).ok()?;
+            Some(config.package.metadata.maomi)
+        })
+        .unwrap_or_default();
     let MaomiManifest {
         css_out_dir,
         css_out_mode,
@@ -67,14 +75,11 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
     } = manifest;
 
     // check env vars
-    let css_out_dir = env::var("MAOMI_CSS_OUT_DIR")
-        .ok()
-        .or(css_out_dir)
-        .map(|x| {
-            let p = rel_path.join(x);
-            std::fs::create_dir_all(&p).unwrap();
-            p
-        });
+    let css_out_dir = env::var("MAOMI_CSS_OUT_DIR").ok().or(css_out_dir).map(|x| {
+        let p = rel_path.join(x);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    });
     let css_out_mode = env::var("MAOMI_CSS_OUT_MODE")
         .ok()
         .or(css_out_mode)
@@ -88,21 +93,34 @@ static CRATE_CONFIG: Lazy<CrateConfig> = Lazy::new(|| {
         .or(stylesheet_mod_root)
         .map(|s| rel_path.join(&s))
         .or_else(|| {
-            manifest_dir.as_ref().map(|s| rel_path.join(&s).join("src").join("lib.mcss"))
+            manifest_dir
+                .as_ref()
+                .map(|s| rel_path.join(&s).join("src").join("lib.mcss"))
         });
-    let i18n_locale = std::env::var("MAOMI_I18N_LOCALE").ok().and_then(|x| if x.len() > 0 { Some(x) } else { None });
+    let i18n_locale =
+        std::env::var("MAOMI_I18N_LOCALE")
+            .ok()
+            .and_then(|x| if x.len() > 0 { Some(x) } else { None });
     let i18n_dir = std::env::var("MAOMI_I18N_DIR")
         .ok()
         .or(i18n_dir)
         .map(|s| rel_path.join(&s))
         .or_else(|| {
-            manifest_dir.as_ref().map(|s| rel_path.join(&s).join("i18n"))
+            manifest_dir
+                .as_ref()
+                .map(|s| rel_path.join(&s).join("i18n"))
         });
-    let i18n_format_metadata = match std::env::var("MAOMI_I18N_FORMAT_METADATA").unwrap_or_default().as_str() {
+    let i18n_format_metadata = match std::env::var("MAOMI_I18N_FORMAT_METADATA")
+        .unwrap_or_default()
+        .as_str()
+    {
         "on" => true,
         _ => false,
     };
-    let rust_analyzer_env = match std::env::var("MAOMI_RUST_ANALYZER").unwrap_or_default().as_str() {
+    let rust_analyzer_env = match std::env::var("MAOMI_RUST_ANALYZER")
+        .unwrap_or_default()
+        .as_str()
+    {
         "on" => true,
         _ => false,
     };

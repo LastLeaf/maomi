@@ -1,14 +1,14 @@
 //! The properties utilities.
-//! 
+//!
 //! The properties of components can be set through templates by component users.
-//! 
+//!
 //! ### Basic Usage
-//! 
+//!
 //! The following example show the basic usage of properties.
-//! 
+//!
 //! ```rust
 //! use maomi::prelude::*;
-//! 
+//!
 //! #[component]
 //! struct MyComponent {
 //!     template: template! {
@@ -17,7 +17,7 @@
 //!     // define a property with the detailed type
 //!     my_prop: Prop<usize>,
 //! }
-//! 
+//!
 //! impl Component for MyComponent {
 //!     fn new() -> Self {
 //!         Self {
@@ -27,7 +27,7 @@
 //!         }
 //!     }
 //! }
-//! 
+//!
 //! #[component]
 //! struct MyComponentUser {
 //!     template: template! {
@@ -36,23 +36,23 @@
 //!     },
 //! }
 //! ```
-//! 
+//!
 //! ### Two-way Property
-//! 
+//!
 //! Most property values are passing from the component user to the component.
 //! The component should not modify its own properties,
 //! otherwise the next updates of the component user will change them back.
 //! However, some properties (like `value` property in `<input>` ) should be passing back from the component to the component user.
 //! `BindingProp` is designed to solve this problem.
-//! 
+//!
 //! A `BindingProp` accepts a `BindingValue` .
 //! A `BindingValue` contains a value shared between the component and the component user.
 //! It can be visited on both ends.
-//! 
+//!
 //! ```rust
 //! use maomi::prelude::*;
 //! use maomi::prop::{BindingProp, BindingValue};
-//! 
+//!
 //! #[component]
 //! struct MyComponent {
 //!     template: template! {
@@ -61,7 +61,7 @@
 //!     // define a two-way property with the detailed type
 //!     my_prop: BindingProp<String>,
 //! }
-//! 
+//!
 //! impl Component for MyComponent {
 //!     fn new() -> Self {
 //!         Self {
@@ -71,7 +71,7 @@
 //!         }
 //!     }
 //! }
-//! 
+//!
 //! #[component]
 //! struct MyComponentUser {
 //!     template: template! {
@@ -80,7 +80,7 @@
 //!     },
 //!     comp_value: BindingValue<String>,
 //! }
-//! 
+//!
 //! impl Component for MyComponentUser {
 //!     fn new() -> Self {
 //!         Self {
@@ -91,17 +91,17 @@
 //!     }
 //! }
 //! ```
-//! 
+//!
 //! ### List Property
-//! 
+//!
 //! `ListProp` is one special kind of properties.
 //! It can accepts one attribute more than once.
 //! This helps some special cases like `class:xxx` syntax in `maomi_dom` crate.
-//! 
+//!
 //! ```rust
 //! use maomi::prelude::*;
 //! use maomi::prop::ListProp;
-//! 
+//!
 //! #[component]
 //! struct MyComponent {
 //!     template: template! {
@@ -110,7 +110,7 @@
 //!     // define a list property with the detailed item type
 //!     my_prop: ListProp<String>,
 //! }
-//! 
+//!
 //! impl Component for MyComponent {
 //!     fn new() -> Self {
 //!         Self {
@@ -120,7 +120,7 @@
 //!         }
 //!     }
 //! }
-//! 
+//!
 //! #[component]
 //! struct MyComponentUser {
 //!     template: template! {
@@ -132,10 +132,10 @@
 //! }
 //! ```
 
-use std::{borrow::Borrow, ops::Deref, fmt::Display, rc::Rc, cell::RefCell};
+use std::{borrow::Borrow, cell::RefCell, fmt::Display, ops::Deref, rc::Rc};
 
 /// The property updater.
-/// 
+///
 /// This trait is implemented by `Prop` .
 /// Custom property types that implements this trait can also be set through templates.
 pub trait PropertyUpdate<S: ?Sized> {
@@ -194,7 +194,7 @@ impl<T: Display> Display for Prop<T> {
 }
 
 /// Indicate that `&S` is assignable to `Prop<Self>` .
-/// 
+///
 /// Every type that implements `PartialEq` and can be borrowed as `&S` automatically implements this trait.
 /// For example:
 /// * `usize` implements `PropAsRef<usize>` ;
@@ -246,7 +246,9 @@ impl<T> BindingProp<T> {
     /// Create the property with initial value.
     #[inline]
     pub fn new(default_value: T) -> Self {
-        Self { value: BindingValue::new(default_value) }
+        Self {
+            value: BindingValue::new(default_value),
+        }
     }
 
     /// Set the value.
@@ -289,7 +291,7 @@ impl<T> PropertyUpdate<BindingValue<T>> for BindingProp<T> {
 }
 
 /// A value that can be associated to a `BindingProp` .
-/// 
+///
 /// Note that the `BindingValue` should be exclusively associated to one `BindingProp` .
 /// Panics if the value is associated to more than one `BindingProp` .
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -301,7 +303,9 @@ impl<T> BindingValue<T> {
     /// Create the property with initial value.
     #[inline]
     pub fn new(default_value: T) -> Self {
-        Self { inner: Rc::new(RefCell::new(default_value)) }
+        Self {
+            inner: Rc::new(RefCell::new(default_value)),
+        }
     }
 
     #[doc(hidden)]
@@ -316,11 +320,13 @@ impl<T> BindingValue<T> {
         if Rc::strong_count(&self.inner) > 1 {
             panic!("A `BindingValue` cannot be associated to more than one `BindingProp`");
         }
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 
     /// Set the value.
-    /// 
+    ///
     /// Updates of the value will NOT be applied to template!
     /// To change the value and apply in templates, create a new `BindingValue` instead.
     #[inline]
@@ -335,7 +341,7 @@ impl<T> BindingValue<T> {
     }
 
     /// Get a reference of the value.
-    /// 
+    ///
     /// Updates of the value will NOT be applied to template!
     /// To change the value and apply in templates, create a new `BindingValue` instead.
     #[inline]
@@ -357,7 +363,7 @@ pub trait ListPropertyInit {
     type UpdateContext;
 
     /// Initialize with item count provided.
-    /// 
+    ///
     /// Will be called once before any list value set.
     fn init_list(dest: &mut Self, count: usize, ctx: &mut Self::UpdateContext)
     where
@@ -365,12 +371,12 @@ pub trait ListPropertyInit {
 }
 
 /// The list property updater.
-/// 
+///
 /// This trait is implemented by `ListProp` .
 /// Custom event types that implements this trait can also be used in templates with `:xxx=` syntax.
 pub trait ListPropertyUpdate<S: ?Sized>: ListPropertyInit {
     /// The item value type.
-    /// 
+    ///
     /// Must match the corresponding `ListPropertyItem::Value` .
     type ItemValue: ?Sized;
 
@@ -390,7 +396,7 @@ pub trait ListPropertyUpdate<S: ?Sized>: ListPropertyInit {
 /// The item updater for a specified list property `L` .
 pub trait ListPropertyItem<L: ListPropertyUpdate<S>, S: ?Sized> {
     /// The item value type.
-    /// 
+    ///
     /// Must match the corresponding `ListPropertyUpdate::ItemValue` .
     type Value: ?Sized;
 
@@ -408,8 +414,9 @@ pub trait ListPropertyItem<L: ListPropertyUpdate<S>, S: ?Sized> {
 
 /// A list property that can be used in templates.
 ///
-/// List properties can be updated in `:xxx=` syntax.
+/// List properties can be updated in `:xxx=` syntax,
 /// while the `item_name` is a type that implements `ListPropertyItem` .
+// TODO add better examples and documentation for it
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ListProp<T: Default> {
     inner: Box<[T]>,
@@ -498,9 +505,7 @@ impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyUpdate<S> for
     }
 }
 
-impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyItem<ListProp<T>, S>
-    for T
-{
+impl<S: ?Sized + PartialEq, T: Default + PropAsRef<S>> ListPropertyItem<ListProp<T>, S> for T {
     type Value = ();
 
     #[inline]

@@ -7,8 +7,8 @@ use syn::*;
 
 use crate::template::SlotType;
 
-use super::template::Template;
 use super::i18n::LocaleGroup;
+use super::template::Template;
 
 struct ComponentAttr {
     items: Punctuated<ComponentAttrItem, token::Comma>,
@@ -116,7 +116,9 @@ impl ComponentBody {
                     }
                     slot_data_attr = Some(path);
                 }
-                ComponentAttrItem::Translation { attr_name, name, .. } => {
+                ComponentAttrItem::Translation {
+                    attr_name, name, ..
+                } => {
                     if locale_group_name.is_some() {
                         return Err(Error::new(
                             attr_name.span(),
@@ -300,10 +302,7 @@ impl ToTokens for ComponentBody {
             }
         };
         let impl_type_params_without_backend_param = {
-            let items = inner
-                .generics
-                .params
-                .iter();
+            let items = inner.generics.params.iter();
             quote! {
                 <#(#items),*>
             }
@@ -387,7 +386,7 @@ impl ToTokens for ComponentBody {
             }
             Err(err) => {
                 err.to_compile_error().to_tokens(tokens);
-            },
+            }
         }
     }
 }
@@ -395,11 +394,10 @@ impl ToTokens for ComponentBody {
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let component_attr = parse_macro_input!(attr as ComponentAttr);
     match ComponentBody::new(component_attr, parse_macro_input!(item as ItemStruct)) {
-        Ok(component_body) => {
-            quote! {
-                #component_body
-            }.into()
+        Ok(component_body) => quote! {
+            #component_body
         }
+        .into(),
         Err(err) => err.to_compile_error().into(),
     }
 }

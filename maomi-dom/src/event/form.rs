@@ -1,4 +1,4 @@
-use wasm_bindgen::{JsCast, closure::Closure};
+use wasm_bindgen::{closure::Closure, JsCast};
 
 use super::{ColdEventItem, DomEventRegister};
 use crate::DomGeneralElement;
@@ -9,12 +9,7 @@ fn trigger_ev_submit<T: DomEventRegister<Detail = SubmitEvent>>(dom_event: web_s
         .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), false));
     if let Some(n) = target {
         if let DomGeneralElement::Element(x) = &mut *n.borrow_mut() {
-            T::trigger(
-                x,
-                &mut SubmitEvent {
-                    dom_event,
-                },
-            );
+            T::trigger(x, &mut SubmitEvent { dom_event });
         }
     }
 }
@@ -39,12 +34,7 @@ fn trigger_ev_change<T: DomEventRegister<Detail = ChangeEvent>>(dom_event: web_s
         .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), false));
     if let Some(n) = target {
         if let DomGeneralElement::Element(x) = &mut *n.borrow_mut() {
-            T::trigger(
-                x,
-                &mut ChangeEvent {
-                    dom_event,
-                },
-            );
+            T::trigger(x, &mut ChangeEvent { dom_event });
         }
     }
 }
@@ -69,12 +59,7 @@ fn trigger_ev_input<T: DomEventRegister<Detail = InputEvent>>(dom_event: web_sys
         .and_then(|x| crate::DomElement::from_event_dom_elem(x.unchecked_ref(), false));
     if let Some(n) = target {
         if let DomGeneralElement::Element(x) = &mut *n.borrow_mut() {
-            T::trigger(
-                x,
-                &mut InputEvent {
-                    dom_event,
-                },
-            );
+            T::trigger(x, &mut InputEvent { dom_event });
         }
     }
 }
@@ -86,9 +71,7 @@ pub struct InputEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum InputEventType {
-    
-}
+pub enum InputEventType {}
 
 impl InputEvent {
     /// Get the inserted characters.

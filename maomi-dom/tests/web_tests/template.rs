@@ -37,21 +37,13 @@ async fn template_if_else() {
             let this = self.rc();
             async_task(async move {
                 this.update(|this| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#"<div>(empty)</div>"#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#"<div>(empty)</div>"#,);
                     this.text = "hello".into();
                 })
                 .await
                 .unwrap();
                 this.update_with(|this, ctx| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#"<div>hello</div>"#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#"<div>hello</div>"#,);
                     this.text = "long........".into();
                     ctx.need_update();
                 })
@@ -59,8 +51,7 @@ async fn template_if_else() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>(too long)</div>"#,
                     );
                     (this.callback.take().unwrap())();
@@ -108,31 +99,19 @@ async fn template_lonely_if() {
             let this = self.rc();
             async_task(async move {
                 this.update(|this| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#""#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#""#,);
                     this.text = "hello".into();
                 })
                 .await
                 .unwrap();
                 this.update(|this| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#"<div>hello</div>"#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#"<div>hello</div>"#,);
                     this.text = "".into();
                 })
                 .await
                 .unwrap();
                 this.update_with(|this, _| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#""#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#""#,);
                     (this.callback.take().unwrap())();
                 })
                 .await
@@ -186,21 +165,13 @@ async fn template_match() {
             let this = self.rc();
             async_task(async move {
                 this.update(|this| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#"<div>(empty)</div>"#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#"<div>(empty)</div>"#,);
                     this.text = "hello".into();
                 })
                 .await
                 .unwrap();
                 this.update_with(|this, ctx| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#"<div>hello</div>"#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#"<div>hello</div>"#,);
                     this.text = "long........".into();
                     ctx.need_update();
                 })
@@ -208,8 +179,7 @@ async fn template_match() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>(too long)</div>"#,
                     );
                     (this.callback.take().unwrap())();
@@ -261,8 +231,7 @@ async fn template_for_keyless() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div><div>123</div><div>456</div>"#,
                     );
                     this.list.push(789);
@@ -279,8 +248,7 @@ async fn template_for_keyless() {
                 }).await.unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>123</div>"#,
                     );
                     this.list.pop();
@@ -289,11 +257,7 @@ async fn template_for_keyless() {
                 .await
                 .unwrap();
                 this.update_with(|this, _| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#""#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#""#,);
                     (this.callback.take().unwrap())();
                 })
                 .await
@@ -380,8 +344,7 @@ async fn template_for() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div>1234"#,
                     );
                     assert_eq!(
@@ -394,8 +357,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>7812563490"#,
                     );
                     assert_eq!(
@@ -408,8 +370,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>1290567834"#,
                     );
                     assert_eq!(
@@ -422,8 +383,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div><div>3</div><div>4</div>7812563490"#,
                     );
                     assert_eq!(
@@ -436,8 +396,7 @@ async fn template_for() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
+                        first_dom!(this, div).inner_html(),
                         r#"<div>0</div><div>1</div><div>2</div>126734"#,
                     );
                     assert_eq!(
@@ -449,11 +408,7 @@ async fn template_for() {
                 .await
                 .unwrap();
                 this.update_with(|this, _| {
-                    assert_eq!(
-                        first_dom!(this, div)
-                            .inner_html(),
-                        r#""#,
-                    );
+                    assert_eq!(first_dom!(this, div).inner_html(), r#""#,);
                     assert_eq!(
                         EV_LIST.with(|ev_list| ev_list.borrow_mut().drain(..).collect::<Vec<_>>()),
                         Vec::<usize>::new(),
@@ -511,8 +466,7 @@ async fn class_attr() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .outer_html(),
+                        first_dom!(this, div).outer_html(),
                         r#"<div class="static-class"></div>"#,
                     );
                     this.v = true;
@@ -521,8 +475,7 @@ async fn class_attr() {
                 .unwrap();
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .outer_html(),
+                        first_dom!(this, div).outer_html(),
                         r#"<div class="static-class dyn-class"></div>"#,
                     );
                     this.v = false;
@@ -531,8 +484,7 @@ async fn class_attr() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .outer_html(),
+                        first_dom!(this, div).outer_html(),
                         r#"<div class="static-class"></div>"#,
                     );
                     (this.callback.take().unwrap())();
@@ -583,8 +535,7 @@ async fn style_attr() {
             async_task(async move {
                 this.update(|this| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .outer_html(),
+                        first_dom!(this, div).outer_html(),
                         r#"<div style="color: rgb(64, 64, 64);"></div>"#,
                     );
                     this.color = 128;
@@ -593,8 +544,7 @@ async fn style_attr() {
                 .unwrap();
                 this.update_with(|this, _| {
                     assert_eq!(
-                        first_dom!(this, div)
-                            .outer_html(),
+                        first_dom!(this, div).outer_html(),
                         r#"<div style="color: rgb(128, 128, 128);"></div>"#,
                     );
                     (this.callback.take().unwrap())();
@@ -661,19 +611,16 @@ async fn event_handler() {
     }
 
     impl Parent {
-        fn my_event_handler(this: ComponentRc<Self>, e: &mut MyEventDetail, item: &str) {
-            let num = e.num.unwrap_or(0);
+        fn my_event_handler(this: ComponentEvent<Self, MyEventDetail>, item: &str) {
+            let num = this.detail().num.unwrap_or(0);
             assert_eq!(num.to_string().as_str(), item);
+            let this = this.rc();
             async_task(async move {
                 this.update(move |this| {
                     if num <= 300 {
                         this.list = vec![(num + 100).to_string()];
                     } else {
-                        assert_eq!(
-                            first_dom!(this, div)
-                                .outer_html(),
-                            r#"<div>400</div>"#,
-                        );
+                        assert_eq!(first_dom!(this, div).outer_html(), r#"<div>400</div>"#,);
                         (this.callback.take().unwrap())();
                     }
                 })
@@ -735,19 +682,12 @@ async fn binding_prop() {
             let this = self.rc();
             this.task_with(|this, _| {
                 let dom_elem = first_dom!(this, input).clone();
-                dom_elem.dyn_ref::<web_sys::HtmlInputElement>().unwrap().set_value("abc");
-                simulate_event(
-                    &dom_elem,
-                    "input",
-                    false,
-                    [],
-                );
-                simulate_event(
-                    &dom_elem,
-                    "change",
-                    false,
-                    [],
-                );
+                dom_elem
+                    .dyn_ref::<web_sys::HtmlInputElement>()
+                    .unwrap()
+                    .set_value("abc");
+                simulate_event(&dom_elem, "input", false, []);
+                simulate_event(&dom_elem, "change", false, []);
             });
         }
     }
@@ -757,7 +697,7 @@ async fn binding_prop() {
             self.has_input_value.set(self.input_value.get().len() > 0);
         }
 
-        fn input_change(this: ComponentRc<Self>, _: &mut ChangeEvent) {
+        fn input_change(this: ComponentEvent<Self, ChangeEvent>) {
             this.task(|this| {
                 this.change.trigger(&mut ());
             });
@@ -786,7 +726,7 @@ async fn binding_prop() {
     }
 
     impl Parent {
-        fn child_change(this: ComponentRc<Self>, _: &mut ()) {
+        fn child_change(this: ComponentEvent<Self, ()>) {
             this.task_with(|this, _| {
                 assert_eq!(this.has_input_value.get(), true);
                 (this.callback.take().unwrap())();
@@ -849,11 +789,57 @@ async fn list_prop() {
             let this = self.rc();
             this.task_with(|this, _| {
                 assert_eq!(
-                    first_dom!(this, div)
-                        .inner_html(),
+                    first_dom!(this, div).inner_html(),
                     r#"<div>abc</div><div>def</div><div>ghi</div>"#,
                 );
                 (this.callback.take().unwrap())();
+            });
+        }
+    }
+
+    impl ComponentTest for Parent {
+        fn set_callback(&mut self, callback: ComponentTestCb) {
+            self.callback = Some(callback);
+        }
+    }
+
+    test_component::<Parent>().await;
+}
+
+#[wasm_bindgen_test]
+async fn dom_custom_attribute() {
+    use maomi_dom::dom_define_attribute;
+
+    dom_define_attribute!(role);
+
+    #[component(Backend = DomBackend)]
+    struct Parent {
+        callback: Option<ComponentTestCb>,
+        template: template! {
+            <div attr:role="label" />
+        },
+    }
+
+    impl Component for Parent {
+        fn new() -> Self {
+            Self {
+                callback: None,
+                template: Default::default(),
+            }
+        }
+
+        fn created(&self) {
+            let this = self.rc();
+            async_task(async move {
+                this.update_with(|this, _| {
+                    assert_eq!(
+                        first_dom!(this, div).outer_html(),
+                        r#"<div role="label"></div>"#,
+                    );
+                    (this.callback.take().unwrap())();
+                })
+                .await
+                .unwrap();
             });
         }
     }

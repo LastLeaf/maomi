@@ -1,9 +1,19 @@
-use std::{collections::VecDeque, rc::{Rc, Weak}, cell::RefCell};
-use proc_macro2::{TokenTree, Span};
+use proc_macro2::{Span, TokenTree};
 use rustc_hash::FxHashMap;
-use syn::{Token, parse::ParseStream, Attribute, Visibility, Ident, ext::IdentExt, braced, parenthesized, spanned::Spanned, UseTree};
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    rc::{Rc, Weak},
+};
+use syn::{
+    braced, ext::IdentExt, parenthesized, parse::ParseStream, spanned::Spanned, Attribute, Ident,
+    Token, UseTree, Visibility,
+};
 
-use crate::{ParseError, css_token::*, ScopeVars, ParseWithVars, write_css::*, ModPath, ScopeVarValue, ArgType, VarDynRef, VarDynValue, MaybeDyn, VarDynValueKind};
+use crate::{
+    css_token::*, write_css::*, ArgType, MaybeDyn, ModPath, ParseError, ParseWithVars,
+    ScopeVarValue, ScopeVars, VarDynRef, VarDynValue, VarDynValueKind,
+};
 
 // TODO consider a proper way to handle global styling (font, css-reset, etc.)
 
@@ -22,19 +32,21 @@ fn try_parse_until_semi<T>(
     input: ParseStream,
     f: impl FnOnce(ParseStream) -> Result<T, syn::Error>,
 ) -> Result<T, syn::Error> {
-    f(input).and_then(|ret| {
-        if !input.peek(Token![;]) {
-            return Err(input.error("expected `;`"));
-        }
-        input.parse::<Token![;]>()?;
-        Ok(ret)
-    }).or_else(|err| {
-        while !input.is_empty() && !input.peek(Token![;]) {
-            input.parse::<TokenTree>()?;
-        }
-        input.parse::<Token![;]>()?;
-        Err(err)
-    })
+    f(input)
+        .and_then(|ret| {
+            if !input.peek(Token![;]) {
+                return Err(input.error("expected `;`"));
+            }
+            input.parse::<Token![;]>()?;
+            Ok(ret)
+        })
+        .or_else(|err| {
+            while !input.is_empty() && !input.peek(Token![;]) {
+                input.parse::<TokenTree>()?;
+            }
+            input.parse::<Token![;]>()?;
+            Err(err)
+        })
 }
 
 fn try_parse_paren<T>(
@@ -66,7 +78,7 @@ fn try_parse_brace<T>(
 }
 
 struct Paren<T: syn::parse::Parse> {
-    inner: T
+    inner: T,
 }
 
 impl<T: syn::parse::Parse> syn::parse::Parse for Paren<T> {
@@ -120,7 +132,9 @@ pub enum ExtraVarType {
 }
 
 impl<T: StyleSheetConstructor> StyleSheet<T> {
-    pub(crate) fn parse_mod_fn(mod_path: ModPath) -> Box<dyn FnOnce(ParseStream) -> Result<Self, syn::Error>> {
+    pub(crate) fn parse_mod_fn(
+        mod_path: ModPath,
+    ) -> Box<dyn FnOnce(ParseStream) -> Result<Self, syn::Error>> {
         return Box::new(move |input| {
             let scope = &mut ScopeVars {
                 cur_mod: Some(mod_path),
@@ -129,13 +143,11 @@ impl<T: StyleSheetConstructor> StyleSheet<T> {
             };
             let ss = StyleSheet::parse_with_vars(input, scope)?;
             Ok(ss)
-        })
+        });
     }
 
     pub(crate) fn new_err(err: syn::Error) -> Self {
-        let items = vec![
-            Rc::new(StyleSheetItem::CompilationError(err)),
-        ];
+        let items = vec![Rc::new(StyleSheetItem::CompilationError(err))];
         Self {
             ssc: T::new(),
             items,
@@ -169,10 +181,7 @@ impl<T: StyleSheetConstructor> quote::ToTokens for StyleSheet<T> {
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for StyleSheet<T> {
-    fn parse_with_vars(
-        input: ParseStream,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, syn::Error> {
+    fn parse_with_vars(input: ParseStream, scope: &mut ScopeVars) -> Result<Self, syn::Error> {
         let ori = std::mem::replace(&mut scope.var_refs, vec![]);
         let mut this = Self {
             ssc: T::new(),
@@ -195,25 +204,34 @@ pub struct VarContext<T: StyleSheetConstructor> {
 
 impl<T: StyleSheetConstructor> Clone for VarContext<T> {
     fn clone(&self) -> Self {
-        Self { map: self.map.clone() }
+        Self {
+            map: self.map.clone(),
+        }
     }
 }
 
 impl<T: StyleSheetConstructor> Default for VarContext<T> {
     fn default() -> Self {
-        Self { map: Rc::new(RefCell::new(FxHashMap::default())) }
+        Self {
+            map: Rc::new(RefCell::new(FxHashMap::default())),
+        }
     }
 }
 
 impl<T: StyleSheetConstructor> VarContext<T> {
     pub fn get(&self, var_name: &VarName) -> Option<Rc<StyleSheetItem<T>>> {
-        self.map.borrow().get(&var_name.to_string()).and_then(|x| x.upgrade())
+        self.map
+            .borrow()
+            .get(&var_name.to_string())
+            .and_then(|x| x.upgrade())
     }
 
     fn insert(&self, var_name: VarName, item: &Rc<StyleSheetItem<T>>) -> Result<(), syn::Error> {
         let mut inserted = false;
         let span = var_name.span();
-        self.map.borrow_mut().entry(var_name.to_string())
+        self.map
+            .borrow_mut()
+            .entry(var_name.to_string())
             .or_insert_with(|| {
                 inserted = true;
                 Rc::downgrade(item)
@@ -308,7 +326,10 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                     Visibility::Crate(_) => Some(ModPath::default()),
                     Visibility::Restricted(x) => {
                         if x.in_token.is_some() {
-                            return Err(syn::Error::new_spanned(x, "`pub(in ...) is not supported`"))
+                            return Err(syn::Error::new_spanned(
+                                x,
+                                "`pub(in ...) is not supported`",
+                            ));
                         } else if x.path.is_ident("crate") {
                             Some(ModPath::default())
                         } else if x.path.is_ident("self") {
@@ -323,7 +344,7 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                         } else {
                             None
                         }
-                    },
+                    }
                 }
             } else {
                 scope.cur_mod.clone()
@@ -339,7 +360,10 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
             if let Some(cur_mod_path) = &scope.cur_mod {
                 input.parse::<Token![mod]>()?;
                 if let Some(x) = extern_vis {
-                    return Err(syn::Error::new(x.span(), "cannot specify visibility for `mod` statement"));
+                    return Err(syn::Error::new(
+                        x.span(),
+                        "cannot specify visibility for `mod` statement",
+                    ));
                 }
                 for attr in attrs {
                     return Err(syn::Error::new_spanned(attr, "unknown attribute"));
@@ -347,10 +371,15 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                 let mod_name: VarName = input.parse()?;
                 input.parse::<Token![;]>()?;
                 if let Some(submodule) = crate::module::parse_mod_path(cur_mod_path, &mod_name) {
-                    ss.submodules.insert(mod_name.clone(), Rc::downgrade(&submodule));
-                    ss.items.push(Rc::new(StyleSheetItem::Submodule(mod_name, submodule)));
+                    ss.submodules
+                        .insert(mod_name.clone(), Rc::downgrade(&submodule));
+                    ss.items
+                        .push(Rc::new(StyleSheetItem::Submodule(mod_name, submodule)));
                 } else {
-                    return Err(syn::Error::new(mod_name.span(), "cannot read target module file"));
+                    return Err(syn::Error::new(
+                        mod_name.span(),
+                        "cannot read target module file",
+                    ));
                 }
             } else {
                 return Err(input.error("`mod` cannot be used inside inline stylesheets"));
@@ -375,7 +404,10 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                         }
                     } else {
                         if scope.cur_mod.is_none() {
-                            return Err(syn::Error::new(ident.span(), "path must be started with `crate::` in inline stylesheets"));
+                            return Err(syn::Error::new(
+                                ident.span(),
+                                "path must be started with `crate::` in inline stylesheets",
+                            ));
                         }
                     }
                     fn rec<T: StyleSheetConstructor>(
@@ -388,50 +420,87 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                         match tree {
                             UseTree::Path(syn::UsePath { ident, tree, .. }) => {
                                 let var_name = VarName::from_ident(ident);
-                                let next_module = cur_module.submodules.get(&var_name).ok_or_else(|| {
-                                    syn::Error::new(var_name.span(), "module not found")
-                                })?;
+                                let next_module =
+                                    cur_module.submodules.get(&var_name).ok_or_else(|| {
+                                        syn::Error::new(var_name.span(), "module not found")
+                                    })?;
                                 return rec(scope, vis, *tree, &next_module.upgrade().unwrap(), ss);
                             }
                             UseTree::Name(syn::UseName { ident }) => {
                                 let var_name = VarName::from_ident(ident);
-                                let item = cur_module.var_context.get(&var_name).ok_or_else(|| {
-                                    syn::Error::new(var_name.span(), "item not found in target module")
-                                })?;
+                                let item =
+                                    cur_module.var_context.get(&var_name).ok_or_else(|| {
+                                        syn::Error::new(
+                                            var_name.span(),
+                                            "item not found in target module",
+                                        )
+                                    })?;
                                 if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
                                     let item = item.resolve_use_target().unwrap();
                                     scope.insert_var(&var_name, v)?;
                                     ss.var_context.insert(var_name.clone(), &item)?;
-                                    ss.items.push(Rc::new(StyleSheetItem::UseItem(UseItemDefinition { vis, alias: var_name, target: Rc::downgrade(&item) })));
+                                    ss.items.push(Rc::new(StyleSheetItem::UseItem(
+                                        UseItemDefinition {
+                                            vis,
+                                            alias: var_name,
+                                            target: Rc::downgrade(&item),
+                                        },
+                                    )));
                                 } else {
-                                    return Err(syn::Error::new(var_name.span(), "item is private or not visible"));
+                                    return Err(syn::Error::new(
+                                        var_name.span(),
+                                        "item is private or not visible",
+                                    ));
                                 }
                             }
                             UseTree::Rename(syn::UseRename { ident, rename, .. }) => {
                                 let var_name = VarName::from_ident(ident);
                                 let alias = VarName::from_ident(rename);
-                                let item = cur_module.var_context.get(&var_name).ok_or_else(|| {
-                                    syn::Error::new(var_name.span(), "item not found in target module")
-                                })?;
+                                let item =
+                                    cur_module.var_context.get(&var_name).ok_or_else(|| {
+                                        syn::Error::new(
+                                            var_name.span(),
+                                            "item not found in target module",
+                                        )
+                                    })?;
                                 if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
                                     let item = item.resolve_use_target().unwrap();
                                     scope.insert_var(&alias, v)?;
                                     ss.var_context.insert(alias.clone(), &item)?;
-                                    ss.items.push(Rc::new(StyleSheetItem::UseItem(UseItemDefinition { vis, alias, target: Rc::downgrade(&item) })));
+                                    ss.items.push(Rc::new(StyleSheetItem::UseItem(
+                                        UseItemDefinition {
+                                            vis,
+                                            alias,
+                                            target: Rc::downgrade(&item),
+                                        },
+                                    )));
                                 } else {
-                                    return Err(syn::Error::new(var_name.span(), "item is private or not visible"));
+                                    return Err(syn::Error::new(
+                                        var_name.span(),
+                                        "item is private or not visible",
+                                    ));
                                 }
                             }
                             UseTree::Glob(x) => {
                                 let star_span = x.span();
                                 for (var_name, item) in cur_module.var_context.map.borrow().iter() {
                                     if let Some(item) = item.upgrade() {
-                                        if let Some(v) = item.visible_in_mod_path(scope.cur_mod.as_ref()) {
+                                        if let Some(v) =
+                                            item.visible_in_mod_path(scope.cur_mod.as_ref())
+                                        {
                                             let item = item.resolve_use_target().unwrap();
-                                            let var_name = VarName { ident: syn::Ident::new(&var_name, star_span) };
+                                            let var_name = VarName {
+                                                ident: syn::Ident::new(&var_name, star_span),
+                                            };
                                             scope.insert_var(&var_name, v)?;
                                             ss.var_context.insert(var_name.clone(), &item)?;
-                                            ss.items.push(Rc::new(StyleSheetItem::UseItem(UseItemDefinition { vis: vis.clone(), alias: var_name, target: Rc::downgrade(&item) })));
+                                            ss.items.push(Rc::new(StyleSheetItem::UseItem(
+                                                UseItemDefinition {
+                                                    vis: vis.clone(),
+                                                    alias: var_name,
+                                                    target: Rc::downgrade(&item),
+                                                },
+                                            )));
                                         }
                                     }
                                 }
@@ -449,14 +518,19 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
                             syn::Error::new_spanned(ident, "root module not found (`MAOMI_STYLESHEET_MOD_ROOT` or `CARGO_MANIFEST_DIR/src/lib.mcss` not exists?)")
                         })?
                     } else {
-                        ss.submodules.get(&VarName::from_ident(ident.clone())).ok_or_else(|| {
-                            syn::Error::new_spanned(ident, "submodule not found")
-                        })?.upgrade().unwrap()
+                        ss.submodules
+                            .get(&VarName::from_ident(ident.clone()))
+                            .ok_or_else(|| syn::Error::new_spanned(ident, "submodule not found"))?
+                            .upgrade()
+                            .unwrap()
                     };
                     for item in cur_module.items.iter() {
                         if let Self::CompilationError(err) = &**item {
                             let msg = err.to_string();
-                            return Err(syn::Error::new_spanned(use_token, format!("(error in module {:?}) {}", base, msg)));
+                            return Err(syn::Error::new_spanned(
+                                use_token,
+                                format!("(error in module {:?}) {}", base, msg),
+                            ));
                         }
                     }
                     rec(scope, vis, *tree, &cur_module, ss)?;
@@ -468,7 +542,14 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
             input.parse::<Token![;]>()?;
         } else if la.peek(Token![const]) {
             // `const xxx: xxx = xxx;`
-            let parsed = ConstValueDefinition::parse_with_vars(input, scope, attrs, vis, extern_vis, &mut ss.ssc)?;
+            let parsed = ConstValueDefinition::parse_with_vars(
+                input,
+                scope,
+                attrs,
+                vis,
+                extern_vis,
+                &mut ss.ssc,
+            )?;
             let name = match &parsed {
                 StyleSheetItem::ConstValue(x) => x.name.clone(),
                 StyleSheetItem::KeyFrames(x) => x.name.clone(),
@@ -481,10 +562,14 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
             // `fn xxx(xxx: xxx) { xxx }`
             if let Some(x) = extern_vis {
                 if vis.is_none() {
-                    return Err(syn::Error::new_spanned(x, "functions are always private in inline stylesheets"));
+                    return Err(syn::Error::new_spanned(
+                        x,
+                        "functions are always private in inline stylesheets",
+                    ));
                 }
             }
-            let parsed = StyleFnDefinition::parse_with_vars(input, scope, attrs, vis, &mut ss.var_context)?;
+            let parsed =
+                StyleFnDefinition::parse_with_vars(input, scope, attrs, vis, &mut ss.var_context)?;
             let name = parsed.name.clone();
             let item = Rc::new(Self::StyleFn(parsed));
             ss.var_context.insert(name, &item)?;
@@ -492,7 +577,9 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
         } else if la.peek(kw::style) {
             // `style xxx(xxx: xxx) { xxx }`
             if vis.is_some() {
-                return Err(input.error("style definition cannot be used inside independent stylesheet modules"));
+                return Err(input.error(
+                    "style definition cannot be used inside independent stylesheet modules",
+                ));
             }
             let parsed = StyleDefinition::parse_with_vars(input, scope, attrs, extern_vis)?;
             let name = parsed.name.clone();
@@ -502,7 +589,9 @@ impl<T: StyleSheetConstructor> StyleSheetItem<T> {
         } else if la.peek(kw::class) {
             // `class xxx { xxx }`
             if vis.is_some() {
-                return Err(input.error("class definition cannot be used inside independent stylesheet modules"));
+                return Err(input.error(
+                    "class definition cannot be used inside independent stylesheet modules",
+                ));
             }
             let parsed = ClassDefinition::parse_with_vars(input, scope, attrs, extern_vis)?;
             let name = parsed.name.clone();
@@ -551,10 +640,16 @@ impl ConstValueDefinition {
         try_parse_until_semi(input, |input| {
             if let Some(x) = extern_vis {
                 if vis.is_none() {
-                    return Err(syn::Error::new_spanned(x, "constants are always private in inline stylesheets"));
+                    return Err(syn::Error::new_spanned(
+                        x,
+                        "constants are always private in inline stylesheets",
+                    ));
                 }
                 if let Visibility::Public(_) = x {
-                    return Err(syn::Error::new_spanned(x, "constants cannot be visited by other crates, use `pub(crate)` instead"));
+                    return Err(syn::Error::new_spanned(
+                        x,
+                        "constants cannot be visited by other crates, use `pub(crate)` instead",
+                    ));
                 }
             }
             match ty.to_string().as_str() {
@@ -564,7 +659,11 @@ impl ConstValueDefinition {
                     }
                     let converted_token = CssToken::parse_with_vars(input, scope)?;
                     scope.insert_var(&name, ScopeVarValue::Token(converted_token.clone()))?;
-                    Ok(StyleSheetItem::ConstValue(Self { vis, name, converted_token }))
+                    Ok(StyleSheetItem::ConstValue(Self {
+                        vis,
+                        name,
+                        converted_token,
+                    }))
                 }
                 "keyframes" => {
                     let mut css_name = None;
@@ -585,18 +684,22 @@ impl ConstValueDefinition {
                         while !input.is_empty() {
                             let token: CssToken = ParseWithVars::parse_with_vars(input, scope)?;
                             let progress = match token {
-                                CssToken::Ident(x) => {
-                                    match x.formal_name.as_str() {
-                                        "from" => CssPercentage::new_int(x.span, 0),
-                                        "to" => CssPercentage::new_int(x.span, 100),
-                                        _ => {
-                                            return Err(syn::Error::new(x.span, "invalid keyframe progress token"));
-                                        }
+                                CssToken::Ident(x) => match x.formal_name.as_str() {
+                                    "from" => CssPercentage::new_int(x.span, 0),
+                                    "to" => CssPercentage::new_int(x.span, 100),
+                                    _ => {
+                                        return Err(syn::Error::new(
+                                            x.span,
+                                            "invalid keyframe progress token",
+                                        ));
                                     }
-                                }
+                                },
                                 CssToken::Percentage(x) => x,
                                 x => {
-                                    return Err(syn::Error::new(x.span(), "invalid keyframe progress token"));
+                                    return Err(syn::Error::new(
+                                        x.span(),
+                                        "invalid keyframe progress token",
+                                    ));
                                 }
                             };
                             let content;
@@ -609,9 +712,17 @@ impl ConstValueDefinition {
                     })(input);
                     let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
                     result?;
-                    let converted_token = ssc.define_key_frames(&name, &css_name, frames).map_err(|e| e.into_syn_error())?;
+                    let converted_token = ssc
+                        .define_key_frames(&name, &css_name, frames)
+                        .map_err(|e| e.into_syn_error())?;
                     scope.insert_var(&name, ScopeVarValue::Token(converted_token.clone()))?;
-                    Ok(StyleSheetItem::KeyFrames(KeyFramesDefinition { vis, name, css_name, converted_token, sub_var_refs }))
+                    Ok(StyleSheetItem::KeyFrames(KeyFramesDefinition {
+                        vis,
+                        name,
+                        css_name,
+                        converted_token,
+                        sub_var_refs,
+                    }))
                 }
                 _ => Err(syn::Error::new_spanned(ty, "invalid type")),
             }
@@ -654,17 +765,26 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
                             syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident("str") => {
                                 ArgType::Str(span)
                             }
-                            _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
+                            _ => Err(syn::Error::new_spanned(
+                                ty,
+                                "invalid type, possible types: &str, f32",
+                            ))?,
                         }
                     }
                     syn::Type::Path(p) if p.qself.is_none() => {
                         if p.path.is_ident("f32") {
                             ArgType::Num(span)
                         } else {
-                            Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
+                            Err(syn::Error::new_spanned(
+                                ty,
+                                "invalid type, possible types: &str, f32",
+                            ))?
                         }
                     }
-                    _ => Err(syn::Error::new_spanned(ty, "invalid type, possible types: &str, f32"))?
+                    _ => Err(syn::Error::new_spanned(
+                        ty,
+                        "invalid type, possible types: &str, f32",
+                    ))?,
                 };
                 args.push((var_name, arg_type));
                 if !input.is_empty() {
@@ -682,11 +802,17 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
     ) -> Result<(Vec<StyleContentItem<T::PropertyValue>>, Vec<VarRef>), syn::Error> {
         try_parse_brace(input, |input| {
             for (index, (var_name, ty)) in args.iter().enumerate() {
-                let r = VarDynRef { span: var_name.span(), index };
-                scope.insert_var(&var_name, match ty {
-                    ArgType::Str(_) => ScopeVarValue::DynStr(r),
-                    ArgType::Num(_) => ScopeVarValue::DynNum(r),
-                })?;
+                let r = VarDynRef {
+                    span: var_name.span(),
+                    index,
+                };
+                scope.insert_var(
+                    &var_name,
+                    match ty {
+                        ArgType::Str(_) => ScopeVarValue::DynStr(r),
+                        ArgType::Num(_) => ScopeVarValue::DynNum(r),
+                    },
+                )?;
             }
             let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
             let content_result = StyleContentItem::parse_with_vars(input, scope, true);
@@ -713,7 +839,14 @@ impl<T: StyleSheetConstructor> StyleFnDefinition<T> {
         let args = Self::parse_arg_list(input, scope)?;
         let (content, sub_var_refs) = Self::parse_fn_body(input, scope, &args)?;
         scope.insert_var(&name, ScopeVarValue::StyleDefinition(args.clone()))?;
-        Ok(Self { vis, name, args, content, sub_var_refs, var_context: var_context.clone() })
+        Ok(Self {
+            vis,
+            name,
+            args,
+            content,
+            sub_var_refs,
+            var_context: var_context.clone(),
+        })
     }
 }
 
@@ -740,12 +873,22 @@ impl<T: StyleSheetConstructor> StyleDefinition<T> {
         }
         let args = StyleFnDefinition::<T>::parse_arg_list(input, scope)?;
         if args.len() != 1 {
-            return Err(syn::Error::new(name.span(), "should contain exactly one argument"));
+            return Err(syn::Error::new(
+                name.span(),
+                "should contain exactly one argument",
+            ));
         }
         let (arg_name, arg_ty) = args[0].clone();
         let (content, sub_var_refs) = StyleFnDefinition::<T>::parse_fn_body(input, scope, &args)?;
         scope.insert_var(&name, ScopeVarValue::StyleDefinition(args.clone()))?;
-        Ok(Self { extern_vis, name, arg_name, arg_ty, content, sub_var_refs })
+        Ok(Self {
+            extern_vis,
+            name,
+            arg_name,
+            arg_ty,
+            content,
+            sub_var_refs,
+        })
     }
 }
 
@@ -766,28 +909,38 @@ impl<T: StyleSheetConstructor> ClassDefinition<T> {
         extern_vis: Option<Visibility>,
     ) -> Result<Self, syn::Error> {
         input.parse::<kw::class>()?;
-            let name = input.parse()?;
-            let mut error_css_output = None;
-            let mut css_name = None;
-            for attr in attrs {
-                if attr.path.is_ident("error_css_output") {
-                    if !attr.tokens.is_empty() {
-                        return Err(syn::Error::new_spanned(attr.tokens, "unknown attribute arguments"));
-                    }
-                    error_css_output = Some(attr.path.span());
-                } else if attr.path.is_ident("css_name") {
-                    let name = syn::parse2::<Paren<syn::LitStr>>(attr.tokens)?;
-                    css_name = Some(name.inner.value());
-                } else {
-                    return Err(syn::Error::new_spanned(attr, "unknown attribute"));
+        let name = input.parse()?;
+        let mut error_css_output = None;
+        let mut css_name = None;
+        for attr in attrs {
+            if attr.path.is_ident("error_css_output") {
+                if !attr.tokens.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        attr.tokens,
+                        "unknown attribute arguments",
+                    ));
                 }
+                error_css_output = Some(attr.path.span());
+            } else if attr.path.is_ident("css_name") {
+                let name = syn::parse2::<Paren<syn::LitStr>>(attr.tokens)?;
+                css_name = Some(name.inner.value());
+            } else {
+                return Err(syn::Error::new_spanned(attr, "unknown attribute"));
             }
-            let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
-            let content = try_parse_brace(input, |input| {
-                RuleContent::parse_with_vars(input, scope, false)
-            })?;
-            let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
-            Ok(Self { extern_vis, error_css_output, css_name, name, content, sub_var_refs })
+        }
+        let var_refs = std::mem::replace(&mut scope.var_refs, vec![]);
+        let content = try_parse_brace(input, |input| {
+            RuleContent::parse_with_vars(input, scope, false)
+        })?;
+        let sub_var_refs = std::mem::replace(&mut scope.var_refs, var_refs);
+        Ok(Self {
+            extern_vis,
+            error_css_output,
+            css_name,
+            name,
+            content,
+            sub_var_refs,
+        })
     }
 }
 
@@ -807,7 +960,7 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
         let mut items = vec![];
         while !input.is_empty() {
             if !parse_to_end && !input.peek(Ident) {
-                break
+                break;
             }
             if input.peek2(Token![=]) {
                 match Property::parse_with_vars(input, scope) {
@@ -832,31 +985,44 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
                                     match ty {
                                         ArgType::Str(_) => match token {
                                             CssToken::String(s) => match s.s {
-                                                MaybeDyn::Static(x) => MaybeDyn::Static(VarDynValue {
-                                                    span: s.span,
-                                                    kind: VarDynValueKind::Str(x),
-                                                }),
+                                                MaybeDyn::Static(x) => {
+                                                    MaybeDyn::Static(VarDynValue {
+                                                        span: s.span,
+                                                        kind: VarDynValueKind::Str(x),
+                                                    })
+                                                }
                                                 MaybeDyn::Dyn(x) => MaybeDyn::Dyn(x),
                                             },
                                             _ => {
-                                                return Err(syn::Error::new(token.span(), "expected &str"));
+                                                return Err(syn::Error::new(
+                                                    token.span(),
+                                                    "expected &str",
+                                                ));
                                             }
                                         },
                                         ArgType::Num(_) => match token {
                                             CssToken::Number(s) => match s.value {
-                                                MaybeDyn::Static(x) => MaybeDyn::Static(VarDynValue {
-                                                    span: s.span,
-                                                    kind: VarDynValueKind::Num(x),
-                                                }),
+                                                MaybeDyn::Static(x) => {
+                                                    MaybeDyn::Static(VarDynValue {
+                                                        span: s.span,
+                                                        kind: VarDynValueKind::Num(x),
+                                                    })
+                                                }
                                                 MaybeDyn::Dyn(x) => MaybeDyn::Dyn(x),
                                             },
                                             _ => {
-                                                return Err(syn::Error::new(token.span(), "expected {number}"));
+                                                return Err(syn::Error::new(
+                                                    token.span(),
+                                                    "expected {number}",
+                                                ));
                                             }
-                                        }
+                                        },
                                     }
                                 } else {
-                                    return Err(syn::Error::new(token.span(), "unnecessary argument"));
+                                    return Err(syn::Error::new(
+                                        token.span(),
+                                        "unnecessary argument",
+                                    ));
                                 };
                                 var_dyn_values.push(v);
                                 if input.is_empty() {
@@ -872,14 +1038,19 @@ impl<V: ParseStyleSheetValue> StyleContentItem<V> {
                         input.parse::<Token![;]>()?;
                         items.push(Self::StyleRef(v, var_dyn_values));
                     } else {
-                        return Err(syn::Error::new_spanned(&v.ident, format!("expected style definition, found {}", x.type_name())));
+                        return Err(syn::Error::new_spanned(
+                            &v.ident,
+                            format!("expected style definition, found {}", x.type_name()),
+                        ));
                     }
                 } else {
                     return Err(syn::Error::new_spanned(&v.ident, "variable not declared"));
                 }
             } else {
                 input.parse::<Ident>()?;
-                return Err(input.error("expected `=` (as property) or `(...)` (as style reference)"));
+                return Err(
+                    input.error("expected `=` (as property) or `(...)` (as style reference)")
+                );
             }
         }
         Ok(items)
@@ -923,12 +1094,11 @@ impl<T: StyleSheetConstructor> RuleContent<T> {
                     RuleContent::parse_with_vars(&content, scope, true)?
                 };
                 if pseudo_classes.len() > 0 {
-                    return Err(input.error("media conditions should be put before pseudo conditions"));
+                    return Err(
+                        input.error("media conditions should be put before pseudo conditions")
+                    );
                 } else {
-                    at_blocks.push(AtBlock::Media {
-                        expr,
-                        content,
-                    })
+                    at_blocks.push(AtBlock::Media { expr, content })
                 }
             } else if input.peek(kw::supports) {
                 input.parse::<kw::supports>()?;
@@ -939,17 +1109,18 @@ impl<T: StyleSheetConstructor> RuleContent<T> {
                     RuleContent::parse_with_vars(&content, scope, true)?
                 };
                 if pseudo_classes.len() > 0 {
-                    return Err(input.error("media conditions should be put before pseudo conditions"));
+                    return Err(
+                        input.error("media conditions should be put before pseudo conditions")
+                    );
                 } else {
-                    at_blocks.push(AtBlock::Supports {
-                        expr,
-                        content,
-                    })
+                    at_blocks.push(AtBlock::Supports { expr, content })
                 }
             } else {
                 let p = ParseWithVars::parse_with_vars(input, scope)?;
                 if inside_sub_rule {
-                    return Err(input.error("pseudo conditions should not be put inside other conditions"));
+                    return Err(
+                        input.error("pseudo conditions should not be put inside other conditions")
+                    );
                 } else {
                     pseudo_classes.push(p);
                 }
@@ -1003,10 +1174,7 @@ impl<V: WriteCss> WriteCss for Property<V> {
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for Property<V> {
-    fn parse_with_vars(
-        input: ParseStream,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, syn::Error> {
+    fn parse_with_vars(input: ParseStream, scope: &mut ScopeVars) -> Result<Self, syn::Error> {
         try_parse_until_semi(input, |input| {
             let name: CssIdent = input.parse()?;
             input.parse::<Token![=]>()?;
@@ -1048,10 +1216,7 @@ pub struct MediaCond<V> {
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
-    fn parse_with_vars(
-        input: ParseStream,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, syn::Error> {
+    fn parse_with_vars(input: ParseStream, scope: &mut ScopeVars) -> Result<Self, syn::Error> {
         let only = if input.peek(kw::only) {
             Some(input.parse()?)
         } else {
@@ -1097,11 +1262,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for MediaQuery<V> {
                     let name = input.parse()?;
                     input.parse::<Token![=]>()?;
                     let cond = Property::<V>::parse_value(input, scope, &name)?;
-                    MediaCond {
-                        not,
-                        name,
-                        cond,
-                    }
+                    MediaCond { not, name, cond }
                 };
                 cond_list.push(cond);
                 if input.peek(kw::and) {
@@ -1176,28 +1337,27 @@ pub struct SupportsCond<V> {
 }
 
 impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
-    fn parse_with_vars(
-        input: ParseStream,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, syn::Error> {
+    fn parse_with_vars(input: ParseStream, scope: &mut ScopeVars) -> Result<Self, syn::Error> {
         let la = input.lookahead1();
         let ret = if la.peek(kw::not) {
             input.parse::<kw::not>()?;
-            let item: CssParen<SupportsQuery<V>> =
-                ParseWithVars::parse_with_vars(input, scope)?;
+            let item: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, scope)?;
             if let Self::Sub(item) = item.block {
                 Self::Not(item)
             } else {
                 Self::Not(Box::new(item))
             }
         } else if la.peek(syn::token::Paren) {
-            let first: CssParen<SupportsQuery<V>> =
-                ParseWithVars::parse_with_vars(input, scope)?;
+            let first: CssParen<SupportsQuery<V>> = ParseWithVars::parse_with_vars(input, scope)?;
             let next_is_and = input.peek(kw::and);
             let next_is_or = input.peek(kw::or);
             if next_is_and || next_is_or {
-                if next_is_and { input.parse::<kw::and>()?; }
-                if next_is_or { input.parse::<kw::or>()?; }
+                if next_is_and {
+                    input.parse::<kw::and>()?;
+                }
+                if next_is_or {
+                    input.parse::<kw::or>()?;
+                }
                 let mut list = vec![if let Self::Sub(item) = first.block {
                     *item
                 } else {
@@ -1235,10 +1395,7 @@ impl<V: ParseStyleSheetValue> ParseWithVars for SupportsQuery<V> {
             let name = input.parse()?;
             input.parse::<Token![=]>()?;
             let value = Property::<V>::parse_value(input, scope, &name)?;
-            Self::Cond(SupportsCond {
-                name,
-                value,
-            })
+            Self::Cond(SupportsCond { name, value })
         } else {
             return Err(la.error());
         };
@@ -1292,10 +1449,7 @@ pub struct PseudoClass<T: StyleSheetConstructor> {
 }
 
 impl<T: StyleSheetConstructor> ParseWithVars for PseudoClass<T> {
-    fn parse_with_vars(
-        input: ParseStream,
-        scope: &mut ScopeVars,
-    ) -> Result<Self, syn::Error> {
+    fn parse_with_vars(input: ParseStream, scope: &mut ScopeVars) -> Result<Self, syn::Error> {
         let pseudo = ParseWithVars::parse_with_vars(input, scope)?;
         try_parse_brace(input, |input| {
             let content = RuleContent::parse_with_vars(input, scope, true)?;

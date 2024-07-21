@@ -1,8 +1,8 @@
-use maomi_skin::ParseError;
-use maomi_skin::VarDynValue;
-use maomi_skin::write_css::*;
 use maomi_skin::css_token::*;
 use maomi_skin::style_sheet::*;
+use maomi_skin::write_css::*;
+use maomi_skin::ParseError;
+use maomi_skin::VarDynValue;
 
 pub(crate) struct DomCssProperty {
     // TODO really parse the value
@@ -15,9 +15,7 @@ impl ParseStyleSheetValue for DomCssProperty {
         while tokens.peek().is_ok() {
             v.push(tokens.next().unwrap())
         }
-        Ok(Self {
-            inner: v,
-        })
+        Ok(Self { inner: v })
     }
 }
 

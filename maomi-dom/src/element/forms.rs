@@ -1,7 +1,7 @@
 //! The DOM elements about forms.
 
-use web_sys::{HtmlInputElement, HtmlFormElement};
 use maomi::prop::BindingValue;
+use web_sys::{HtmlFormElement, HtmlInputElement};
 
 use super::*;
 

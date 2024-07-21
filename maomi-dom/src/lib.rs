@@ -1,18 +1,18 @@
 //! maomi: a rust framework for building pages with components
-//! 
+//!
 //! This is the *DOM binding* module of the framework.
-//! 
+//!
 //! ### Quick Start
-//! 
+//!
 //! Pages are composed by components.
-//! 
+//!
 //! To build a page, write a component which contains the page content.
-//! 
+//!
 //! ```rust
 //! use wasm_bindgen::prelude::*;
 //! use maomi::prelude::*;
 //! use maomi_dom::{prelude::*, element::*};
-//! 
+//!
 //! // declare a component
 //! #[component(Backend = DomBackend)]
 //! struct HelloWorld {
@@ -24,7 +24,7 @@
 //!         </div>
 //!     },
 //! }
-//! 
+//!
 //! // the component must implement `Component` trait
 //! impl Component for HelloWorld {
 //!     fn new() -> Self {
@@ -33,13 +33,13 @@
 //!         }
 //!     }
 //! }
-//! 
+//!
 //! #[wasm_bindgen(start)]
 //! pub fn wasm_main() {
 //!     // the `<body>` is used to contain component content
 //!     let dom_backend = DomBackend::new_with_document_body().unwrap();
 //!     let backend_context = maomi::BackendContext::new(dom_backend);
-//! 
+//!
 //!     // create a mount point
 //!     let mount_point = backend_context
 //!         .enter_sync(move |ctx| {
@@ -47,13 +47,13 @@
 //!         })
 //!         .map_err(|_| "Cannot init mount point")
 //!         .unwrap();
-//! 
+//!
 //!     // leak the backend context, so that event callbacks still work
 //!     std::mem::forget(mount_point);
 //!     std::mem::forget(backend_context);
 //! }
 //! ```
-//! 
+//!
 
 #![warn(missing_docs)]
 
@@ -104,18 +104,21 @@ use virtual_element::DomVirtualElement;
 mod text_node;
 use text_node::DomTextNode;
 pub mod class_list;
-pub mod dynamic_style;
 mod composing;
+pub mod dynamic_style;
 pub mod event;
 use event::DomListeners;
+pub mod custom_attr;
+
+pub use maomi_dom_macro::dom_define_attribute;
 
 /// The types that should usually be imported.
-/// 
+///
 /// Usually, `use maomi_dom::prelude::*;` should be added in component files for convinience.
 pub mod prelude {
-    pub use maomi_dom_macro::stylesheet;
-    pub use crate::DomBackend;
     pub use crate::base_element::DomElementExt;
+    pub use crate::DomBackend;
+    pub use maomi_dom_macro::stylesheet;
 }
 
 thread_local! {
@@ -374,7 +377,7 @@ impl DomBackend {
                     DomGeneralElement::Virtual(x) => {
                         x.rematch_dom();
                         ChildMatchKind::Virtual(next_dom_elem)
-                    },
+                    }
                     DomGeneralElement::Element(x) => {
                         let e = next_dom_elem.ok_or(Error::BackendError {
                             msg: "Failed to apply a prerendered node".to_string(),
@@ -494,7 +497,9 @@ impl DomGeneralElement {
             #[cfg(not(target_arch = "wasm32"))]
             DomState::Normal(_) => panic!("not available in non-web environment"),
             #[cfg(feature = "prerendering")]
-            DomState::Prerendering(_) => DomState::Prerendering(PrerenderingElement::new(_tag_name.s)),
+            DomState::Prerendering(_) => {
+                DomState::Prerendering(PrerenderingElement::new(_tag_name.s))
+            }
             #[cfg(feature = "prerendering-apply")]
             DomState::PrerenderingApply(_) => DomState::PrerenderingApply(RematchedDomElem::new()),
         }

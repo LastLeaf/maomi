@@ -58,9 +58,7 @@ impl ListPropertyUpdate<i32> for DomStyleList {
     type ItemValue = ();
 
     #[inline]
-    fn compare_and_set_item_ref<
-        U: ListPropertyItem<Self, i32, Value = Self::ItemValue>,
-    >(
+    fn compare_and_set_item_ref<U: ListPropertyItem<Self, i32, Value = Self::ItemValue>>(
         dest: &mut Self,
         index: usize,
         src: &i32,
@@ -80,9 +78,7 @@ impl ListPropertyUpdate<f32> for DomStyleList {
     type ItemValue = ();
 
     #[inline]
-    fn compare_and_set_item_ref<
-        U: ListPropertyItem<Self, f32, Value = Self::ItemValue>,
-    >(
+    fn compare_and_set_item_ref<U: ListPropertyItem<Self, f32, Value = Self::ItemValue>>(
         dest: &mut Self,
         index: usize,
         src: &f32,
@@ -102,9 +98,7 @@ impl ListPropertyUpdate<str> for DomStyleList {
     type ItemValue = ();
 
     #[inline]
-    fn compare_and_set_item_ref<
-        U: ListPropertyItem<Self, str, Value = Self::ItemValue>,
-    >(
+    fn compare_and_set_item_ref<U: ListPropertyItem<Self, str, Value = Self::ItemValue>>(
         dest: &mut Self,
         index: usize,
         src: &str,

@@ -1,6 +1,8 @@
 use maomi::prelude::*;
 use maomi_dom::class_list::DomExternalClasses;
-use maomi_dom::{async_task, element::*, event::*, DomBackend};
+use maomi_dom::{async_task, dom_define_attribute, element::*, event::*, DomBackend};
+
+dom_define_attribute!(aria_hidden);
 
 #[component(Backend = DomBackend)]
 pub(crate) struct Div {
@@ -26,7 +28,7 @@ pub(crate) struct Span {
     template: template! {
         <span
             class:DomExternalClasses={&self.class}
-            aria_hidden={&*self.aria_hidden}
+            attr:aria_hidden={self.aria_hidden.as_str()}
             tap=@click()
         ><slot /></span>
     },
@@ -47,8 +49,9 @@ impl Component for Span {
 }
 
 impl Span {
-    fn click(this: ComponentRc<Self>, detail: &mut TapEvent) {
-        let mut detail = detail.clone();
+    fn click(this: ComponentEvent<Self, TapEvent>) {
+        let mut detail = this.clone_detail();
+        let this = this.rc();
         async_task(async move {
             this.get(move |this| {
                 this.click.trigger(&mut detail);
@@ -106,8 +109,9 @@ impl Component for Button {
 }
 
 impl Button {
-    fn tap(this: ComponentRc<Self>, detail: &mut MouseEvent) {
-        let mut detail = detail.clone();
+    fn tap(this: ComponentEvent<Self, MouseEvent>) {
+        let mut detail = this.clone_detail();
+        let this = this.rc();
         async_task(async move {
             this.get(move |this| {
                 this.tap.trigger(&mut detail);
@@ -140,8 +144,9 @@ impl Component for A {
 }
 
 impl A {
-    fn tap(this: ComponentRc<Self>, detail: &mut MouseEvent) {
-        let mut detail = detail.clone();
+    fn tap(this: ComponentEvent<Self, MouseEvent>) {
+        let mut detail = this.clone_detail();
+        let this = this.rc();
         async_task(async move {
             this.get(move |this| {
                 this.tap.trigger(&mut detail);

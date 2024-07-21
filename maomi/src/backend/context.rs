@@ -13,7 +13,7 @@ use super::{tree, Backend, BackendStage};
 use crate::component::Component;
 use crate::component::PrerenderableComponent;
 use crate::error::Error;
-use crate::mount_point::{MountPoint, DynMountPoint};
+use crate::mount_point::{DynMountPoint, MountPoint};
 use crate::template::ComponentTemplate;
 
 /// A future that can be resolved with a callback function.
@@ -65,7 +65,7 @@ pub(crate) enum BackendContextEvent<B: Backend> {
 }
 
 /// A wrapper type for a backend.
-/// 
+///
 /// The wrapped backend cannot be visited directly.
 /// This is because the backend might be visited in multiple async tasks.
 /// When a task want to visit the backend,
@@ -104,7 +104,7 @@ impl<B: Backend> BackendContext<B> {
     }
 
     /// Get the current backend stage.
-    /// 
+    ///
     /// This is meaningful only when prerendering is used.
     pub fn initial_backend_stage(&self) -> BackendStage {
         self.inner.initial_backend_stage.get()
@@ -133,7 +133,7 @@ impl<B: Backend> BackendContext<B> {
     ///
     /// If the backend context is visited by other async tasks,
     /// it will wait until available.
-    /// 
+    ///
     /// The backend is always be visited asynchronously,
     /// so the `f` is required to be `'static` .
     #[inline]
@@ -237,10 +237,7 @@ impl<B: Backend> EnteredBackendContext<B> {
     }
 
     /// Detach a mount point with its `dyn` form.
-    pub fn detach_dyn(
-        &mut self,
-        mount_point: &mut DynMountPoint<B>
-    ) {
+    pub fn detach_dyn(&mut self, mount_point: &mut DynMountPoint<B>) {
         let mut root = self.backend.root_mut();
         mount_point.detach(&mut root);
     }

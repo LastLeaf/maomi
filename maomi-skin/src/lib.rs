@@ -1,15 +1,15 @@
 #![recursion_limit = "128"]
 
-use rustc_hash::FxHashMap;
 use proc_macro2::{Span, TokenStream};
+use rustc_hash::FxHashMap;
 
 // pub mod parser;
 pub mod css_token;
 use css_token::*;
-pub mod write_css;
-pub mod style_sheet;
-pub mod pseudo;
 pub mod module;
+pub mod pseudo;
+pub mod style_sheet;
+pub mod write_css;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -36,9 +36,7 @@ impl std::fmt::Display for ParseError {
 
 impl From<syn::Error> for ParseError {
     fn from(err: syn::Error) -> Self {
-        Self {
-            err,
-        }
+        Self { err }
     }
 }
 
@@ -60,11 +58,10 @@ impl ScopeVars {
     fn insert_var(&mut self, var_name: &VarName, value: ScopeVarValue) -> Result<(), syn::Error> {
         let mut inserted = false;
         let span = var_name.span();
-        self.vars.entry(var_name.to_string())
-            .or_insert_with(|| {
-                inserted = true;
-                value
-            });
+        self.vars.entry(var_name.to_string()).or_insert_with(|| {
+            inserted = true;
+            value
+        });
         if inserted {
             Ok(())
         } else {
@@ -174,7 +171,10 @@ impl ParseWithVars for MaybeDyn<String> {
                         MaybeDyn::Dyn(x.clone())
                     }
                     x => {
-                        return Err(syn::Error::new(var_name.span(), format!("expected &str, found {}", x.type_name())));
+                        return Err(syn::Error::new(
+                            var_name.span(),
+                            format!("expected &str, found {}", x.type_name()),
+                        ));
                     }
                 }
             } else {
@@ -195,7 +195,10 @@ impl MaybeDyn<String> {
                 let v = values.get(x.index).unwrap();
                 match &v.kind {
                     VarDynValueKind::Str(x) => Ok(x),
-                    _ => Err(syn::Error::new(x.span, format!("expected &str, found {}", v.type_name()))),
+                    _ => Err(syn::Error::new(
+                        x.span,
+                        format!("expected &str, found {}", v.type_name()),
+                    )),
                 }
             }
         }
@@ -226,7 +229,10 @@ impl ParseWithVars for MaybeDyn<Number> {
                         MaybeDyn::Dyn(x.clone())
                     }
                     x => {
-                        return Err(syn::Error::new(var_name.span(), format!("expected i32 or f32, found {}", x.type_name())));
+                        return Err(syn::Error::new(
+                            var_name.span(),
+                            format!("expected i32 or f32, found {}", x.type_name()),
+                        ));
                     }
                 }
             } else {
@@ -247,7 +253,10 @@ impl MaybeDyn<Number> {
                 let v = values.get(x.index).unwrap();
                 match &v.kind {
                     VarDynValueKind::Num(x) => Ok(x.clone()),
-                    _ => Err(syn::Error::new(x.span, format!("expected {{number}}, found {}", v.type_name()))),
+                    _ => Err(syn::Error::new(
+                        x.span,
+                        format!("expected {{number}}, found {}", v.type_name()),
+                    )),
                 }
             }
         }

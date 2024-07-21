@@ -2,7 +2,8 @@
 
 use crate::{
     backend::{tree, Backend, BackendGeneralElement, BackendTextNode},
-    error::Error, locale_string::ToLocaleStr,
+    error::Error,
+    locale_string::ToLocaleStr,
 };
 
 /// A text node

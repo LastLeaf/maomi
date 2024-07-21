@@ -1,24 +1,33 @@
-use std::{path::Path, cell::RefCell, any::{Any, TypeId}, rc::Rc};
 use rustc_hash::FxHashMap;
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    path::Path,
+    rc::Rc,
+};
 
-use crate::{style_sheet::*, css_token::VarName, ModPath};
+use crate::{css_token::VarName, style_sheet::*, ModPath};
 
 thread_local! {
     static ROOT_MODULE_MAP: RefCell<FxHashMap<TypeId, Option<Rc<dyn Any>>>> = RefCell::new(FxHashMap::default());
 }
 
-fn parse_mod_file<T: StyleSheetConstructor>(mod_path: ModPath, p: &Path) -> Option<Rc<StyleSheet<T>>> {
+fn parse_mod_file<T: StyleSheetConstructor>(
+    mod_path: ModPath,
+    p: &Path,
+) -> Option<Rc<StyleSheet<T>>> {
     use syn::parse::Parser;
     let s = std::fs::read_to_string(p).ok()?;
     let style_sheet = StyleSheet::<T>::parse_mod_fn(mod_path)
         .parse_str(&s)
-        .unwrap_or_else(|err| {
-            StyleSheet::new_err(err)
-        });
+        .unwrap_or_else(|err| StyleSheet::new_err(err));
     Some(Rc::new(style_sheet))
 }
 
-pub(crate) fn parse_mod_path<T: StyleSheetConstructor>(cur_mod_path: &crate::ModPath, mod_name: &VarName) -> Option<Rc<StyleSheet<T>>> {
+pub(crate) fn parse_mod_path<T: StyleSheetConstructor>(
+    cur_mod_path: &crate::ModPath,
+    mod_name: &VarName,
+) -> Option<Rc<StyleSheet<T>>> {
     maomi_tools::config::crate_config(|crate_config| {
         let mod_root: &Path = crate_config.stylesheet_mod_root.as_ref()?;
         let mut cur_dir = mod_root.parent()?.to_path_buf();
@@ -46,12 +55,14 @@ fn init_root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
 pub fn root_module<T: StyleSheetConstructor>() -> Option<Rc<StyleSheet<T>>> {
     let ret = ROOT_MODULE_MAP.with(|map| {
         let map = &mut *map.borrow_mut();
-        map.entry(TypeId::of::<T>()).or_insert_with(|| {
-            init_root_module::<T>().map(|x| {
-                let x: Rc<dyn Any> = x;
-                x
+        map.entry(TypeId::of::<T>())
+            .or_insert_with(|| {
+                init_root_module::<T>().map(|x| {
+                    let x: Rc<dyn Any> = x;
+                    x
+                })
             })
-        }).clone()
+            .clone()
     })?;
     Some(ret.downcast::<StyleSheet<T>>().unwrap())
 }

@@ -1,4 +1,8 @@
-use crate::{css_token::*, ParseWithVars, VarDynValue, write_css::{WriteCss, CssWriter}};
+use crate::{
+    css_token::*,
+    write_css::{CssWriter, WriteCss},
+    ParseWithVars, VarDynValue,
+};
 
 /// The supported pseudo classes
 ///
@@ -85,9 +89,7 @@ impl ParseWithVars for Pseudo {
                 let ret = match s.to_string().as_str() {
                     "ltr" => PseudoDir::Ltr,
                     "rtl" => PseudoDir::Rtl,
-                    _ => {
-                        return Err(syn::Error::new(s.span(), "unknown dir"))
-                    }
+                    _ => return Err(syn::Error::new(s.span(), "unknown dir")),
                 };
                 Self::Dir(ret)
             }
@@ -114,9 +116,7 @@ impl ParseWithVars for Pseudo {
             "focus" => Self::Focus,
             "focus_visible" => Self::FocusVisible,
             "focus_within" => Self::FocusWithin,
-            _ => {
-                return Err(syn::Error::new(ident.span(), "unknown pseudo class"))
-            }
+            _ => return Err(syn::Error::new(ident.span(), "unknown pseudo class")),
         };
         Ok(ret)
     }
@@ -148,19 +148,13 @@ impl WriteCss for Pseudo {
             Self::Required => cssw.write_ident("required", false),
             Self::Optional => cssw.write_ident("optional", false),
             Self::UserInvalid => cssw.write_ident("user-invalid", false),
-            Self::Dir(dir) => {
-                cssw.write_function_block(false, "dir", |cssw| {
-                    match &dir {
-                        PseudoDir::Ltr => cssw.write_ident("ltr", true),
-                        PseudoDir::Rtl => cssw.write_ident("rtl", true),
-                    }
-                })
-            }
-            Self::Lang(lang) => {
-                cssw.write_function_block(false, "lang", |cssw| {
-                    cssw.write_ident(lang.css_name().as_str(), true)
-                })
-            }
+            Self::Dir(dir) => cssw.write_function_block(false, "dir", |cssw| match &dir {
+                PseudoDir::Ltr => cssw.write_ident("ltr", true),
+                PseudoDir::Rtl => cssw.write_ident("rtl", true),
+            }),
+            Self::Lang(lang) => cssw.write_function_block(false, "lang", |cssw| {
+                cssw.write_ident(lang.css_name().as_str(), true)
+            }),
             Self::AnyLink => cssw.write_ident("any-link", false),
             Self::Link => cssw.write_ident("link", false),
             Self::Visited => cssw.write_ident("visited", false),

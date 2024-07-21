@@ -2,17 +2,21 @@
 
 use maomi::{
     backend::tree::*,
-    prop::{PropertyUpdate, BindingValue},
+    locale_string::LocaleString,
+    prop::{BindingValue, PropertyUpdate},
 };
 use std::{
     borrow::Borrow,
+    cell::RefCell,
     mem::{ManuallyDrop, MaybeUninit},
-    ops::Deref, rc::Rc, cell::RefCell, num::NonZeroUsize,
+    num::NonZeroUsize,
+    ops::Deref,
+    rc::Rc,
 };
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
-    event::{ColdEventList, ColdEventItem, HotEventList},
+    event::{ColdEventItem, ColdEventList, HotEventList},
     DomGeneralElement, DomState, WriteHtmlState,
 };
 
@@ -72,13 +76,17 @@ impl PrerenderingElement {
     }
 
     pub(crate) fn set_style(&mut self, style_name: &'static str, value: &str) {
-        let need_push = self.styles.iter_mut().find_map(|(n, v)| {
-            if *n == style_name {
-                *v = value.to_string();
-                return Some(());
-            }
-            None
-        }).is_none();
+        let need_push = self
+            .styles
+            .iter_mut()
+            .find_map(|(n, v)| {
+                if *n == style_name {
+                    *v = value.to_string();
+                    return Some(());
+                }
+                None
+            })
+            .is_none();
         if need_push {
             self.styles.push((style_name, value.to_string()));
         }
@@ -311,7 +319,10 @@ impl DomElement {
         dom_elem: &web_sys::Element,
         bubbles: bool,
     ) -> Option<ForestNodeRc<DomGeneralElement>> {
-        let ptr = dom_elem.unchecked_ref::<MaomiDomElement>().maomi().and_then(|x| NonZeroUsize::new(x));
+        let ptr = dom_elem
+            .unchecked_ref::<MaomiDomElement>()
+            .maomi()
+            .and_then(|x| NonZeroUsize::new(x));
         if let Some(ptr) = ptr {
             return unsafe {
                 ForestTokenAddr::from_ptr(ptr.get() as *const ())
@@ -324,7 +335,10 @@ impl DomElement {
         }
         let mut next = dom_elem.parent_element();
         while let Some(cur) = next.as_ref() {
-            let ptr = cur.unchecked_ref::<MaomiDomElement>().maomi().and_then(|x| NonZeroUsize::new(x));
+            let ptr = cur
+                .unchecked_ref::<MaomiDomElement>()
+                .maomi()
+                .and_then(|x| NonZeroUsize::new(x));
             if let Some(ptr) = ptr {
                 return unsafe {
                     ForestTokenAddr::from_ptr(ptr.get() as *const ())
@@ -341,8 +355,7 @@ impl DomElement {
         let ptr = self.forest_token.stable_addr().ptr() as usize;
         match &self.elem {
             DomState::Normal(x) => {
-                x.unchecked_ref::<MaomiDomElement>()
-                    .set_maomi(ptr as usize);
+                x.unchecked_ref::<MaomiDomElement>().set_maomi(ptr as usize);
             }
             #[cfg(feature = "prerendering")]
             DomState::Prerendering(_) => {}
@@ -381,7 +394,9 @@ impl DomElement {
 }
 
 pub(crate) trait DomElementBase {
-    fn dom_element_lazy(&self) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)>;
+    fn dom_element_lazy(
+        &self,
+    ) -> &std::cell::UnsafeCell<dom_state_ty!(web_sys::Element, (), RematchedDomElem)>;
 }
 
 /// Some helper functions for DOM elements.
@@ -399,7 +414,9 @@ impl<T: DomElementBase> DomElementExt for T {
             // it is safe
             // because there cannot be another one that takes refs in DomState::PrerenderingApply state
             if let Some(e) = x.take() {
-                unsafe { *ptr = DomState::Normal(e); }
+                unsafe {
+                    *ptr = DomState::Normal(e);
+                }
             }
         }
         match unsafe { &*ptr } {
@@ -459,8 +476,52 @@ where
     }
 }
 
+/// The attributes that accepts a locale string.
+pub struct DomLocaleStringAttr {
+    pub(crate) inner: LocaleString,
+    pub(crate) f: fn(&web_sys::HtmlElement, &LocaleString),
+    #[cfg(feature = "prerendering")]
+    pub(crate) attr_name: &'static str,
+}
+
+impl Deref for DomLocaleStringAttr {
+    type Target = LocaleString;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<S: ?Sized + PartialEq + ToOwned<Owned = LocaleString>> PropertyUpdate<S>
+    for DomLocaleStringAttr
+where
+    LocaleString: Borrow<S>,
+{
+    type UpdateContext = DomElement;
+
+    #[inline]
+    fn compare_and_set_ref(dest: &mut Self, src: &S, ctx: &mut DomElement) {
+        if dest.inner.borrow() == src {
+            return;
+        }
+        dest.inner = src.to_owned();
+        match &mut ctx.elem {
+            DomState::Normal(x) => {
+                (dest.f)(x.unchecked_ref(), &dest.inner);
+            }
+            #[cfg(feature = "prerendering")]
+            DomState::Prerendering(x) => {
+                x.set_attribute(dest.attr_name, dest.inner.to_string());
+            }
+            #[cfg(feature = "prerendering-apply")]
+            DomState::PrerenderingApply(_) => {}
+        }
+    }
+}
+
 /// The attributes that accepts a boolean value.
-/// 
+///
 /// The boolean attributes are always default to `false` .
 /// In templates, they can be used without `=` like `<div hidden />` .
 pub struct DomBoolAttr {
@@ -639,7 +700,7 @@ where
 }
 
 /// The attributes that accepts a binding string.
-/// 
+///
 /// It should be set with a `BindingValue` .
 pub struct DomBindingStrAttr {
     pub(crate) inner: Rc<RefCell<BindingValue<String>>>,
@@ -666,7 +727,11 @@ impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
     type UpdateContext = DomElement;
 
     #[inline]
-    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<String>, ctx: &mut Self::UpdateContext) {
+    fn compare_and_set_ref(
+        dest: &mut Self,
+        src: &BindingValue<String>,
+        ctx: &mut Self::UpdateContext,
+    ) {
         let inner = &mut dest.inner.borrow_mut();
         if BindingValue::ptr_eq(inner, src) {
             return;
@@ -692,7 +757,7 @@ impl PropertyUpdate<BindingValue<String>> for DomBindingStrAttr {
 }
 
 /// The attributes that accepts a binding boolean value.
-/// 
+///
 /// It should be set with a `BindingValue` .
 pub struct DomBindingBoolAttr {
     pub(crate) inner: Rc<RefCell<BindingValue<bool>>>,
@@ -719,7 +784,11 @@ impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
     type UpdateContext = DomElement;
 
     #[inline]
-    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<bool>, ctx: &mut Self::UpdateContext) {
+    fn compare_and_set_ref(
+        dest: &mut Self,
+        src: &BindingValue<bool>,
+        ctx: &mut Self::UpdateContext,
+    ) {
         let inner = &mut dest.inner.borrow_mut();
         if BindingValue::ptr_eq(inner, src) {
             return;
@@ -749,7 +818,7 @@ impl PropertyUpdate<BindingValue<bool>> for DomBindingBoolAttr {
 }
 
 /// The attributes that accepts a floating number.
-/// 
+///
 /// It should be set with a `BindingValue` .
 pub struct DomBindingF64Attr {
     pub(crate) inner: Rc<RefCell<BindingValue<f64>>>,
@@ -776,7 +845,11 @@ impl PropertyUpdate<BindingValue<f64>> for DomBindingF64Attr {
     type UpdateContext = DomElement;
 
     #[inline]
-    fn compare_and_set_ref(dest: &mut Self, src: &BindingValue<f64>, ctx: &mut Self::UpdateContext) {
+    fn compare_and_set_ref(
+        dest: &mut Self,
+        src: &BindingValue<f64>,
+        ctx: &mut Self::UpdateContext,
+    ) {
         let inner = &mut dest.inner.borrow_mut();
         if BindingValue::ptr_eq(inner, src) {
             return;
@@ -813,9 +886,7 @@ pub(crate) fn init_binding_prop(
     let c = Closure::new(move |e| f(e));
     let item = ColdEventItem::BindingEventListener(name, c);
     match &target.elem {
-        crate::DomState::Normal(x) => {
-            item.apply(x)
-        }
+        crate::DomState::Normal(x) => item.apply(x),
         #[cfg(feature = "prerendering")]
         crate::DomState::Prerendering(_) => unreachable!(),
         #[cfg(feature = "prerendering-apply")]

@@ -174,14 +174,13 @@ impl<T, const N: usize> SliceAlloc<T, N> {
     pub(crate) fn alloc(&mut self, data: T) -> SliceRc<T, N> {
         let owner = self.inner.clone();
         let mut inner = self.inner.borrow_mut();
-        let mut mem = if !inner.last_freed.is_null() {
+        let mem = if !inner.last_freed.is_null() {
             let p = inner.last_freed;
             inner.last_freed = unsafe { *(p as *mut *const SliceInner<T, N>) };
             unsafe { &mut *(p as *mut SliceInner<T, N>) }
         } else {
             if inner.last_used_count == N {
                 let new_buf = SliceBuf {
-                    // TODO is it safe?
                     slices: Box::pin(unsafe { MaybeUninit::uninit().assume_init() }),
                 };
                 inner.slices.push(new_buf);

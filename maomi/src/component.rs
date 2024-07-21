@@ -1,35 +1,35 @@
 //! The component interface.
-//! 
+//!
 //! Pages are composed by components.
 //! This module contains basic types about components.
-//! 
+//!
 //! A component should implement two traits:
 //! * the `ComponentTemplate` trait is usually auto-implemented by `#[component]` (no need to implement manually);
 //! * the `Component` trait should be implemented manually.
-//! 
+//!
 //! When a component should be created,
 //! the framework calls the `Component::new` function and owns the created component.
 //! It is not possible to get the ownership of it,
 //! but a `ComponentRc` can be obtained.
-//! 
+//!
 //! `ComponentRc` is a ref-counted token of the component.
 //! The component can be visited through functions like `ComponentRc::task` and `ComponentRc::update` .
-//! 
+//!
 
 use async_trait::async_trait;
 use std::{
-    cell::{Cell, RefCell, Ref},
+    cell::{Cell, Ref, RefCell},
     marker::PhantomData,
     rc::{Rc, Weak},
 };
 
 use crate::{
     backend::{
-        context::AsyncCallback, tree::*, Backend, BackendComponent, BackendGeneralElement,
-        SupportBackend,
+        context::AsyncCallback, tree::*, AsElementTag, Backend, BackendComponent,
+        BackendGeneralElement,
     },
     error::Error,
-    node::{OwnerWeak, SlotChange, SlotKindTrait, DynNodeList},
+    node::{DynNodeList, OwnerWeak, SlotChange, SlotKindTrait},
     template::*,
     BackendContext,
 };
@@ -69,16 +69,11 @@ impl<C: 'static> ComponentRc<C> {
     /// The `f` will be called asynchronously.
     /// The template is always updated after `f` being called.
     /// Panics if any error occurred during update.
-    pub fn task<R: 'static>(
-        &self,
-        f: impl 'static + FnOnce(&mut C) -> R,
-    ) {
-        self.inner
-            .clone()
-            .enter_mut_detached(Box::new(move |c| {
-                f(c);
-                true
-            }));
+    pub fn task<R: 'static>(&self, f: impl 'static + FnOnce(&mut C) -> R) {
+        self.inner.clone().enter_mut_detached(Box::new(move |c| {
+            f(c);
+            true
+        }));
     }
 
     /// Schedule an update in another task, getting the component mutable reference.
@@ -90,13 +85,11 @@ impl<C: 'static> ComponentRc<C> {
         &self,
         f: impl 'static + FnOnce(&mut C, &mut ComponentMutCtx) -> R,
     ) {
-        self.inner
-            .clone()
-            .enter_mut_detached(Box::new(move |c| {
-                let mut ctx = ComponentMutCtx { need_update: false };
-                f(c, &mut ctx);
-                ctx.need_update
-            }));
+        self.inner.clone().enter_mut_detached(Box::new(move |c| {
+            let mut ctx = ComponentMutCtx { need_update: false };
+            f(c, &mut ctx);
+            ctx.need_update
+        }));
     }
 
     /// Schedule an update, getting the component mutable reference.
@@ -172,7 +165,7 @@ impl<C: 'static> ComponentRc<C> {
 }
 
 /// A weak ref-counted token of a component.
-/// 
+///
 /// This is the weak version of `ComponentRc` ,
 /// which does not prevent the component from dropped.
 pub struct ComponentWeak<C> {
@@ -215,7 +208,7 @@ impl<C: 'static> OwnerWeak for ComponentWeak<C> {
     fn clone_owner_weak(&self) -> Box<dyn OwnerWeak> {
         Box::new(Self {
             inner: self.inner.clone(),
-            _phantom: PhantomData
+            _phantom: PhantomData,
         })
     }
 }
@@ -238,18 +231,18 @@ impl ComponentMutCtx {
 /// It contains some lifetime callbacks.
 pub trait Component: 'static {
     /// Called when a new component need to be created.
-    /// 
+    ///
     /// This function will be called once when a new instance is needed.
     fn new() -> Self;
 
     /// Called after the component is fully created.
-    /// 
+    ///
     /// This function can be used to do some async startup tasks,
     /// such as network requests.
     fn created(&self) {}
 
     /// Called before every template updates.
-    /// 
+    ///
     /// This function can be used to update some cache that used in the template.
     fn before_template_apply(&mut self) {}
 }
@@ -269,7 +262,7 @@ pub trait ComponentExt<B: Backend, C> {
     fn template_structure(&self) -> Option<Ref<Self::TemplateStructure>>;
 
     /// Manually trigger an update for the template.
-    /// 
+    ///
     /// In most cases, you should not call this function manually.
     /// Use `ComponentRc::task` or `ComponentRc::update` instead.
     async fn apply_updates(&mut self) -> Result<(), Error>
@@ -339,13 +332,12 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
         <Self as ComponentExt<B, Self>>::rc(self).update(f).await
     }
 
-    // TODO should improve interface (currently this requires B to be specific)
     #[inline]
     fn rc(&self) -> ComponentRc<Self>
     where
         T: 'static,
     {
-        <Self as ComponentTemplate<B>>::template(self)
+        self.template()
             .component_rc()
             .expect("Cannot get `ComponentRc` before initialization")
     }
@@ -355,7 +347,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
     where
         T: 'static,
     {
-        <Self as ComponentTemplate<B>>::template(self)
+        self.template()
             .component_weak()
             .expect("Cannot get `ComponentWeak` before initialization")
     }
@@ -370,6 +362,7 @@ impl<B: Backend, T: ComponentTemplate<B>> ComponentExt<B, Self> for T {
 pub trait PrerenderableComponent: Component {
     /// The type of the query data.
     type QueryData;
+
     /// The type of the prerendering generated data.
     type PrerenderingData;
 
@@ -398,17 +391,8 @@ pub(crate) trait UpdateScheduler: 'static {
         self: Rc<Self>,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>>;
-    fn enter_mut_detached(
-        self: Rc<Self>,
-        f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
-    );
+    fn enter_mut_detached(self: Rc<Self>, f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>);
     fn sync_update(&self) -> Result<(), Error>;
-}
-
-pub(crate) trait UpdateSchedulerWeak: 'static {
-    type EnterType;
-    fn upgrade_scheduler(&self) -> Option<Rc<dyn UpdateScheduler<EnterType = Self::EnterType>>>;
-    fn to_owner_weak(&self) -> Box<dyn OwnerWeak>;
 }
 
 /// A node that wraps a component instance.
@@ -506,12 +490,16 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> ComponentNodeInBackend<B, 
     }
 }
 
-impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for ComponentNodeInBackend<B, C> {
+impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler
+    for ComponentNodeInBackend<B, C>
+{
     type EnterType = C;
 
     #[inline]
     fn enter(self: Rc<Self>, f: Box<dyn FnOnce(&Self::EnterType)>) -> AsyncCallback<()> {
-        self.backend_context.clone().enter(move |_| f(&self.inner.borrow()))
+        self.backend_context
+            .clone()
+            .enter(move |_| f(&self.inner.borrow()))
     }
 
     #[inline]
@@ -519,16 +507,13 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
         self: Rc<Self>,
         f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
     ) -> AsyncCallback<Result<(), Error>> {
-        self.backend_context.clone().enter::<Result<(), Error>, _>(move |_| {
-            Self::prepare_inner_changes(&self, f)
-        })
+        self.backend_context
+            .clone()
+            .enter::<Result<(), Error>, _>(move |_| Self::prepare_inner_changes(&self, f))
     }
 
     #[inline]
-    fn enter_mut_detached(
-        self: Rc<Self>,
-        f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>,
-    ) {
+    fn enter_mut_detached(self: Rc<Self>, f: Box<dyn FnOnce(&mut Self::EnterType) -> bool>) {
         // the sync part of `f` is always executed, so it does not require to poll
         let _ = self.backend_context.clone().enter::<(), _>(move |_| {
             if let Err(err) = Self::prepare_inner_changes(&self, f) {
@@ -558,7 +543,7 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> UpdateScheduler for Compon
     }
 }
 
-impl<C: Component + ComponentSlotKind> SupportBackend for C {
+impl<C: Component + ComponentSlotKind> AsElementTag for C {
     type Target = ComponentNode<C>;
     type SlotChildren = <C as ComponentSlotKind>::SlotChildren<DynNodeList>;
 }
@@ -615,11 +600,9 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                 &mut comp,
                 backend_context,
                 &mut backend_element,
-                &mut |slot_change| {
-                    match slot_change {
-                        SlotChange::Added(n, t, d) => slot_fn(n, t, d),
-                        _ => Err(Error::TreeNotCreated),
-                    }
+                &mut |slot_change| match slot_change {
+                    SlotChange::Added(n, t, d) => slot_fn(n, t, d),
+                    _ => Err(Error::TreeNotCreated),
                 },
             )?;
             #[cfg(not(feature = "prerendering"))]
@@ -650,7 +633,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
             update_fn(&mut comp, &mut force_dirty);
             if <C as ComponentTemplate<B>>::template(&mut comp).clear_dirty() || force_dirty {
                 // if any data changed, do updates
-                let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
+                let mut backend_element =
+                    owner.borrow_mut_token(&self.backend_element_token).unwrap();
                 <C as Component>::before_template_apply(&mut comp);
                 <C as ComponentTemplate<B>>::template_create_or_update(
                     &mut comp,
@@ -702,7 +686,8 @@ impl<B: Backend, C: ComponentTemplate<B> + Component> BackendComponent<B> for Co
                     Ok(())
                 } else {
                     // if nothing changed, just return the slots
-                    let mut backend_element = owner.borrow_mut_token(&self.backend_element_token).unwrap();
+                    let mut backend_element =
+                        owner.borrow_mut_token(&self.backend_element_token).unwrap();
                     <C as ComponentTemplate<B>>::for_each_slot_scope(
                         &mut comp,
                         &mut backend_element,
