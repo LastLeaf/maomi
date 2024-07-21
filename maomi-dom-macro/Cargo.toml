@@ -1,6 +1,6 @@
 [package]
 name = "maomi-dom-macro"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["LastLeaf <bqfu@163.com>"]
 license = "MIT"
 description = "Strict and Performant Web Application Programming"
@@ -13,8 +13,8 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
-maomi-tools = "=0.4.0"
-maomi-skin = "=0.4.0"
+maomi-tools = "=0.5.0"
+maomi-skin = "=0.5.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 syn = { version = "1.0", features = ["parsing"] }
 quote = "1.0"
