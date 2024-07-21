@@ -130,15 +130,13 @@ impl Parse for Attr {
         let dom_element_name = input.parse()?;
         let ty = match s.as_str() {
             "& str" => parse_quote_spanned! {span=> DomStrAttr },
-            "& LocaleString" => {
-                maomi_tools::config::crate_config(|crate_config| {
-                    if crate_config.i18n_locale.is_some() {
-                        parse_quote_spanned! {span=> DomLocaleStringAttr }
-                    } else {
-                        parse_quote_spanned! {span=> DomStrAttr }
-                    }
-                })
-            },
+            "& LocaleString" => maomi_tools::config::crate_config(|crate_config| {
+                if crate_config.i18n_locale.is_some() {
+                    parse_quote_spanned! {span=> DomLocaleStringAttr }
+                } else {
+                    parse_quote_spanned! {span=> DomStrAttr }
+                }
+            }),
             "bool" => parse_quote_spanned! {span=> DomBoolAttr },
             "u32" => parse_quote_spanned! {span=> DomU32Attr },
             "i32" => parse_quote_spanned! {span=> DomI32Attr },
@@ -512,9 +510,7 @@ pub(crate) struct DomDefineAttribute {
 impl Parse for DomDefineAttribute {
     fn parse(input: ParseStream) -> Result<Self> {
         let ident = input.parse()?;
-        Ok(Self {
-            ident,
-        })
+        Ok(Self { ident })
     }
 }
 

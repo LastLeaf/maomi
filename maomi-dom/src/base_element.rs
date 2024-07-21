@@ -1,7 +1,9 @@
 //! Basic types for DOM elements.
 
 use maomi::{
-    backend::tree::*, locale_string::LocaleString, prop::{BindingValue, PropertyUpdate}
+    backend::tree::*,
+    locale_string::LocaleString,
+    prop::{BindingValue, PropertyUpdate},
 };
 use std::{
     borrow::Borrow,
@@ -491,7 +493,8 @@ impl Deref for DomLocaleStringAttr {
     }
 }
 
-impl<S: ?Sized + PartialEq + ToOwned<Owned = LocaleString>> PropertyUpdate<S> for DomLocaleStringAttr
+impl<S: ?Sized + PartialEq + ToOwned<Owned = LocaleString>> PropertyUpdate<S>
+    for DomLocaleStringAttr
 where
     LocaleString: Borrow<S>,
 {

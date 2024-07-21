@@ -114,7 +114,7 @@ impl<D: ?Sized> EventHandler<D> for Event<D> {
 }
 
 /// A helper type that contains the event target and the event detail.
-/// 
+///
 /// It implements `Deref<ComponentRc<C>>` so that any associated function in `ComponentRc<C>` can be visited.
 pub struct ComponentEvent<'d, C: 'static, D> {
     rc: ComponentRc<C>,
@@ -141,7 +141,10 @@ impl<'d, C: 'static, D> ComponentEvent<'d, C, D> {
     }
 
     /// Clone the event detail.
-    pub fn clone_detail(&self) -> D where D: Clone {
+    pub fn clone_detail(&self) -> D
+    where
+        D: Clone,
+    {
         self.detail.clone()
     }
 

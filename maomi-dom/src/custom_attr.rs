@@ -1,22 +1,22 @@
 //! Some utilities to define custom DOM attributes.
-//! 
+//!
 //! Sometimes it is needed to add some custom attribute to DOM elements.
 //! In these cases, `maomi_dom::dom_define_attribute!` can be used to define a custom attribute.
 //! Then the attribute can be used with `attr:xxx` template syntax.
-//! 
+//!
 //! ```no_run
 //! // define a new attribute `role`
 //! maomi_dom::dom_define_attribute!(aria_hidden);
 //! // use in template like this
 //! // <div attr:aria_hidden="true" />
-//! 
+//!
 
-use maomi::prop::{ListPropertyInit, ListPropertyUpdate, ListPropertyItem};
+use maomi::prop::{ListPropertyInit, ListPropertyItem, ListPropertyUpdate};
 
 use crate::{base_element::DomElement, DomState};
 
 /// The custom DOM attributes.
-/// 
+///
 /// Can be used in template with `attr:name="value"` syntax, e.g. `attr:aria-hidden="true"`.
 /// Caution! This bypass type checks and directly write to DOM.
 /// Do not use this if there are other proper attributes.
@@ -26,7 +26,9 @@ pub struct DomCustomAttrs {
 
 impl DomCustomAttrs {
     pub(crate) fn new() -> Self {
-        Self { inner: Vec::with_capacity(0) }
+        Self {
+            inner: Vec::with_capacity(0),
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use proc_macro::TokenStream;
 mod css;
 use css::DomStyleSheet;
 mod element;
-use element::{DomElementDefinition, DomElementDefinitionAttribute, DomDefineAttribute};
+use element::{DomDefineAttribute, DomElementDefinition, DomElementDefinitionAttribute};
 
 #[proc_macro]
 pub fn stylesheet(item: TokenStream) -> TokenStream {
@@ -28,7 +28,7 @@ pub fn dom_element_definition(attr: TokenStream, item: TokenStream) -> TokenStre
 }
 
 /// Define a custom DOM attribute.
-/// 
+///
 /// It can be used in `attr:xxx=""` syntax.
 #[proc_macro]
 pub fn dom_define_attribute(item: TokenStream) -> TokenStream {

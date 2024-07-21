@@ -30,7 +30,7 @@ pub mod prelude {
     pub use super::component::PrerenderableComponent;
     pub use super::component::{Component, ComponentExt, ComponentRc};
     pub use super::diff::key::AsListKey;
-    pub use super::event::{Event, ComponentEvent};
+    pub use super::event::{ComponentEvent, Event};
     pub use super::prop::Prop;
     pub use async_trait::async_trait;
     pub use maomi_macro::*;
