@@ -4,7 +4,7 @@
 
 Strict and Performant Web Application Programming
 
-![crates.io](https://img.shields.io/crates/v/maomi?style=flat-square) ![docs.rs](https://img.shields.io/docsrs/maomi?style=flat-square)
+![crates.io](https://img.shields.io/crates/v/maomi?style=flat-square) ![docs.rs](https://img.shields.io/docsrs/maomi?style=flat-square) ![build-status](https://img.shields.io/github/actions/workflow/status/lastleaf/maomi/build-and-test.yml?style=flat-square)
 
 ```rust
 #[component]
